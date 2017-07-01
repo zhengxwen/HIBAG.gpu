@@ -1,0 +1,10 @@
+# Load the shared object
+
+# Export function names
+exportPattern("^[^\\.|HIBAG]")
+export(.onAttach)
+
+# Imports
+import(methods)
+import(OpenCL)
+import(HIBAG)

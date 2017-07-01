@@ -1,2 +1,3 @@
 # HIBAG.gpu
-R package -- HLA Genotype Imputation with Attribute Bagging with GPU (unstable version)
+
+R package -- GPU-based implementation for the HIBAG package

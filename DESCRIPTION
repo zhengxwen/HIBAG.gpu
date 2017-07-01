@@ -1,0 +1,20 @@
+Package: HIBAG.gpu
+Type: Package
+Title: GPU-based implementation for the HIBAG package
+Version: 0.9.0
+Date: 2017-07-01
+Depends: R (>= 3.2.0), OpenCL, HIBAG (>= 1.13.1)
+Imports: methods
+Authors@R: person("Xiuwen", "Zheng", role=c("aut", "cre", "cph"),
+    email="zhengx@u.washington.edu")
+Description: It is an extensible component of the HIBAG package for imputing
+    HLA genotypes using SNP data. HIBAG can be used by researchers with
+    published parameter estimates instead of requiring access to large training
+    sample datasets. It combines the concepts of attribute bagging, an ensemble
+    classifier method, with haplotype inference for SNPs and HLA types.
+    Attribute bagging is a technique which improves the accuracy and stability
+    of classifier ensembles using bootstrap aggregating and random variable
+    selection.
+License: GPL-3
+LazyData: yes
+URL: http://github.com/zhengxwen/HIBAG.gpu, http://github.com/zhengxwen/HIBAG
