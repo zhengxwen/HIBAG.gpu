@@ -28,10 +28,10 @@
 # OpenCL codes
 #
 
-opencl_code_oob_acc_f32 <- '
+opencl_code_oob_acc <- '
 '
 
-kernel_oob_acc_f32 <- NULL
+kernel_oob_acc <- NULL
 
 
 
@@ -204,6 +204,22 @@ hlaAttrBagging_gpu <- function(hla, snp, nclassifier=100,
 
 
 #######################################################################
+# Predict HLA types from unphased SNP data
+#
+
+hlaPredict_gpu <- function(object, snp,
+    type=c("response", "prob", "response+prob"), vote=c("prob", "majority"),
+    allele.check=TRUE, match.type=c("RefSNP+Position", "RefSNP", "Position"),
+    same.strand=FALSE, verbose=TRUE)
+{
+    stopifnot(inherits(object, "hlaAttrBagClass"))
+    predict(object, snp, NULL, type, vote, allele.check, match.type,
+        same.strand, verbose, proc_ptr=NULL)
+}
+
+
+
+#######################################################################
 # Export stardard R library function(s)
 #######################################################################
 
@@ -212,13 +228,15 @@ hlaAttrBagging_gpu <- function(hla, snp, nclassifier=100,
 	platform <- oclPlatforms()
 	for (i in seq_along(platform))
 	{
-		cat("Available platform:")
-		print(platform[[i]])
+		ii <- oclInfo(platform[[i]])
+		s <- paste0("Available OpenCL platform: ", ii$name, ", ", ii$version)
+		packageStartupMessage(s)
 		dev <- oclDevices(platform[[i]])
 		for (j in seq_along(dev))
 		{
-			cat("    Device:")
-			print(dev[[j]])
+			ii <- oclInfo(dev[[i]])
+			s <- paste0("    Device: ", ii$vendor, " ", ii$name)
+			packageStartupMessage(s)
 		}
 	}
 
