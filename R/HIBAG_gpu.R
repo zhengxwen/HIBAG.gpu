@@ -24,14 +24,44 @@
 
 
 ##########################################################################
+
+# Package-wide variable
+.packageEnv <- new.env()
+
+
+
+##########################################################################
 #
 # OpenCL codes
 #
 
-opencl_code_oob_acc <- '
-'
+code_oob_acc <- "
+"
 
-kernel_oob_acc <- NULL
+code_predict_prob <- "
+	#pragma OPENCL EXTENSION cl_khr_fp64 : enable
+	__kernel void name(
+		__global double *out_prob,
+		const int nHLA,
+		const int nClassifier,
+		__global unsigned char *pHaplo,
+		__global int *nHaplo,
+		__global double *tmp_prob)
+	{
+		int i1 = get_global_id(0);
+		int i2 = get_global_id(1);
+		if (i2 < i1) return;
+
+		int sz = get_global_size(0);
+		int sz_hla = nHLA * (nHLA + 1) >> 1;
+
+		// initialize tmp_prob
+		int i = i2 + i1 * (2*sz-i1-1) >> 1;
+		if (i < sz_hla) tmp_prob[i] = 0;
+
+		if (i < sz_hla) out_prob[i] = i;
+	};
+"
 
 
 
@@ -47,7 +77,7 @@ kernel_oob_acc <- NULL
 
 hlaAttrBagging_gpu <- function(hla, snp, nclassifier=100,
     mtry=c("sqrt", "all", "one"), prune=TRUE, rm.na=TRUE,
-    verbose=TRUE, verbose.detail=FALSE, gpu.prec=c("best", "single", "double"))
+    verbose=TRUE, verbose.detail=FALSE)
 {
     # check
     stopifnot(inherits(hla, "hlaAlleleClass"))
@@ -56,7 +86,6 @@ hlaAttrBagging_gpu <- function(hla, snp, nclassifier=100,
     stopifnot(is.logical(verbose), length(verbose)==1L)
     stopifnot(is.logical(verbose.detail), length(verbose.detail)==1L)
     if (verbose.detail) verbose <- TRUE
-    gpu.prec <- match.arg(gpu.prec)
 
     # check GPU platform
 
@@ -183,7 +212,7 @@ hlaAttrBagging_gpu <- function(hla, snp, nclassifier=100,
     # training ...
     # add new individual classifers
     .Call("HIBAG_NewClassifiers", ABmodel, nclassifier, mtry, prune,
-        verbose, verbose.detail, NULL, PACKAGE="HIBAG")
+        verbose, verbose.detail, .packageEnv$gpu_proc_ptr, PACKAGE="HIBAG")
 
     # output
     rv <- list(n.samp = n.samp, n.snp = n.snp, sample.id = samp.id,
@@ -214,7 +243,7 @@ hlaPredict_gpu <- function(object, snp,
 {
     stopifnot(inherits(object, "hlaAttrBagClass"))
     predict(object, snp, NULL, type, vote, allele.check, match.type,
-        same.strand, verbose, proc_ptr=NULL)
+        same.strand, verbose, proc_ptr=.packageEnv$gpu_proc_ptr)
 }
 
 
@@ -239,6 +268,19 @@ hlaPredict_gpu <- function(object, snp,
 			packageStartupMessage(s)
 		}
 	}
+
+	# build OpenCL kernels
+	dev <- oclDevices(oclPlatforms()[[1L]])[[1L]]
+
+	.packageEnv$predict_kernel <- oclSimpleKernel(dev, "name",
+		code_predict_prob, precision="double")
+
+	# set double floating flag
+	.Call(set_gpu_val, 0L, any(grepl("cl_khr_fp64", oclInfo(dev)$exts)))
+	.Call(set_gpu_val, 1L, .packageEnv$predict_kernel)
+
+
+	.packageEnv$gpu_proc_ptr <- .Call(init_gpu_proc)
 
 	TRUE
 }

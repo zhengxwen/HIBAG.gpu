@@ -1,7 +1,10 @@
 # Load the shared object
+useDynLib(HIBAG.gpu,
+	init_gpu_proc, set_gpu_val
+)
 
 # Export function names
-exportPattern("^[^\\.|HIBAG]")
+exportPattern("^hla")
 export(.onAttach)
 
 # Imports
