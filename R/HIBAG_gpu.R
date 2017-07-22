@@ -35,17 +35,13 @@
 # OpenCL codes
 #
 
-code_oob_acc <- "
-"
-
-
 code_atomic_add_f32 <- "
 #pragma OPENCL EXTENSION cl_khr_global_int32_base_atomics : enable
 inline static void atomic_fadd(volatile __global float *addr, float val)
 {
 	union{
-		unsigned int u32;
-		float        f32;
+		uint  u32;
+		float f32;
 	} next, expected, current;
 	current.f32 = *addr;
 	do{
@@ -54,6 +50,24 @@ inline static void atomic_fadd(volatile __global float *addr, float val)
 		current.u32  = atomic_cmpxchg((volatile __global unsigned int *)addr,
 			expected.u32, next.u32);
 	} while (current.u32 != expected.u32);
+}
+"
+
+code_atomic_add_f64 <- "
+#pragma OPENCL EXTENSION cl_khr_int64_base_atomics : enable
+inline static void atomic_fadd(volatile __global double *addr, double val)
+{
+	union{
+		ulong  u64;
+		double f64;
+	} next, expected, current;
+	current.f64 = *addr;
+	do{
+		expected.f64 = current.f64;
+		next.f64     = expected.f64 + val;
+		current.u64  = atom_cmpxchg((volatile __global ulong*)addr,
+			expected.u64, next.u64);
+	} while (current.u64 != expected.u64);
 }
 "
 
@@ -96,48 +110,51 @@ inline static int hamming_dist(int n, __global unsigned char *g,
 code_predict_prob <- "
 __kernel void pred_calc_prob(
 	const int nHLA,
-	__global unsigned char *buf_param,
+	const int nClassifier,
+	__global double *exp_log_min_rare_freq,
 	__global unsigned char *pHaplo,
 	__global int *nHaplo,
-	__global unsigned char *pGeno)
+	__global unsigned char *pGeno,
+	__global double *out_prob)
 {
 	const int i1 = get_global_id(0);
 	const int i2 = get_global_id(1);
 	if (i2 < i1) return;
 
-	const int i_cfr = ((__global int*)buf_param)[0];
-	const int n_haplo = nHaplo[(i_cfr << 1)];  // the number of haplotypes
-	if (i1 >= n_haplo || i2 >= n_haplo) return;
-
 	// constants
-	const size_t sz_haplo = sizeof(double) == 4 ? 24 : 16;
+	const size_t sz_haplo = 16;
 	const int sz_hla = nHLA * (nHLA + 1) >> 1;
 
-	// initialize
-	const int st_haplo = ((__global int*)buf_param)[1];
-	__global double *exp_log_min_rare_freq = (__global double *)(buf_param + sizeof(int)*2);
-	__global double *tmp_prob = exp_log_min_rare_freq + 256;  // since HIBAG_MAXNUM_SNP_IN_CLASSIFIER = 128
+	for (int i_cfr=0; i_cfr < nClassifier; i_cfr++)
+	{
+		const int n_haplo = nHaplo[i_cfr << 1];  // the number of haplotypes
+		if (i1<n_haplo && i2<n_haplo)
+		{
+			// SNP genotypes
+			__global unsigned char *p_geno = pGeno + (i_cfr << 6);
+			const int n_snp = nHaplo[(i_cfr << 1) + 1];  // the number of SNPs
 
-	__global unsigned char *p_geno = pGeno + (i_cfr << 6);
-	const int n_snp = nHaplo[(i_cfr << 1) + 1];  // the number of SNPs
-	pHaplo += (st_haplo << 5);
+			// a pair of haplotypes
 
-	// a pair of haplotypes
+			__global unsigned char *p1 = pHaplo + (i1 << 5);
+			const double fq1 = *(__global double*)(p1 + sz_haplo);
+			const int h1 = *(__global int*)(p1 + 28);
 
-	__global unsigned char *p1 = pHaplo + (i1 << 5);
-	const double fq1 = *(__global double*)(p1 + sz_haplo);
-	const int h1 = *(__global int*)(p1 + 28);
+			__global unsigned char *p2 = pHaplo + (i2 << 5);
+			const double fq2 = *(__global double*)(p2 + sz_haplo);
+			const int h2 = *(__global int*)(p2 + 28);
 
-	__global unsigned char *p2 = pHaplo + (i2 << 5);
-	const double fq2 = *(__global double*)(p2 + sz_haplo);
-	const int h2 = *(__global int*)(p2 + 28);
+			int d = hamming_dist(n_snp, p_geno, p1, p2);
+			double ff = (i1 != i2) ? (2 * fq1 * fq2) : (fq1 * fq2);
+			ff *= exp_log_min_rare_freq[d];
 
-	int d = hamming_dist(n_snp, p_geno, p1, p2);
-	double ff = (i1 != i2) ? (2 * fq1 * fq2) : (fq1 * fq2);
-	ff *= exp_log_min_rare_freq[d];
-
-	int k = h2 + (h1 * (2*nHLA - h1 - 1) >> 1);
-	atomic_fadd(&tmp_prob[k], ff);
+			int k = h2 + (h1 * (2*nHLA - h1 - 1) >> 1);
+			atomic_fadd(&out_prob[k], ff);
+		}
+		// update
+		out_prob += sz_hla;
+		pHaplo += (n_haplo << 5);
+	}
 }
 "
 
@@ -369,28 +386,37 @@ hlaPredict_gpu <- function(object, snp,
 	dev <- oclDevices(oclPlatforms()[[1L]])[[1L]]
 
 	# check extension
-	if (!grepl("cl_khr_global_int32_base_atomics", oclInfo(dev)$exts))
+	exts <- oclInfo(dev)$exts
+	if (!grepl("cl_khr_global_int32_base_atomics", exts))
 		stop("Need the OpenCL extension cl_khr_global_int32_base_atomics.")
 
 	# support 64-bit floating number or not
 	dev_fp64 <- any(grepl("cl_khr_fp64", oclInfo(dev)$exts))
-	dev_fp64 <- FALSE
-
 	if (dev_fp64)
 	{
-		packageStartupMessage("Support of GPU 64-bit floating number.")
-		.packageEnv$precision <- "double"
-		.packageEnv$code_predict <- paste(
-			"#pragma OPENCL EXTENSION cl_khr_fp64 : enable",
-			code_atomic_add_f32,
-			code_hamming_dist, code_predict_prob, collapse="\n")
+		packageStartupMessage("GPU device supports 64-bit floating number.")
+		if (!grepl("cl_khr_int64_base_atomics", exts))
+		{
+			packageStartupMessage("But it does not support cl_khr_int64_base_atomics, switch to 32-bit floating number.")
+			dev_fp64 <- FALSE
+		}
 	} else {
 		packageStartupMessage("No support of GPU 64-bit floating number, ",
 			"and use GPU 32-bit floating number instead.")
+	}
+
+	if (dev_fp64)
+	{
+		.packageEnv$precision <- "double"
+		.packageEnv$code_predict <- paste(
+			"#pragma OPENCL EXTENSION cl_khr_fp64 : enable",
+			code_atomic_add_f64,
+			code_hamming_dist, code_predict_prob, collapse="\n")
+	} else {
 		.packageEnv$precision <- "single"
 		s <- code_predict_prob
-		src <- c("double")
-		dst <- c("float")
+		src <- c("double", "sz_haplo = 16")
+		dst <- c("float", "sz_haplo = 24")
 		for (i in seq_along(src))
 			s <- gsub(src[i], dst[i], s, fixed=TRUE)
 		.packageEnv$code_predict <- paste(

@@ -234,24 +234,14 @@ namespace HLA_LIB
 	static cl_kernel gpu_kernel = NULL;
 	static bool gpu_f64_flag = false;
 
+	// haplotypes of all classifiers
+	static cl_mem mem_exp_log_min_rare_freq = NULL;
 
+
+	// ===================================================================== //
 	// prediction for calculating the posterior probabilities
+
 	static SEXP kernel_predict = NULL;
-
-	// the buffer of numeric values and parameters
-	// int[0] -- the index of classifier
-	// int[1] -- the start of haplotype list for the current classifier
-	// double[] -- sizeof(EXP_LOG_MIN_RARE_FREQ)
-	// double[] -- nHLA*(nHLA+1)/2, tmp_prob
-	// double[] -- nHLA*(nHLA+1)/2, out_prob
-	// double   -- temporary
-	static cl_mem mem_pred_buf_param = NULL;
-	static size_t memsize_buf_param = 0;
-	static size_t memsize_prob = 0;
-	const static size_t offset_pred_buf_exp_log = sizeof(int)*2;
-	static size_t offset_tmp_prob = 0;
-	static size_t offset_out_prob = 0;
-
 
 	// haplotypes of all classifiers
 	static cl_mem mem_pred_haplo = NULL;
@@ -259,6 +249,12 @@ namespace HLA_LIB
 	static cl_mem mem_pred_haplo_num = NULL;
 	// SNP genotypes
 	static cl_mem mem_pred_snpgeno = NULL;
+
+	// the buffer of numeric values
+	// double[nHLA*(nHLA+1)/2][] -- tmp_prob for each classifier
+	static cl_mem mem_pred_probbuf = NULL;
+	static size_t memsize_buf_param = 0;
+	static size_t memsize_prob = 0;
 
 	static int wdim_pred = 0;
 }
@@ -432,23 +428,18 @@ void predict_init(int nHLA, int nClassifier, const THaplotype *const pHaplo[],
 	Rprintf("global_size: %d\n", (int)wdim_pred);
 
 	// allocate OpenCL buffers
-	memsize_buf_param = sizeof(int)*2 + sizeof(EXP_LOG_MIN_RARE_FREQ) +
-		sizeof(double)*size_hla*2;
-	memsize_prob = size_hla * (gpu_f64_flag ? sizeof(double) : sizeof(float));
-	offset_tmp_prob = offset_pred_buf_exp_log + (gpu_f64_flag ?
-		sizeof(EXP_LOG_MIN_RARE_FREQ) : sizeof(EXP_LOG_MIN_RARE_FREQ_f32));
-	offset_out_prob = offset_tmp_prob + memsize_prob;
 
-	GPU_CREATE_MEM(mem_pred_buf_param, CL_MEM_READ_WRITE, memsize_buf_param, NULL);
+	// pred_calc_prob -- exp_log_min_rare_freq
 	if (gpu_f64_flag)
 	{
-		GPU_WRITE_MEM(mem_pred_buf_param, offset_pred_buf_exp_log,
+		GPU_CREATE_MEM(mem_exp_log_min_rare_freq, CL_MEM_READ_ONLY | CL_MEM_USE_HOST_PTR,
 			sizeof(EXP_LOG_MIN_RARE_FREQ), EXP_LOG_MIN_RARE_FREQ);
 	} else {
-		GPU_WRITE_MEM(mem_pred_buf_param, offset_pred_buf_exp_log,
+		GPU_CREATE_MEM(mem_exp_log_min_rare_freq, CL_MEM_READ_ONLY | CL_MEM_USE_HOST_PTR,
 			sizeof(EXP_LOG_MIN_RARE_FREQ_f32), EXP_LOG_MIN_RARE_FREQ_f32);
 	}
-	//
+
+	// pred_calc_prob -- pHaplo
 	const size_t msize_haplo = sizeof(THaplotype)*sum_n_haplo;
 	GPU_CREATE_MEM(mem_pred_haplo, CL_MEM_READ_ONLY, msize_haplo, NULL);
 	void *ptr_haplo;
@@ -461,28 +452,39 @@ void predict_init(int nHLA, int nClassifier, const THaplotype *const pHaplo[],
 		p += m;
 	}
 	GPU_UNMAP_MEM(mem_pred_haplo, ptr_haplo);
-	//
+
+	// pred_calc_prob -- nHaplo
 	GPU_CREATE_MEM(mem_pred_haplo_num, CL_MEM_READ_ONLY | CL_MEM_USE_HOST_PTR,
 		sizeof(int)*nClassifier*2, (void*)nHaplo);
+
+	// pred_calc_prob -- pGeno
 	GPU_CREATE_MEM(mem_pred_snpgeno, CL_MEM_READ_ONLY,
 		sizeof(TGenotype)*nClassifier, NULL);
 
+	// pred_calc_prob -- out_prob
+	memsize_prob = size_hla * (gpu_f64_flag ? sizeof(double) : sizeof(float));
+	memsize_buf_param = memsize_prob * nClassifier;
+	GPU_CREATE_MEM(mem_pred_probbuf, CL_MEM_READ_WRITE, memsize_buf_param, NULL);
+
 	// arguments
 	GPU_SETARG(0, nHLA);
-	GPU_SETARG(1, mem_pred_buf_param);
-	GPU_SETARG(2, mem_pred_haplo);
-	GPU_SETARG(3, mem_pred_haplo_num);
-	GPU_SETARG(4, mem_pred_snpgeno);
+	GPU_SETARG(1, nClassifier);
+	GPU_SETARG(2, mem_exp_log_min_rare_freq);
+	GPU_SETARG(3, mem_pred_haplo);
+	GPU_SETARG(4, mem_pred_haplo_num);
+	GPU_SETARG(5, mem_pred_snpgeno);
+	GPU_SETARG(6, mem_pred_probbuf);
 }
 
 
 /// finalize the structure for predicting
 void predict_done()
 {
-	GPU_FREE_MEM(mem_pred_buf_param);
+	GPU_FREE_MEM(mem_exp_log_min_rare_freq);
 	GPU_FREE_MEM(mem_pred_haplo);
 	GPU_FREE_MEM(mem_pred_haplo_num);
 	GPU_FREE_MEM(mem_pred_snpgeno);
+	GPU_FREE_MEM(mem_pred_probbuf);
 	GPU_FREE_COM(gpu_commands);
 }
 
@@ -497,62 +499,47 @@ void predict_avg_prob(const int nHaplo[], const TGenotype geno[],
 	cl_int err;
 	GPU_WRITE_MEM(mem_pred_snpgeno, 0, sizeof(TGenotype)*Num_Classifier, geno);
 
-	// memory mapping
-	void *ptr_buf = NULL;
-	GPU_MAP_MEM(mem_pred_buf_param, ptr_buf, memsize_buf_param);
-
 	// initialize
-	((int*)ptr_buf)[1] = 0;  // start_haplo
-	memset((char*)ptr_buf + offset_out_prob, 0, memsize_prob);
+	void *ptr_buf = NULL;
+	GPU_MAP_MEM(mem_pred_probbuf, ptr_buf, memsize_buf_param);
+	memset(ptr_buf, 0, memsize_buf_param);
+	memset(out_prob, 0, sizeof(double)*num_size);
+	GPU_UNMAP_MEM(mem_pred_probbuf, ptr_buf);
 
-	size_t wdims[2] = { wdim_pred, wdim_pred };
 	static size_t local_size[2] = { gpu_local_size, gpu_local_size };
 
-	// run
-	for (int i=0; i < Num_Classifier; i++)
-	{
-		// initialize
-		int &i_classifier = ((int*)ptr_buf)[0];
-		i_classifier = i;
-		memset((char*)ptr_buf + offset_tmp_prob, 0, memsize_prob);
-		// update GPU memory
-		GPU_UNMAP_MEM(mem_pred_buf_param, ptr_buf);
+	// run OpenCL
+	size_t wdims[2] = { wdim_pred, wdim_pred };
+	GPU_RUN_KERNAL(gpu_kernel, 2, wdims, local_size);
 
-		// run OpenCL
-		GPU_RUN_KERNAL(gpu_kernel, 2, wdims, local_size);
-
-		// map to host memory
-		GPU_MAP_MEM(mem_pred_buf_param, ptr_buf, memsize_buf_param);
-		// update
-		int &start_haplo = ((int*)ptr_buf)[1];
-		start_haplo += nHaplo[2*i];
-		if (gpu_f64_flag)
-		{
-			double *s = (double*)((char*)ptr_buf + offset_tmp_prob);
-			double scalar = weight[i] / get_sum_f64(s, num_size);
-			faddmul_f64((double*)((char*)ptr_buf + offset_out_prob), s,
-				num_size, scalar);
-		} else {
-			float *s = (float*)((char*)ptr_buf + offset_tmp_prob);
-			float scalar = weight[i] / get_sum_f32(s, num_size);
-			faddmul_f32((float*)((char*)ptr_buf + offset_out_prob), s,
-				num_size, scalar);
-		}
-	}
-
-	// if no support of double floating precision
+	// map to host memory
+	GPU_MAP_MEM(mem_pred_probbuf, ptr_buf, memsize_buf_param);
 	if (gpu_f64_flag)
 	{
-		double *s = (double*)((char*)ptr_buf + offset_out_prob);
-		memcpy(out_prob, s, num_size * sizeof(double));
+		double *s = (double*)ptr_buf;
+		for (int i=0; i < Num_Classifier; i++)
+		{
+			double scalar = weight[i] / get_sum_f64(s, num_size);
+			double *p = out_prob;
+			for (size_t n=num_size; n > 0; n--)
+				*p++ += scalar * (*s++);
+		}
 	} else {
-		float *s = (float*)((char*)ptr_buf + offset_out_prob);
-		float scalar = 1 / get_sum_f32(s, num_size);
-		double *p = out_prob;
-		for (size_t n=num_size; n > 0; n--) *p++ = (*s++) * scalar;
+		float *s = (float*)ptr_buf;
+		for (int i=0; i < Num_Classifier; i++)
+		{
+			double scalar = weight[i] / get_sum_f32(s, num_size);
+			double *p = out_prob;
+			for (size_t n=num_size; n > 0; n--)
+				*p++ += scalar * (*s++);
+		}
 	}
+	GPU_UNMAP_MEM(mem_pred_probbuf, ptr_buf);
 
-	GPU_UNMAP_MEM(mem_pred_buf_param, ptr_buf);
+	// normalize out_prob
+	double scalar = 1 / get_sum_f64(out_prob, num_size);
+	double *p = out_prob;
+	for (size_t n=num_size; n > 0; n--) *p++ *= scalar;
 }
 
 
