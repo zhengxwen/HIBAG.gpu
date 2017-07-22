@@ -2,7 +2,7 @@
 #
 # Package Name: HIBAG.gpu
 # Description:
-#   HIBAG -- GPU-based implementation for the HIBAG package
+#	HIBAG -- GPU-based implementation for the HIBAG package
 #
 # HIBAG R package, HLA Genotype Imputation with Attribute Bagging
 # Copyright (C) 2017   Xiuwen Zheng (zhengx@u.washington.edu)
@@ -15,11 +15,11 @@
 #
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.	See the
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# along with this program.	If not, see <http://www.gnu.org/licenses/>.
 #
 
 
@@ -46,8 +46,8 @@ inline static void atomic_fadd(volatile __global float *addr, float val)
 	current.f32 = *addr;
 	do{
 		expected.f32 = current.f32;
-		next.f32     = expected.f32 + val;
-		current.u32  = atomic_cmpxchg((volatile __global unsigned int *)addr,
+		next.f32	 = expected.f32 + val;
+		current.u32	 = atomic_cmpxchg((volatile __global unsigned int *)addr,
 			expected.u32, next.u32);
 	} while (current.u32 != expected.u32);
 }
@@ -64,8 +64,8 @@ inline static void atomic_fadd(volatile __global double *addr, double val)
 	current.f64 = *addr;
 	do{
 		expected.f64 = current.f64;
-		next.f64     = expected.f64 + val;
-		current.u64  = atom_cmpxchg((volatile __global ulong*)addr,
+		next.f64	 = expected.f64 + val;
+		current.u64	 = atom_cmpxchg((volatile __global ulong*)addr,
 			expected.u64, next.u64);
 	} while (current.u64 != expected.u64);
 }
@@ -111,7 +111,7 @@ code_predict_prob <- "
 __kernel void pred_calc_prob(
 	const int nHLA,
 	const int nClassifier,
-	__global double *exp_log_min_rare_freq,
+	__constant double *exp_log_min_rare_freq,
 	__global unsigned char *pHaplo,
 	__global int *nHaplo,
 	__global unsigned char *pGeno,
@@ -127,12 +127,12 @@ __kernel void pred_calc_prob(
 
 	for (int i_cfr=0; i_cfr < nClassifier; i_cfr++)
 	{
-		const int n_haplo = nHaplo[i_cfr << 1];  // the number of haplotypes
+		const int n_haplo = nHaplo[i_cfr << 1];	 // the number of haplotypes
 		if (i1<n_haplo && i2<n_haplo)
 		{
 			// SNP genotypes
 			__global unsigned char *p_geno = pGeno + (i_cfr << 6);
-			const int n_snp = nHaplo[(i_cfr << 1) + 1];  // the number of SNPs
+			const int n_snp = nHaplo[(i_cfr << 1) + 1];	 // the number of SNPs
 
 			// a pair of haplotypes
 
@@ -156,22 +156,47 @@ __kernel void pred_calc_prob(
 		pHaplo += (n_haplo << 5);
 	}
 }
-"
 
-code_faddmul <- "
-__kernel void faddmul_calc(__global unsigned char *buf_param)
+__kernel void pred_calc_sumprob(const int num_hla_geno, const int sz_per_local,
+	const int nClassifier, __global double *prob, __global double *out_sum)
 {
-	// initialize
+	// since LibHLA_gpu.cpp: gpu_local_size_d1 = 32
+	#define LOCAL_SIZE    32
+	__local double local_sum[LOCAL_SIZE];
+	const int i  = get_local_id(0);
+	int i1 = i * sz_per_local;
+	const int i2 = get_global_id(1);
+
+	prob += num_hla_geno * i2;
+	double sum = 0;
+	for (size_t n=sz_per_local; n>0 && i1<num_hla_geno; n--)
+		sum += prob[i1++];
+	if (i < LOCAL_SIZE) local_sum[i] = sum;
+
+	barrier(CLK_LOCAL_MEM_FENCE);
+	if (i == 0)
+	{
+		sum = 0;
+		for (int i=0; i < LOCAL_SIZE; i++) sum += local_sum[i];
+		out_sum[i2] = sum;
+	}
+}
+
+__kernel void pred_calc_addprob(const int num_hla_geno, const int nClassifier,
+	__global double *weight, __global double *out_prob)
+{
 	const int i = get_global_id(0);
-	const int sz = get_global_size(0);
-
-	__global double *p = (__global double *)(buf_param + sizeof(int)*2);
-	p += 256;  // since HIBAG_MAXNUM_SNP_IN_CLASSIFIER = 128
-	__global double *tmp_prob = p;
-	__global double *out_prob = p + sz;
-	__global double *p_scale  = out_prob + sz;
-
-	out_prob[i] += tmp_prob[i] * (*p_scale);
+	if (i < num_hla_geno)
+	{
+		__global double *p = out_prob + i;
+		double sum = 0;
+		for (int j=0; j < nClassifier; j++)
+		{
+			sum += weight[j] * (*p);
+			p += num_hla_geno;
+		}
+		out_prob[i] = sum;
+	}
 }
 "
 
@@ -185,162 +210,162 @@ __kernel void faddmul_calc(__global unsigned char *buf_param)
 
 .plural <- function(num)
 {
-    if (num > 1L) "s" else ""
+	if (num > 1L) "s" else ""
 }
 
 hlaAttrBagging_gpu <- function(hla, snp, nclassifier=100,
-    mtry=c("sqrt", "all", "one"), prune=TRUE, rm.na=TRUE,
-    verbose=TRUE, verbose.detail=FALSE)
+	mtry=c("sqrt", "all", "one"), prune=TRUE, rm.na=TRUE,
+	verbose=TRUE, verbose.detail=FALSE)
 {
-    # check
-    stopifnot(inherits(hla, "hlaAlleleClass"))
-    stopifnot(inherits(snp, "hlaSNPGenoClass"))
-    stopifnot(is.character(mtry) | is.numeric(mtry), length(mtry)>0L)
-    stopifnot(is.logical(verbose), length(verbose)==1L)
-    stopifnot(is.logical(verbose.detail), length(verbose.detail)==1L)
-    if (verbose.detail) verbose <- TRUE
+	# check
+	stopifnot(inherits(hla, "hlaAlleleClass"))
+	stopifnot(inherits(snp, "hlaSNPGenoClass"))
+	stopifnot(is.character(mtry) | is.numeric(mtry), length(mtry)>0L)
+	stopifnot(is.logical(verbose), length(verbose)==1L)
+	stopifnot(is.logical(verbose.detail), length(verbose.detail)==1L)
+	if (verbose.detail) verbose <- TRUE
 
-    # check GPU platform
-
-
-    # get the common samples
-    samp.id <- intersect(hla$value$sample.id, snp$sample.id)
-
-    # hla types
-    samp.flag <- match(samp.id, hla$value$sample.id)
-    hla.allele1 <- hla$value$allele1[samp.flag]
-    hla.allele2 <- hla$value$allele2[samp.flag]
-    if (rm.na)
-    {
-        if (any(is.na(c(hla.allele1, hla.allele2))))
-        {
-            warning("There are missing HLA alleles, ",
-                "and the corresponding samples have been removed.")
-            flag <- is.na(hla.allele1) | is.na(hla.allele2)
-            samp.id <- setdiff(samp.id, hla$value$sample.id[samp.flag[flag]])
-            samp.flag <- match(samp.id, hla$value$sample.id)
-            hla.allele1 <- hla$value$allele1[samp.flag]
-            hla.allele2 <- hla$value$allele2[samp.flag]
-        }
-    } else {
-        if (any(is.na(c(hla.allele1, hla.allele2))))
-        {
-            stop("There are missing HLA alleles!")
-        }
-    }
-
-    # SNP genotypes
-    samp.flag <- match(samp.id, snp$sample.id)
-    snp.geno <- snp$genotype[, samp.flag]
-    if (!is.integer(snp.geno))
-        storage.mode(snp.geno) <- "integer"
-
-    tmp.snp.id <- snp$snp.id
-    tmp.snp.position <- snp$snp.position
-    tmp.snp.allele <- snp$snp.allele
-
-    # remove mono-SNPs
-    snpsel <- rowMeans(snp.geno, na.rm=TRUE)
-    snpsel[!is.finite(snpsel)] <- 0
-    snpsel <- (0 < snpsel) & (snpsel < 2)
-    if (sum(!snpsel) > 0L)
-    {
-        snp.geno <- snp.geno[snpsel, ]
-        if (verbose)
-        {
-            a <- sum(!snpsel)
-            if (a > 0L)
-                cat(sprintf("Exclude %d monomorphic SNP%s\n", a, .plural(a)))
-        }
-        tmp.snp.id <- tmp.snp.id[snpsel]
-        tmp.snp.position <- tmp.snp.position[snpsel]
-        tmp.snp.allele <- tmp.snp.allele[snpsel]
-    }
-
-    if (length(samp.id) <= 0L)
-        stop("There is no common sample between 'hla' and 'snp'.")
-    if (length(dim(snp.geno)[1L]) <= 0L)
-        stop("There is no valid SNP markers.")
+	# check GPU platform
 
 
-    ###################################################################
-    # initialize ...
+	# get the common samples
+	samp.id <- intersect(hla$value$sample.id, snp$sample.id)
 
-    n.snp <- dim(snp.geno)[1L]     # Num. of SNPs
-    n.samp <- dim(snp.geno)[2L]    # Num. of samples
-    HUA <- hlaUniqueAllele(c(hla.allele1, hla.allele2))
-    H <- factor(match(c(hla.allele1, hla.allele2), HUA))
-    levels(H) <- HUA
-    n.hla <- nlevels(H)
-    H1 <- as.integer(H[1L:n.samp]) - 1L
-    H2 <- as.integer(H[(n.samp+1L):(2L*n.samp)]) - 1L
+	# hla types
+	samp.flag <- match(samp.id, hla$value$sample.id)
+	hla.allele1 <- hla$value$allele1[samp.flag]
+	hla.allele2 <- hla$value$allele2[samp.flag]
+	if (rm.na)
+	{
+		if (any(is.na(c(hla.allele1, hla.allele2))))
+		{
+			warning("There are missing HLA alleles, ",
+				"and the corresponding samples have been removed.")
+			flag <- is.na(hla.allele1) | is.na(hla.allele2)
+			samp.id <- setdiff(samp.id, hla$value$sample.id[samp.flag[flag]])
+			samp.flag <- match(samp.id, hla$value$sample.id)
+			hla.allele1 <- hla$value$allele1[samp.flag]
+			hla.allele2 <- hla$value$allele2[samp.flag]
+		}
+	} else {
+		if (any(is.na(c(hla.allele1, hla.allele2))))
+		{
+			stop("There are missing HLA alleles!")
+		}
+	}
 
-    # create an attribute bagging object (return an integer)
-    ABmodel <- .Call("HIBAG_Training", n.snp, n.samp, snp.geno, n.hla, H1, H2,
-        PACKAGE="HIBAG")
+	# SNP genotypes
+	samp.flag <- match(samp.id, snp$sample.id)
+	snp.geno <- snp$genotype[, samp.flag]
+	if (!is.integer(snp.geno))
+		storage.mode(snp.geno) <- "integer"
 
-    # number of variables randomly sampled as candidates at each split
-    mtry <- mtry[1L]
-    if (is.character(mtry))
-    {
-        if (mtry == "sqrt")
-        {
-            mtry <- ceiling(sqrt(n.snp))
-        } else if (mtry == "all")
-        {
-            mtry <- n.snp
-        } else if (mtry == "one")
-        {
-            mtry <- 1L
-        } else {
-            stop("Invalid mtry!")
-        }
-    } else if (is.numeric(mtry))
-    {
-        if (is.finite(mtry))
-        {
-            if ((0 < mtry) & (mtry < 1)) mtry <- n.snp*mtry
-            mtry <- ceiling(mtry)
-            if (mtry > n.snp) mtry <- n.snp
-        } else {
-            mtry <- ceiling(sqrt(n.snp))
-        }
-    } else {
-        stop("Invalid mtry value!")
-    }
-    if (mtry <= 0) mtry <- 1L
+	tmp.snp.id <- snp$snp.id
+	tmp.snp.position <- snp$snp.position
+	tmp.snp.allele <- snp$snp.allele
 
-    if (verbose)
-    {
-        cat(sprintf("Build a HIBAG model with %d individual classifier%s:\n",
-            nclassifier, .plural(nclassifier)))
-        cat("# of SNPs randomly sampled as candidates for each selection: ",
-            mtry, "\n", sep="")
-        cat("# of SNPs: ", n.snp, ", # of samples: ", n.samp, "\n", sep="")
-        cat("# of unique HLA alleles: ", n.hla, "\n", sep="")
-    }
+	# remove mono-SNPs
+	snpsel <- rowMeans(snp.geno, na.rm=TRUE)
+	snpsel[!is.finite(snpsel)] <- 0
+	snpsel <- (0 < snpsel) & (snpsel < 2)
+	if (sum(!snpsel) > 0L)
+	{
+		snp.geno <- snp.geno[snpsel, ]
+		if (verbose)
+		{
+			a <- sum(!snpsel)
+			if (a > 0L)
+				cat(sprintf("Exclude %d monomorphic SNP%s\n", a, .plural(a)))
+		}
+		tmp.snp.id <- tmp.snp.id[snpsel]
+		tmp.snp.position <- tmp.snp.position[snpsel]
+		tmp.snp.allele <- tmp.snp.allele[snpsel]
+	}
+
+	if (length(samp.id) <= 0L)
+		stop("There is no common sample between 'hla' and 'snp'.")
+	if (length(dim(snp.geno)[1L]) <= 0L)
+		stop("There is no valid SNP markers.")
 
 
-    ###################################################################
-    # training ...
-    # add new individual classifers
-    .Call("HIBAG_NewClassifiers", ABmodel, nclassifier, mtry, prune,
-        verbose, verbose.detail, .packageEnv$gpu_proc_ptr, PACKAGE="HIBAG")
+	###################################################################
+	# initialize ...
 
-    # output
-    rv <- list(n.samp = n.samp, n.snp = n.snp, sample.id = samp.id,
-        snp.id = tmp.snp.id, snp.position = tmp.snp.position,
-        snp.allele = tmp.snp.allele,
-        snp.allele.freq = 0.5*rowMeans(snp.geno, na.rm=TRUE),
-        hla.locus = hla$locus, hla.allele = levels(H),
-        hla.freq = prop.table(table(H)),
-        assembly = as.character(snp$assembly)[1L],
-        model = ABmodel,
-        appendix = list())
-    if (is.na(rv$assembly)) rv$assembly <- "unknown"
+	n.snp <- dim(snp.geno)[1L]	   # Num. of SNPs
+	n.samp <- dim(snp.geno)[2L]	   # Num. of samples
+	HUA <- hlaUniqueAllele(c(hla.allele1, hla.allele2))
+	H <- factor(match(c(hla.allele1, hla.allele2), HUA))
+	levels(H) <- HUA
+	n.hla <- nlevels(H)
+	H1 <- as.integer(H[1L:n.samp]) - 1L
+	H2 <- as.integer(H[(n.samp+1L):(2L*n.samp)]) - 1L
 
-    class(rv) <- "hlaAttrBagClass"
-    rv
+	# create an attribute bagging object (return an integer)
+	ABmodel <- .Call("HIBAG_Training", n.snp, n.samp, snp.geno, n.hla, H1, H2,
+		PACKAGE="HIBAG")
+
+	# number of variables randomly sampled as candidates at each split
+	mtry <- mtry[1L]
+	if (is.character(mtry))
+	{
+		if (mtry == "sqrt")
+		{
+			mtry <- ceiling(sqrt(n.snp))
+		} else if (mtry == "all")
+		{
+			mtry <- n.snp
+		} else if (mtry == "one")
+		{
+			mtry <- 1L
+		} else {
+			stop("Invalid mtry!")
+		}
+	} else if (is.numeric(mtry))
+	{
+		if (is.finite(mtry))
+		{
+			if ((0 < mtry) & (mtry < 1)) mtry <- n.snp*mtry
+			mtry <- ceiling(mtry)
+			if (mtry > n.snp) mtry <- n.snp
+		} else {
+			mtry <- ceiling(sqrt(n.snp))
+		}
+	} else {
+		stop("Invalid mtry value!")
+	}
+	if (mtry <= 0) mtry <- 1L
+
+	if (verbose)
+	{
+		cat(sprintf("Build a HIBAG model with %d individual classifier%s:\n",
+			nclassifier, .plural(nclassifier)))
+		cat("# of SNPs randomly sampled as candidates for each selection: ",
+			mtry, "\n", sep="")
+		cat("# of SNPs: ", n.snp, ", # of samples: ", n.samp, "\n", sep="")
+		cat("# of unique HLA alleles: ", n.hla, "\n", sep="")
+	}
+
+
+	###################################################################
+	# training ...
+	# add new individual classifers
+	.Call("HIBAG_NewClassifiers", ABmodel, nclassifier, mtry, prune,
+		verbose, verbose.detail, .packageEnv$gpu_proc_ptr, PACKAGE="HIBAG")
+
+	# output
+	rv <- list(n.samp = n.samp, n.snp = n.snp, sample.id = samp.id,
+		snp.id = tmp.snp.id, snp.position = tmp.snp.position,
+		snp.allele = tmp.snp.allele,
+		snp.allele.freq = 0.5*rowMeans(snp.geno, na.rm=TRUE),
+		hla.locus = hla$locus, hla.allele = levels(H),
+		hla.freq = prop.table(table(H)),
+		assembly = as.character(snp$assembly)[1L],
+		model = ABmodel,
+		appendix = list())
+	if (is.na(rv$assembly)) rv$assembly <- "unknown"
+
+	class(rv) <- "hlaAttrBagClass"
+	rv
 }
 
 
@@ -350,13 +375,22 @@ hlaAttrBagging_gpu <- function(hla, snp, nclassifier=100,
 #
 
 hlaPredict_gpu <- function(object, snp,
-    type=c("response", "prob", "response+prob"), vote=c("prob", "majority"),
-    allele.check=TRUE, match.type=c("RefSNP+Position", "RefSNP", "Position"),
-    same.strand=FALSE, verbose=TRUE)
+	type=c("response", "prob", "response+prob"), vote=c("prob", "majority"),
+	allele.check=TRUE, match.type=c("RefSNP+Position", "RefSNP", "Position"),
+	same.strand=FALSE, verbose=TRUE)
 {
-    stopifnot(inherits(object, "hlaAttrBagClass"))
-    predict(object, snp, NULL, type, vote, allele.check, match.type,
-        same.strand, verbose, proc_ptr=.packageEnv$gpu_proc_ptr)
+	stopifnot(inherits(object, "hlaAttrBagClass"))
+	predict(object, snp, NULL, type, vote, allele.check, match.type,
+		same.strand, verbose, proc_ptr=.packageEnv$gpu_proc_ptr)
+}
+
+
+
+
+oclBuildKernel <- function(device, name, code, precision=c("single", "double"))
+{
+	precision <- match.arg(precision)
+	.Call(ocl_build_kernel, device, name, code, precision)
 }
 
 
@@ -414,22 +448,28 @@ hlaPredict_gpu <- function(object, snp,
 			code_hamming_dist, code_predict_prob, collapse="\n")
 	} else {
 		.packageEnv$precision <- "single"
-		s <- code_predict_prob
 		src <- c("double", "sz_haplo = 16")
 		dst <- c("float", "sz_haplo = 24")
+		# predict
+		s <- code_predict_prob
 		for (i in seq_along(src))
 			s <- gsub(src[i], dst[i], s, fixed=TRUE)
 		.packageEnv$code_predict <- paste(
-			code_atomic_add_f32,
-			code_hamming_dist, s, collapse="\n")
+			code_atomic_add_f32, code_hamming_dist, s, collapse="\n")
 	}
 
-	.packageEnv$predict_kernel <- oclSimpleKernel(dev, "pred_calc_prob",
+	k <- oclBuildKernel(dev,
+		c("pred_calc_prob", "pred_calc_sumprob", "pred_calc_addprob"),
 		.packageEnv$code_predict, precision=.packageEnv$precision)
+	.packageEnv$kernel_pred <- k[[1L]]
+	.packageEnv$kernel_pred_sumprob <- k[[2L]]
+	.packageEnv$kernel_pred_addprob <- k[[3L]] 
 
 	# set double floating flag
 	.Call(set_gpu_val, 0L, dev_fp64)
-	.Call(set_gpu_val, 1L, .packageEnv$predict_kernel)
+	.Call(set_gpu_val, 1L, .packageEnv$kernel_pred)
+	.Call(set_gpu_val, 2L, .packageEnv$kernel_pred_sumprob)
+	.Call(set_gpu_val, 3L, .packageEnv$kernel_pred_addprob)
 
 	.packageEnv$gpu_proc_ptr <- .Call(init_gpu_proc)
 

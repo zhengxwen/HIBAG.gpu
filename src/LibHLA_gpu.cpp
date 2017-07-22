@@ -1,7 +1,7 @@
 // ===============================================================
 //
 // HIBAG.gpu R package (GPU-based implementation for the HIBAG package)
-// Copyright (C) 2017   Xiuwen Zheng (zhengx@u.washington.edu)
+// Copyright (C) 2017	Xiuwen Zheng (zhengx@u.washington.edu)
 // All rights reserved.
 //
 // This program is free software: you can redistribute it and/or modify
@@ -11,11 +11,11 @@
 //
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.	 See the
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+// along with this program.	 If not, see <http://www.gnu.org/licenses/>.
 
 
 #include <stdint.h>
@@ -25,86 +25,106 @@
 #include <vector>
 
 #ifdef __APPLE__
-#   include <OpenCL/opencl.h>
+#	include <OpenCL/opencl.h>
 #else
-#   include <CL/opencl.h>
+#	include <CL/opencl.h>
 #endif
 
 #define USE_RINTERNALS 1
 #include <Rinternals.h>
+#include <Rdefines.h>
 
 
 // Streaming SIMD Extensions, SSE, SSE2, SSE4_2 (POPCNT)
 
 #ifdef __SSE__
-#   include <xmmintrin.h>  // SSE
+#	include <xmmintrin.h>  // SSE
 #endif
 
 #ifdef __SSE2__
-#   include <emmintrin.h>  // SSE2
+#	include <emmintrin.h>  // SSE2
 #endif
 
 
 // 32-bit or 64-bit registers
 
 #ifdef __LP64__
-#   define HIBAG_REG_BIT64
+#	define HIBAG_REG_BIT64
 #else
-#   ifdef HIBAG_REG_BIT64
-#      undef HIBAG_REG_BIT64
-#   endif
+#	ifdef HIBAG_REG_BIT64
+#	   undef HIBAG_REG_BIT64
+#	endif
 #endif
 
 
-#define GPU_CREATE_MEM(x, flag, size, ptr)    \
+#define GPU_CREATE_MEM(x, flag, size, ptr)	  \
 	x = clCreateBuffer(gpu_context, flag, size, ptr, &err); \
 	if (!x) throw err_text("Unable to create buffer " #x, err);
 
-#define GPU_MAP_MEM(x, ptr, size)    \
+#define GPU_MAP_MEM(x, ptr, size)	 \
 	ptr = clEnqueueMapBuffer(gpu_commands, x, CL_TRUE, \
 		CL_MAP_READ | CL_MAP_WRITE, 0, size, 0, NULL, NULL, &err); \
 	if (!ptr) throw err_text("Unable to map buffer to host memory " #x, err);
 
-#define GPU_UNMAP_MEM(x, ptr)    \
+#define GPU_UNMAP_MEM(x, ptr)	 \
 	err = clEnqueueUnmapMemObject(gpu_commands, x, ptr, 0, NULL, NULL); \
 	if (err != CL_SUCCESS) \
 		throw err_text("Failed to unmap memory buffer " #x, err); \
 	ptr = NULL;
 
-#define GPU_READ_MEM(x, size, ptr)    \
+#define GPU_READ_MEM(x, size, ptr)	  \
 	err = clEnqueueReadBuffer(gpu_commands, x, CL_TRUE, 0, size, ptr, 0, NULL, NULL); \
 	if (err != CL_SUCCESS) \
 		throw err_text("Failed to read memory buffer " #x, err);
 
-#define GPU_WRITE_MEM(x, offset, size, ptr)    \
+#define GPU_WRITE_MEM(x, offset, size, ptr)	   \
 	err = clEnqueueWriteBuffer(gpu_commands, x, CL_TRUE, offset, size, ptr, 0, NULL, NULL); \
 	if (err != CL_SUCCESS) \
 		throw err_text("Failed to write memory buffer " #x, err);
 
-#define GPU_SETARG(i, x)    \
-	err = clSetKernelArg(gpu_kernel, i, sizeof(x), &x); \
+#define GPU_SETARG(kernel, i, x)	\
+	err = clSetKernelArg(kernel, i, sizeof(x), &x); \
 	if (err != CL_SUCCESS) \
-		throw err_text("Failed to set kernel argument (" #i ")", err);
+		throw err_text("Failed to set kernel (" #kernel ") argument (" #i ")", err);
 
-#define GPU_RUN_KERNAL(k, ndim, wdims, lsize)    \
-	err = clEnqueueNDRangeKernel(gpu_commands, k, ndim, NULL, wdims, lsize, 0, NULL, NULL); \
+#define GPU_RUN_KERNAL(kernel, ndim, wdims, lsize)	  \
+	err = clEnqueueNDRangeKernel(gpu_commands, kernel, ndim, NULL, wdims, lsize, 0, NULL, NULL); \
 	if (err != CL_SUCCESS) \
-		throw err_text("Failed to run clEnqueueNDRangeKernel() with " #k, err); \
+		throw err_text("Failed to run clEnqueueNDRangeKernel() with " #kernel, err); \
 	err = clFinish(gpu_commands); \
 	if (err != CL_SUCCESS) \
-		throw err_text("Failed to run clFinish() with " #k, err);
+		throw err_text("Failed to run clFinish() with " #kernel, err);
 
-#define GPU_FREE_MEM(x)    if (x) { \
-		if (clReleaseMemObject(x) != CL_SUCCESS) \
-			throw "Failed to free memory buffer"; \
+#define GPU_FREE_MEM(x)	   if (x) { \
+		cl_int err = clReleaseMemObject(x); \
+		if (err != CL_SUCCESS) \
+			throw err_text("Failed to free memory buffer " #x, err); \
 		x = NULL; \
 	}
 
-#define GPU_FREE_COM(x)    if (x) { \
-		if (clReleaseCommandQueue(x) != CL_SUCCESS) \
-			throw "Failed to release command queue."; \
+#define GPU_FREE_COM(x)	   if (x) { \
+		cl_int err = clReleaseCommandQueue(x); \
+		if (err != CL_SUCCESS) \
+			throw err_text("Failed to release command queue " #x, err); \
 		x = NULL; \
 	}
+
+
+#if defined(CL_VERSION_1_2)
+	#define GPU_ZERO_FILL(x, size)    { \
+		size_t zero = 0; \
+		err = clEnqueueFillBuffer(gpu_commands, x, &zero, 1, 0, size, 0, NULL, NULL); \
+		if (err != CL_SUCCESS) \
+			throw err_text("clEnqueueFillBuffer() with " #x " failed", err); \
+	}
+#else
+	#define GPU_ZERO_FILL(x, size)    { \
+		void *ptr; \
+		GPU_MAP_MEM(x, ptr, size); \
+		memset(ptr, 0, size); \
+		GPU_UNMAP_MEM(x, ptr); \
+	}
+#endif
 
 
 
@@ -113,10 +133,10 @@ namespace HLA_LIB
 	using namespace std;
 
 	/// Define unsigned integers
-	typedef uint8_t     UINT8;
+	typedef uint8_t		UINT8;
 
 	/// The max number of SNP markers in an individual classifier.
-	//  Don't modify this value since the code is optimized for this value!!!
+	//	Don't modify this value since the code is optimized for this value!!!
 	const size_t HIBAG_MAXNUM_SNP_IN_CLASSIFIER = 128;
 
 	/// The max number of UTYPE for packed SNP genotypes.
@@ -125,30 +145,30 @@ namespace HLA_LIB
 
 
 	// ===================================================================== //
-	// ========                     Description                     ========
+	// ========						Description						========
 	//
 	// Packed SNP storage strategy is used for faster matching
 	//
 	// HLA allele: start from 0
 	//
 	// THaplotype: packed SNP alleles (little endianness):
-	//     (s8 s7 s6 s5 s4 s3 s2 s1)
-	//     the 1st allele: (s1), the 2nd allele: (s2), ...
-	//     SNP allele: 0 (B allele), 1 (A allele)
+	//	   (s8 s7 s6 s5 s4 s3 s2 s1)
+	//	   the 1st allele: (s1), the 2nd allele: (s2), ...
+	//	   SNP allele: 0 (B allele), 1 (A allele)
 	//
 	// TGenotype: packed SNP genotype (little endianness):
-	//     array_1 = (s1_8 s1_7 s1_6 s1_5 s1_4 s1_3 s1_2 s1_1),
-	//     array_2 = (s2_8 s2_7 s2_6 s2_5 s2_4 s2_3 s2_2 s2_1),
-	//     array_3 = (s3_8 s3_7 s3_6 s3_5 s3_4 s3_3 s3_2 s3_1)
-	//     the 1st genotype: (s1_1 s2_1 s3_1),
-	//     the 2nd genotype: (s1_1 s2_1 s3_1), ...
-	//     SNP genotype: 0 (BB) -- (s1_1=0 s2_1=0 s3_1=1),
-	//                   1 (AB) -- (s1_1=1 s2_1=0 s3_1=1),
-	//                   2 (AA) -- (s1_1=1 s2_1=1 s3_1=1),
-	//                   -1 or other value (missing)
-	//                          -- (s1_1=0 s2_1=0 s3_1=0)
+	//	   array_1 = (s1_8 s1_7 s1_6 s1_5 s1_4 s1_3 s1_2 s1_1),
+	//	   array_2 = (s2_8 s2_7 s2_6 s2_5 s2_4 s2_3 s2_2 s2_1),
+	//	   array_3 = (s3_8 s3_7 s3_6 s3_5 s3_4 s3_3 s3_2 s3_1)
+	//	   the 1st genotype: (s1_1 s2_1 s3_1),
+	//	   the 2nd genotype: (s1_1 s2_1 s3_1), ...
+	//	   SNP genotype: 0 (BB) -- (s1_1=0 s2_1=0 s3_1=1),
+	//					 1 (AB) -- (s1_1=1 s2_1=0 s3_1=1),
+	//					 2 (AA) -- (s1_1=1 s2_1=1 s3_1=1),
+	//					 -1 or other value (missing)
+	//							-- (s1_1=0 s2_1=0 s3_1=0)
 	//
-	// ========                                                     ========
+	// ========														========
 	// ===================================================================== //
 
 	/// Packed SNP haplotype structure: 8 alleles in a byte
@@ -161,10 +181,10 @@ namespace HLA_LIB
 		/// auxiliary variables, sizeof(THaplotype)=32
 		union type_aux
 		{
-			double OldFreq;  /// old haplotype frequency
+			double OldFreq;	 /// old haplotype frequency
 			struct type_aux2 {
-				float Freq_f32;  /// 32-bit haplotype frequency
-				int HLA_allele;  /// the associated HLA allele
+				float Freq_f32;	 /// 32-bit haplotype frequency
+				int HLA_allele;	 /// the associated HLA allele
 			} a2;
 		} aux;
 	};
@@ -223,7 +243,8 @@ namespace HLA_LIB
 
 
 
-	const int gpu_local_size = 4;
+	const size_t gpu_local_size_d1 = 32;
+	const size_t gpu_local_size_d2 = 4;
 
 	// GPU variables
 	static int Num_HLA;
@@ -231,7 +252,9 @@ namespace HLA_LIB
 
 	static cl_context gpu_context = NULL;
 	static cl_command_queue gpu_commands = NULL;
-	static cl_kernel gpu_kernel = NULL;
+	static cl_kernel gpu_kernel	 = NULL;
+	static cl_kernel gpu_kernel2 = NULL;
+	static cl_kernel gpu_kernel3 = NULL;
 	static bool gpu_f64_flag = false;
 
 	// haplotypes of all classifiers
@@ -242,6 +265,8 @@ namespace HLA_LIB
 	// prediction for calculating the posterior probabilities
 
 	static SEXP kernel_predict = NULL;
+	static SEXP kernel_predict_sumprob = NULL;
+	static SEXP kernel_predict_addprob = NULL;
 
 	// haplotypes of all classifiers
 	static cl_mem mem_pred_haplo = NULL;
@@ -256,7 +281,11 @@ namespace HLA_LIB
 	static size_t memsize_buf_param = 0;
 	static size_t memsize_prob = 0;
 
+	// classifier weight
+	static cl_mem mem_pred_weight = NULL;
+
 	static int wdim_pred = 0;
+	static int wdim_pred_addprob = 0;
 }
 
 
@@ -268,9 +297,9 @@ extern "C"
 {
 
 /// Frequency Calculation
-#define FREQ_MUTANT(p, cnt)    ((p) * EXP_LOG_MIN_RARE_FREQ[cnt]);
+#define FREQ_MUTANT(p, cnt)	   ((p) * EXP_LOG_MIN_RARE_FREQ[cnt]);
 /// the minimum rare frequency to store haplotypes
-#define MIN_RARE_FREQ    1e-5
+#define MIN_RARE_FREQ	 1e-5
 
 /// exp(cnt * log(MIN_RARE_FREQ)), cnt is the hamming distance
 static double EXP_LOG_MIN_RARE_FREQ[HIBAG_MAXNUM_SNP_IN_CLASSIFIER*2];
@@ -293,6 +322,107 @@ static cl_kernel get_kernel(SEXP k)
 		throw "Invalid OpenCL kernel.";
 	return (cl_kernel)R_ExternalPtrAddr(k);
 }
+
+
+static void clFreeContext(SEXP ctx)
+{
+	clReleaseContext((cl_context)R_ExternalPtrAddr(ctx));
+}
+
+static SEXP mkContext(cl_context ctx)
+{
+	SEXP ptr;
+	ptr = PROTECT(R_MakeExternalPtr(ctx, R_NilValue, R_NilValue));
+	R_RegisterCFinalizerEx(ptr, clFreeContext, TRUE);
+	Rf_setAttrib(ptr, R_ClassSymbol, mkString("clContext"));
+	UNPROTECT(1);
+	return ptr;
+}
+
+static void clFreeKernel(SEXP k)
+{
+	clReleaseKernel((cl_kernel)R_ExternalPtrAddr(k));
+}
+
+static SEXP mkKernel(cl_kernel k)
+{
+	SEXP ptr;
+	ptr = PROTECT(R_MakeExternalPtr(k, R_NilValue, R_NilValue));
+	R_RegisterCFinalizerEx(ptr, clFreeKernel, TRUE);
+	Rf_setAttrib(ptr, R_ClassSymbol, mkString("clKernel"));
+	UNPROTECT(1);
+	return ptr;
+}
+
+
+SEXP ocl_build_kernel(SEXP device, SEXP k_name, SEXP code, SEXP prec)
+{
+	cl_context ctx;
+	int err;
+	SEXP sctx;
+	cl_device_id device_id = getDeviceID(device);
+	cl_program program;
+
+	if (TYPEOF(k_name) != STRSXP || LENGTH(k_name) < 1)
+		Rf_error("invalid kernel name(s)");
+	if (TYPEOF(code) != STRSXP || LENGTH(code) < 1)
+		Rf_error("invalid kernel code");
+	if (TYPEOF(prec) != STRSXP || LENGTH(prec) != 1)
+		Rf_error("invalid precision specification");
+	ctx = clCreateContext(0, 1, &device_id, NULL, NULL, &err);
+	if (!ctx)
+		Rf_error("clCreateContext failed.");
+	sctx = PROTECT(mkContext(ctx));
+	{
+		int sn = LENGTH(code), i;
+		const char **cptr;
+		cptr = (const char **) malloc(sizeof(char*) * sn);
+		for (i = 0; i < sn; i++)
+			cptr[i] = CHAR(STRING_ELT(code, i));
+		program = clCreateProgramWithSource(ctx, sn, cptr, NULL, &err);
+		free(cptr);
+		if (!program)
+			Rf_error("clCreateProgramWithSource failed");
+	}
+	
+	err = clBuildProgram(program, 0, NULL, NULL, NULL, NULL);
+	if (err != CL_SUCCESS)
+	{
+		size_t len;
+		char buffer[2048];
+		clGetProgramBuildInfo(program, device_id, CL_PROGRAM_BUILD_LOG,
+			sizeof(buffer), buffer, &len);
+		clReleaseProgram(program);
+		Rf_error("clGetProgramBuildInfo failed: %s", buffer);
+	}
+
+	cl_kernel kernel[length(k_name)];
+	for (int i=0; i < length(k_name); i++)
+	{
+		kernel[i] = clCreateKernel(program, CHAR(STRING_ELT(k_name, i)), &err);
+		if (!kernel[i])
+			Rf_error("clCreateKernel failed.");
+	}
+
+	clReleaseProgram(program);
+
+	SEXP rv_ans = PROTECT(NEW_LIST(length(k_name)));
+	for (int i=0; i < length(k_name); i++)
+	{
+		SEXP sk = PROTECT(mkKernel(kernel[i]));
+		Rf_setAttrib(sk, Rf_install("device"), device);
+		Rf_setAttrib(sk, Rf_install("precision"), prec);
+		Rf_setAttrib(sk, Rf_install("context"), sctx);
+		Rf_setAttrib(sk, Rf_install("name"), mkString(CHAR(STRING_ELT(k_name, i))));
+		SET_ELEMENT(rv_ans, i, sk);
+		UNPROTECT(1);
+	}
+	UNPROTECT(2);
+	return rv_ans;
+}
+
+
+
 
 // OpenCL error message
 static const char *err_text(const char *txt, int err)
@@ -339,36 +469,32 @@ static double get_sum_f64(const double *p, size_t n)
 	return sum;
 }
 
-// add mul operation
-static void faddmul_f32(float *p, const float *s, size_t n, float scalar)
+// mul operation
+static void fmul_f32(float *p, size_t n, float scalar)
 {
-#ifdef __SSE__
+#ifdef __SSE2__
 	__m128 a = _mm_set_ps1(scalar);
-	for (; n >= 4; n-=4, s+=4, p+=4)
+	for (; n >= 4; n-=4, p+=4)
 	{
-		__m128 s4 = _mm_mul_ps(_mm_loadu_ps(s), a);
-		__m128 p4 = _mm_add_ps(s4, _mm_loadu_ps(p));
-		_mm_storeu_ps(p, p4);
+		__m128 v = _mm_mul_ps(_mm_loadu_ps(p), a);
+		_mm_storeu_ps(p, v);
 	}
 #endif
-	for (; n > 0; n--)
-		(*p++) += (*s++) * scalar;
+	for (; n > 0; n--) (*p++) *= scalar;
 }
 
-// add mul operation
-static void faddmul_f64(double *p, const double *s, size_t n, double scalar)
+// mul operation
+static void fmul_f64(double *p, size_t n, double scalar)
 {
 #ifdef __SSE2__
 	__m128d a = _mm_set_pd(scalar, scalar);
-	for (; n >= 2; n-=2, s+=2, p+=2)
+	for (; n >= 2; n-=2, p+=2)
 	{
-		__m128d s2 = _mm_mul_pd(_mm_loadu_pd(s), a);
-		__m128d p2 = _mm_add_pd(s2, _mm_loadu_pd(p));
-		_mm_storeu_pd(p, p2);
+		__m128d v = _mm_mul_pd(_mm_loadu_pd(p), a);
+		_mm_storeu_pd(p, v);
 	}
 #endif
-	for (; n > 0; n--)
-		(*p++) += (*s++) * scalar;
+	for (; n > 0; n--) (*p++) *= scalar;
 }
 
 
@@ -385,6 +511,10 @@ SEXP set_gpu_val(SEXP idx, SEXP val)
 			gpu_f64_flag = Rf_asLogical(val) == TRUE; break;
 		case 1:
 			kernel_predict = val; break;
+		case 2:
+			kernel_predict_sumprob = val; break;
+		case 3:
+			kernel_predict_addprob = val; break;
 	}
 	return R_NilValue;
 }
@@ -395,7 +525,9 @@ void predict_init(int nHLA, int nClassifier, const THaplotype *const pHaplo[],
 	const int nHaplo[])
 {
 	cl_int err;
-	gpu_kernel = get_kernel(kernel_predict);
+	gpu_kernel	= get_kernel(kernel_predict);
+	gpu_kernel2 = get_kernel(kernel_predict_sumprob);
+	gpu_kernel3 = get_kernel(kernel_predict_addprob);
 	gpu_context = NULL;
 	if (clGetKernelInfo(gpu_kernel, CL_KERNEL_CONTEXT,
 			sizeof(gpu_context), &gpu_context, NULL) != CL_SUCCESS || !gpu_context)
@@ -423,9 +555,8 @@ void predict_init(int nHLA, int nClassifier, const THaplotype *const pHaplo[],
 		if (m > max_n_haplo) max_n_haplo = m;
 	}
 	wdim_pred = max_n_haplo;
-	if (wdim_pred % gpu_local_size)
-		wdim_pred = (wdim_pred/gpu_local_size + 1)*gpu_local_size;
-	Rprintf("global_size: %d\n", (int)wdim_pred);
+	if (wdim_pred % gpu_local_size_d2)
+		wdim_pred = (wdim_pred/gpu_local_size_d2 + 1)*gpu_local_size_d2;
 
 	// allocate OpenCL buffers
 
@@ -466,14 +597,37 @@ void predict_init(int nHLA, int nClassifier, const THaplotype *const pHaplo[],
 	memsize_buf_param = memsize_prob * nClassifier;
 	GPU_CREATE_MEM(mem_pred_probbuf, CL_MEM_READ_WRITE, memsize_buf_param, NULL);
 
-	// arguments
-	GPU_SETARG(0, nHLA);
-	GPU_SETARG(1, nClassifier);
-	GPU_SETARG(2, mem_exp_log_min_rare_freq);
-	GPU_SETARG(3, mem_pred_haplo);
-	GPU_SETARG(4, mem_pred_haplo_num);
-	GPU_SETARG(5, mem_pred_snpgeno);
-	GPU_SETARG(6, mem_pred_probbuf);
+	// arguments for gpu_kernel
+	GPU_SETARG(gpu_kernel, 0, nHLA);
+	GPU_SETARG(gpu_kernel, 1, nClassifier);
+	GPU_SETARG(gpu_kernel, 2, mem_exp_log_min_rare_freq);
+	GPU_SETARG(gpu_kernel, 3, mem_pred_haplo);
+	GPU_SETARG(gpu_kernel, 4, mem_pred_haplo_num);
+	GPU_SETARG(gpu_kernel, 5, mem_pred_snpgeno);
+	GPU_SETARG(gpu_kernel, 6, mem_pred_probbuf);
+
+	// pred_calc_addprob -- weight
+	GPU_CREATE_MEM(mem_pred_weight, CL_MEM_READ_WRITE | CL_MEM_ALLOC_HOST_PTR,
+		sizeof(double)*nClassifier, NULL);
+
+	// arguments for gpu_kernel2
+	int sz_hla = size_hla;
+	GPU_SETARG(gpu_kernel2, 0, sz_hla);
+	int sz_per_local = sz_hla / gpu_local_size_d1;
+	if (sz_hla % gpu_local_size_d1) sz_per_local++;
+	GPU_SETARG(gpu_kernel2, 1, sz_per_local);
+	GPU_SETARG(gpu_kernel2, 2, nClassifier);
+	GPU_SETARG(gpu_kernel2, 3, mem_pred_probbuf);
+	GPU_SETARG(gpu_kernel2, 4, mem_pred_weight);
+
+	// arguments for gpu_kernel3
+	GPU_SETARG(gpu_kernel3, 0, sz_hla);
+	GPU_SETARG(gpu_kernel3, 1, nClassifier);
+	GPU_SETARG(gpu_kernel3, 2, mem_pred_weight);
+	GPU_SETARG(gpu_kernel3, 3, mem_pred_probbuf);
+	wdim_pred_addprob = size_hla;
+	if (wdim_pred_addprob % gpu_local_size_d1)
+		wdim_pred_addprob = (wdim_pred/gpu_local_size_d1 + 1)*gpu_local_size_d1;
 }
 
 
@@ -494,26 +648,28 @@ void predict_avg_prob(const int nHaplo[], const TGenotype geno[],
 	const double weight[], double out_prob[])
 {
 	const size_t num_size = Num_HLA * (Num_HLA + 1) >> 1;
+	void *ptr_buf;
 
 	// write to genotype buffer
 	cl_int err;
 	GPU_WRITE_MEM(mem_pred_snpgeno, 0, sizeof(TGenotype)*Num_Classifier, geno);
 
 	// initialize
-	void *ptr_buf = NULL;
-	GPU_MAP_MEM(mem_pred_probbuf, ptr_buf, memsize_buf_param);
-	memset(ptr_buf, 0, memsize_buf_param);
-	memset(out_prob, 0, sizeof(double)*num_size);
-	GPU_UNMAP_MEM(mem_pred_probbuf, ptr_buf);
-
-	static size_t local_size[2] = { gpu_local_size, gpu_local_size };
+	GPU_ZERO_FILL(mem_pred_probbuf, memsize_buf_param);
 
 	// run OpenCL
-	size_t wdims[2] = { wdim_pred, wdim_pred };
-	GPU_RUN_KERNAL(gpu_kernel, 2, wdims, local_size);
+	size_t wdims_k1[2] = { wdim_pred, wdim_pred };
+	static size_t local_size_k1[2] = { gpu_local_size_d2, gpu_local_size_d2 };
+	GPU_RUN_KERNAL(gpu_kernel, 2, wdims_k1, local_size_k1);
+
+	// sum up all probs per classifier
+	size_t wdims_k2[2] = { gpu_local_size_d1, Num_Classifier };
+	static size_t local_size_k2[2] = { gpu_local_size_d1, 1 };
+	GPU_RUN_KERNAL(gpu_kernel2, 2, wdims_k2, local_size_k2);
+
 
 	// map to host memory
-	GPU_MAP_MEM(mem_pred_probbuf, ptr_buf, memsize_buf_param);
+	GPU_MAP_MEM(mem_pred_weight, ptr_buf, sizeof(double)*Num_Classifier);
 	if (gpu_f64_flag)
 	{
 		double *s = (double*)ptr_buf;
@@ -524,22 +680,32 @@ void predict_avg_prob(const int nHaplo[], const TGenotype geno[],
 			for (size_t n=num_size; n > 0; n--)
 				*p++ += scalar * (*s++);
 		}
+		// normalize out_prob
+		fmul_f64(out_prob, num_size, 1 / get_sum_f64(out_prob, num_size));
+
 	} else {
-		float *s = (float*)ptr_buf;
+		float *w = (float*)ptr_buf;
 		for (int i=0; i < Num_Classifier; i++)
-		{
-			double scalar = weight[i] / get_sum_f32(s, num_size);
-			double *p = out_prob;
-			for (size_t n=num_size; n > 0; n--)
-				*p++ += scalar * (*s++);
-		}
+			w[i] = weight[i] / w[i];
 	}
-	GPU_UNMAP_MEM(mem_pred_probbuf, ptr_buf);
+	GPU_UNMAP_MEM(mem_pred_weight, ptr_buf);
+
+	// sum up all probs among classifiers per HLA genotype
+	size_t wdim = wdim_pred_addprob;
+	GPU_RUN_KERNAL(gpu_kernel3, 1, &wdim, &gpu_local_size_d1);
+
+	if (gpu_f64_flag)
+	{
+	} else {
+		GPU_MAP_MEM(mem_pred_probbuf, ptr_buf, sizeof(float)*num_size);
+		const float *s = (const float*)ptr_buf;
+		double *p = out_prob;
+		for (size_t n=num_size; n > 0; n--) *p++ = *s++;
+		GPU_UNMAP_MEM(mem_pred_probbuf, ptr_buf);
+	}
 
 	// normalize out_prob
-	double scalar = 1 / get_sum_f64(out_prob, num_size);
-	double *p = out_prob;
-	for (size_t n=num_size; n > 0; n--) *p++ *= scalar;
+	fmul_f64(out_prob, num_size, 1 / get_sum_f64(out_prob, num_size));
 }
 
 
