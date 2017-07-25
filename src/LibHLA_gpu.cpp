@@ -298,8 +298,9 @@ extern "C"
 
 /// Frequency Calculation
 #define FREQ_MUTANT(p, cnt)	   ((p) * EXP_LOG_MIN_RARE_FREQ[cnt]);
+
 /// the minimum rare frequency to store haplotypes
-#define MIN_RARE_FREQ	 1e-5
+static const double MIN_RARE_FREQ = 1e-5;
 
 /// exp(cnt * log(MIN_RARE_FREQ)), cnt is the hamming distance
 static double EXP_LOG_MIN_RARE_FREQ[HIBAG_MAXNUM_SNP_IN_CLASSIFIER*2];
@@ -667,26 +668,22 @@ void predict_avg_prob(const int nHaplo[], const TGenotype geno[],
 	static size_t local_size_k2[2] = { gpu_local_size_d1, 1 };
 	GPU_RUN_KERNAL(gpu_kernel2, 2, wdims_k2, local_size_k2);
 
-
 	// map to host memory
 	GPU_MAP_MEM(mem_pred_weight, ptr_buf, sizeof(double)*Num_Classifier);
 	if (gpu_f64_flag)
 	{
-		double *s = (double*)ptr_buf;
+		double *w = (double*)ptr_buf;
 		for (int i=0; i < Num_Classifier; i++)
-		{
-			double scalar = weight[i] / get_sum_f64(s, num_size);
-			double *p = out_prob;
-			for (size_t n=num_size; n > 0; n--)
-				*p++ += scalar * (*s++);
-		}
-		// normalize out_prob
-		fmul_f64(out_prob, num_size, 1 / get_sum_f64(out_prob, num_size));
-
+			w[i] = weight[i] / w[i];
 	} else {
 		float *w = (float*)ptr_buf;
 		for (int i=0; i < Num_Classifier; i++)
-			w[i] = weight[i] / w[i];
+		{
+			if (w[i] > 0)
+				w[i] = weight[i] / w[i];
+			else
+				w[i] = weight[i] / num_size;
+		}
 	}
 	GPU_UNMAP_MEM(mem_pred_weight, ptr_buf);
 
@@ -696,16 +693,22 @@ void predict_avg_prob(const int nHaplo[], const TGenotype geno[],
 
 	if (gpu_f64_flag)
 	{
+		GPU_READ_MEM(mem_pred_probbuf, sizeof(double)*num_size, out_prob);
+		// normalize out_prob
+		fmul_f64(out_prob, num_size, 1 / get_sum_f64(out_prob, num_size));
 	} else {
 		GPU_MAP_MEM(mem_pred_probbuf, ptr_buf, sizeof(float)*num_size);
 		const float *s = (const float*)ptr_buf;
-		double *p = out_prob;
-		for (size_t n=num_size; n > 0; n--) *p++ = *s++;
+		double *p=out_prob, sum=0;
+		for (size_t n=num_size; n > 0; n--)
+		{
+			sum += *s; *p++ = *s;
+			s++;
+		}
 		GPU_UNMAP_MEM(mem_pred_probbuf, ptr_buf);
+		// normalize out_prob
+		fmul_f64(out_prob, num_size, 1 / sum);
 	}
-
-	// normalize out_prob
-	fmul_f64(out_prob, num_size, 1 / get_sum_f64(out_prob, num_size));
 }
 
 
@@ -723,6 +726,9 @@ SEXP init_gpu_proc()
 	}
 	for (int i=0; i < n; i++)
 		EXP_LOG_MIN_RARE_FREQ_f32[i] = EXP_LOG_MIN_RARE_FREQ[i];
+
+	// for (int i=0; i < n; i++)
+	// Rprintf("%3d, f64: %e, f32: %e\n", i, EXP_LOG_MIN_RARE_FREQ[i], EXP_LOG_MIN_RARE_FREQ_f32[i]);
 
 	GPU_Proc.predict_init = predict_init;
 	GPU_Proc.predict_done = predict_done;

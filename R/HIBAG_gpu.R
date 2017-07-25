@@ -121,11 +121,30 @@ __kernel void pred_calc_prob(
 	const int i2 = get_global_id(1);
 	if (i2 < i1) return;
 
+	// reduce the chance of atomic_add at the same address
+	const int i_local = get_local_id(0) & 0x03;
+
 	// constants
 	const size_t sz_haplo = 16;
 	const int sz_hla = nHLA * (nHLA + 1) >> 1;
 
-	for (int i_cfr=0; i_cfr < nClassifier; i_cfr++)
+	__global unsigned char *baseHaplo = pHaplo;
+	__global double *baseProb = out_prob;
+
+	int i_cfr = 0;
+	for (int i=0; i < i_local; i++)
+	{
+		pHaplo += (nHaplo[i_cfr << 1] << 5);
+		out_prob += sz_hla;
+		if ((++i_cfr) >= nClassifier)
+		{
+			i_cfr = 0;
+			pHaplo = baseHaplo;
+			out_prob = baseProb;
+		}
+	}
+
+	for (int m=0; m < nClassifier; m++)
 	{
 		const int n_haplo = nHaplo[i_cfr << 1];	 // the number of haplotypes
 		if (i1<n_haplo && i2<n_haplo)
@@ -152,8 +171,15 @@ __kernel void pred_calc_prob(
 			atomic_fadd(&out_prob[k], ff);
 		}
 		// update
-		out_prob += sz_hla;
 		pHaplo += (n_haplo << 5);
+		out_prob += sz_hla;
+		// check
+		if ((++i_cfr) >= nClassifier)
+		{
+			i_cfr = 0;
+			pHaplo = baseHaplo;
+			out_prob = baseProb;
+		}
 	}
 }
 
@@ -200,6 +226,55 @@ __kernel void pred_calc_addprob(const int num_hla_geno, const int nClassifier,
 }
 "
 
+code_build_model <- "
+__kernel void build_calc_prob(
+	const int nHLA,
+	__global int *num,  // num[0]: # of samples, num[1]: # of haplotypes, num[2]: # of SNPs
+	__constant double *exp_log_min_rare_freq,
+	__global unsigned char *pHaplo,
+	__global unsigned char *pGeno,
+	__global double *out_prob)
+{
+	const int i1 = get_global_id(0);
+	const int i2 = get_global_id(1);
+	if (i2 < i1) return;
+
+	// constants
+	const size_t sz_haplo = 16;
+	const int sz_hla = nHLA * (nHLA + 1) >> 1;
+
+	for (int i_cfr=0; i_cfr < nClassifier; i_cfr++)
+	{
+		const int n_haplo = nHaplo[i_cfr << 1];	 // the number of haplotypes
+		if (i1<n_haplo && i2<n_haplo)
+		{
+			// SNP genotypes
+			__global unsigned char *p_geno = pGeno + (i_cfr << 6);
+			const int n_snp = nHaplo[(i_cfr << 1) + 1];	 // the number of SNPs
+
+			// a pair of haplotypes
+
+			__global unsigned char *p1 = pHaplo + (i1 << 5);
+			const double fq1 = *(__global double*)(p1 + sz_haplo);
+			const int h1 = *(__global int*)(p1 + 28);
+
+			__global unsigned char *p2 = pHaplo + (i2 << 5);
+			const double fq2 = *(__global double*)(p2 + sz_haplo);
+			const int h2 = *(__global int*)(p2 + 28);
+
+			int d = hamming_dist(n_snp, p_geno, p1, p2);
+			double ff = (i1 != i2) ? (2 * fq1 * fq2) : (fq1 * fq2);
+			ff *= exp_log_min_rare_freq[d];
+
+			int k = h2 + (h1 * (2*nHLA - h1 - 1) >> 1);
+			atomic_fadd(&out_prob[k], ff);
+		}
+		// update
+		out_prob += sz_hla;
+		pHaplo += (n_haplo << 5);
+	}
+}
+"
 
 
 
