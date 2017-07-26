@@ -246,7 +246,7 @@ namespace HLA_LIB
 
 
 
-	const size_t gpu_local_size_d1 = 32;
+	const size_t gpu_local_size_d1 = 64;
 	const size_t gpu_local_size_d2 = 16;
 
 	// GPU variables
@@ -666,7 +666,7 @@ void predict_avg_prob(const TGenotype geno[], const double weight[],
 	{
 	
 	} else {
-		// using double to improve precision
+		// using double in hosts to improve precision
 		GPU_MAP_MEM(mem_pred_probbuf, ptr_buf, memsize_buf_param);
 
 		memset(out_prob, 0, sizeof(double)*num_size);
@@ -707,14 +707,16 @@ void predict_avg_prob(const TGenotype geno[], const double weight[],
 		for (int i=0; i < Num_Classifier; i++)
 		{
 			psum += w[i];
-			if (w[i] > 0) w[i] = weight[i] / w[i];
+			w[i] = weight[i] / w[i];
+			if (!R_FINITE(w[i])) w[i] = 0;
 		}
 	} else {
 		float *w = (float*)ptr_buf;
 		for (int i=0; i < Num_Classifier; i++)
 		{
 			psum += w[i];
-			if (w[i] > 0) w[i] = weight[i] / w[i];
+			w[i] = weight[i] / w[i];
+			if (!R_FINITE(w[i])) w[i] = 0;
 		}
 	}
 	if (out_match)

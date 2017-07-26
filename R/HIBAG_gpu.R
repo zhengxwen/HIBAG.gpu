@@ -160,8 +160,8 @@ __kernel void pred_calc_prob(
 __kernel void pred_calc_sumprob(const int num_hla_geno, const int sz_per_local,
 	const int nClassifier, __global double *prob, __global double *out_sum)
 {
-	// since LibHLA_gpu.cpp: gpu_local_size_d1 = 32
-	#define LOCAL_SIZE    32
+	// since LibHLA_gpu.cpp: gpu_local_size_d1 = 64
+	#define LOCAL_SIZE    64
 	__local double local_sum[LOCAL_SIZE];
 	const int i  = get_local_id(0);
 	int i1 = i * sz_per_local;
