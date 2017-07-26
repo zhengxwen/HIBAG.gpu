@@ -635,7 +635,7 @@ void predict_init(int nHLA, int nClassifier, const THaplotype *const pHaplo[],
 	GPU_SETARG(gpu_kernel3, 3, mem_pred_probbuf);
 	wdim_pred_addprob = size_hla;
 	if (wdim_pred_addprob % gpu_local_size_d1)
-		wdim_pred_addprob = (wdim_pred/gpu_local_size_d1 + 1)*gpu_local_size_d1;
+		wdim_pred_addprob = (wdim_pred_addprob/gpu_local_size_d1 + 1) * gpu_local_size_d1;
 }
 
 
@@ -662,14 +662,12 @@ void predict_avg_prob(const TGenotype geno[], const double weight[],
 	cl_int err;
 	GPU_WRITE_MEM(mem_pred_snpgeno, 0, sizeof(TGenotype)*Num_Classifier, geno);
 
-	// initialize
-	GPU_ZERO_FILL(mem_pred_probbuf, memsize_buf_param);
-
 	// run OpenCL
 	size_t wdims_k1[3] = { wdim_pred, wdim_pred, Num_Classifier };
 	const static size_t local_size_k1[3] = { gpu_local_size_d2, gpu_local_size_d2, 1 };
 	GPU_RUN_KERNAL(gpu_kernel, 3, wdims_k1, local_size_k1);
 
+/*
 	if (gpu_f64_flag)
 	{
 	
@@ -699,7 +697,7 @@ void predict_avg_prob(const TGenotype geno[], const double weight[],
 		fmul_f64(out_prob, num_size, 1 / get_sum_f64(out_prob, num_size));
 		return;
 	}
-
+*/
 
 	// sum up all probs per classifier
 	size_t wdims_k2[2] = { gpu_local_size_d1, Num_Classifier };
@@ -715,14 +713,14 @@ void predict_avg_prob(const TGenotype geno[], const double weight[],
 		for (int i=0; i < Num_Classifier; i++)
 		{
 			psum += w[i];
-			w[i] = weight[i] / w[i];
+			if (w[i] > 0) w[i] = weight[i] / w[i];
 		}
 	} else {
 		float *w = (float*)ptr_buf;
 		for (int i=0; i < Num_Classifier; i++)
 		{
 			psum += w[i];
-			w[i] = weight[i] / w[i];
+			if (w[i] > 0) w[i] = weight[i] / w[i];
 		}
 	}
 	if (out_match)
@@ -730,27 +728,8 @@ void predict_avg_prob(const TGenotype geno[], const double weight[],
 	GPU_UNMAP_MEM(mem_pred_weight, ptr_buf);
 
 	// sum up all probs among classifiers per HLA genotype
-	// size_t wdim = wdim_pred_addprob;
-	// GPU_RUN_KERNAL(gpu_kernel3, 1, &wdim, &gpu_local_size_d1);
-
-	{
-		GPU_MAP_MEM(mem_pred_probbuf, ptr_buf, memsize_buf_param);
-		for (size_t i=0; i < num_size; i++)
-		{
-			double sum = 0;
-			const float *s = (const float*)ptr_buf + i;
-			for (int i=0; i < Num_Classifier; i++)
-			{
-				sum += s[0]; s += num_size;
-			}
-			out_prob[i] = sum;
-		}
-		GPU_UNMAP_MEM(mem_pred_probbuf, ptr_buf);
-
-		// normalize out_prob
-		fmul_f64(out_prob, num_size, 1 / get_sum_f64(out_prob, num_size));
-		return;
-	}
+	size_t wdim = wdim_pred_addprob;
+	GPU_RUN_KERNAL(gpu_kernel3, 1, &wdim, &gpu_local_size_d1);
 
 	if (gpu_f64_flag)
 	{
