@@ -110,6 +110,7 @@ inline static int hamming_dist(int n, __global unsigned char *g,
 code_predict_prob <- "
 __kernel void pred_calc_prob(
 	const int nHLA,
+	const int nClassifier,
 	__constant double *exp_log_min_rare_freq,
 	__global unsigned char *pHaplo,
 	__global int *nHaplo,
@@ -118,61 +119,42 @@ __kernel void pred_calc_prob(
 {
 	const int i1 = get_global_id(0);
 	const int i2 = get_global_id(1);
-	const int i_cfr = get_global_id(2);
-	if ((i2 < i1) || (i1 >= nHLA) || (i2 >= nHLA)) return;
+	if (i2 < i1) return;
 
 	// constants
 	const size_t sz_haplo = 16;
 	const int sz_hla = nHLA * (nHLA + 1) >> 1;
 
-	// update information according to a specific classifier
-	pGeno += (i_cfr << 6);
-	outProb += sz_hla * i_cfr;
-	nHaplo += (nHLA + 3) * i_cfr;
-
-	// the number of SNPs
-	const int n_snp = nHaplo[1];
-
-	// the first haplotype
-	const size_t st1 = nHaplo[i1 + 2];
-	const size_t n1  = nHaplo[i1 + 3] - st1;
-	__global unsigned char *p1 = pHaplo + (st1 << 5);
-
-	__global unsigned char *q1, *q2;
-	double sum = 0;
-	if (i1 != i2)
+	for (int i_cfr=0; i_cfr < nClassifier; i_cfr++)
 	{
-		// the second haplotype
-		const size_t st2 = nHaplo[i2 + 2];
-		const size_t n2  = nHaplo[i2 + 3] - st2;
-		__global unsigned char *p2 = pHaplo + (st2 << 5);
+		// the number of haplotypes
+		const int n_haplo = nHaplo[0];
+		if (i1 < n_haplo && i2 < n_haplo)
+		{
+			// the first haplotype
+			__global unsigned char *p1 = pHaplo + (i1 << 5);
+			const double fq1 = *(__global double*)(p1 + sz_haplo);
+			const int h1 = *(__global int*)(p1 + 28);
 
-		for (size_t m1=0, q1=p1; m1 < n1; m1++, q1+=32)
-		{
-			double fq1 = *(__global double*)(q1 + sz_haplo);
-			for (size_t m2=0, q2=p2; m2 < n2; m2++, q2+=32)
-			{
-				double fq2 = *(__global double*)(q2 + sz_haplo);
-				int d = hamming_dist(n_snp, pGeno, q1, q2);
-				sum += 2 * fq1 * fq2 * exp_log_min_rare_freq[d];
-			}
+			// the second haplotype
+			__global unsigned char *p2 = pHaplo + (i2 << 5);
+			const double fq2 = *(__global double*)(p2 + sz_haplo);
+			const int h2 = *(__global int*)(p2 + 28);
+
+			// genotype frequency
+			int d = hamming_dist(nHaplo[1], pGeno, p1, p2);
+			double ff = (i1 != i2) ? (2 * fq1 * fq2) : (fq1 * fq2);
+			ff *= exp_log_min_rare_freq[d];  // account for mutation and error rate
+
+			// update
+			int k = h2 + (h1 * ((nHLA << 1) - h1 - 1) >> 1);
+			atomic_fadd(&outProb[k], ff);
 		}
-	} else {
-		for (size_t m1=0, q1=p1; m1 < n1; m1++, q1+=32)
-		{
-			double fq1 = *(__global double*)(q1 + sz_haplo);
-			for (size_t m2=m1, q2=q1; m2 < n1; m2++, q2+=32)
-			{
-				double fq2 = *(__global double*)(q2 + sz_haplo);
-				int d = hamming_dist(n_snp, pGeno, q1, q2);
-				double ff = (m1 != m2) ? (2 * fq1 * fq2) : (fq1 * fq2);
-				sum += ff * exp_log_min_rare_freq[d];
-			}
-		}
+		pHaplo += (n_haplo << 5);
+		nHaplo += 2;
+		pGeno += 64;
+		outProb += sz_hla;
 	}
-
-	// output
-	outProb[i2 + (i1 * (2*nHLA - i1 - 1) >> 1)] = sum;
 }
 
 __kernel void pred_calc_sumprob(const int num_hla_geno, const int sz_per_local,
