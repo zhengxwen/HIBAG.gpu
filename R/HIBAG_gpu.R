@@ -403,12 +403,20 @@ hlaGPU_BuildKernel <- function(device, name, code, precision=c("single", "double
 
 
 
-hlaGPU_Init <- function(device, use_double=NA, force=FALSE, verbose=TRUE)
+hlaGPU_Init <- function(device=NULL, use_double=NA, force=FALSE, verbose=TRUE)
 {
-	stopifnot(inherits(device, "clDeviceID"))
+	# check
+	stopifnot(is.null(device) | inherits(device, "clDeviceID"))
 	stopifnot(is.logical(use_double), length(use_double)==1L)
 	stopifnot(is.logical(force), length(force)==1L)
 	stopifnot(is.logical(verbose), length(verbose)==1L)
+
+	if (is.null(device))
+	{
+		device <- oclDevices(oclPlatforms()[[1L]])[[1L]]
+		if (!inherits(device, "clDeviceID"))
+			stop("No available GPU device.")
+	}
 
 	exts <- oclInfo(device)$exts
 
