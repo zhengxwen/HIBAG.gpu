@@ -359,7 +359,7 @@ static SEXP mkKernel(cl_kernel k)
 }
 
 
-SEXP ocl_build_kernel(SEXP device, SEXP k_name, SEXP code, SEXP prec)
+SEXP gpu_build_kernel(SEXP device, SEXP k_name, SEXP code, SEXP prec)
 {
 	cl_context ctx;
 	int err;
@@ -507,7 +507,7 @@ static void fmul_f64(double *p, size_t n, double scalar)
 // ===================================================================== //
 
 /// set the internal variables
-SEXP set_gpu_val(SEXP idx, SEXP val)
+SEXP gpu_set_val(SEXP idx, SEXP val)
 {
 	switch (Rf_asInteger(idx))
 	{
@@ -749,7 +749,7 @@ void predict_avg_prob(const TGenotype geno[], const double weight[],
 
 
 /// initialize GPU structure and return a pointer object
-SEXP init_gpu_proc()
+SEXP gpu_init_proc()
 {
 	const int n = 2 * HIBAG_MAXNUM_SNP_IN_CLASSIFIER;
 	for (int i=0; i < n; i++)
