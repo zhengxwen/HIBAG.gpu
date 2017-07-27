@@ -107,6 +107,113 @@ inline static int hamming_dist(int n, __global unsigned char *g,
 }
 "
 
+
+code_build_model <- "
+__kernel void build_calc_oob(
+	const int nHLA,
+	__constant double *exp_log_min_rare_freq,
+	__global int *pParam,
+	__global unsigned char *pHaplo,
+	__global unsigned char *pGeno,
+	__global double *outProb)
+{
+	const int i1 = get_global_id(0);
+	const int i2 = get_global_id(1);
+	if (i2 < i1) return;
+
+	const int n_haplo = pParam[0];  // the number of haplotypes
+	if (i1 >= n_haplo || i2 >= n_haplo) return;
+
+	// constants
+	const size_t sz_haplo = 16;
+	const int sz_hla = nHLA * (nHLA + 1) >> 1;
+	const int n_snp  = pParam[1];
+	const int st_samp = pParam[2];
+	const int n_samp  = pParam[3];
+
+	pParam += 4;
+	for (int ii=0; ii < n_samp; ii++)
+	{
+		// the first haplotype
+		__global unsigned char *p1 = pHaplo + (i1 << 5);
+		const double fq1 = *(__global double*)(p1 + sz_haplo);
+		const int h1 = *(__global int*)(p1 + 28);
+
+		// the second haplotype
+		__global unsigned char *p2 = pHaplo + (i2 << 5);
+		const double fq2 = *(__global double*)(p2 + sz_haplo);
+		const int h2 = *(__global int*)(p2 + 28);
+
+		// SNP genotype
+		__global unsigned char *p_geno = pGeno + (pParam[st_samp+ii] << 6);
+
+		// genotype frequency
+		int d = hamming_dist(n_snp, p_geno, p1, p2);
+		double ff = (i1 != i2) ? (2 * fq1 * fq2) : (fq1 * fq2);
+		ff *= exp_log_min_rare_freq[d];  // account for mutation and error rate
+
+		// update
+		int k = h2 + (h1 * ((nHLA << 1) - h1 - 1) >> 1);
+		atomic_fadd(&outProb[k], ff);
+
+		outProb += sz_hla;
+	}
+}
+
+__kernel void build_calc_ib(
+	const int nHLA,
+	const int totNSample,
+	__constant double *exp_log_min_rare_freq,
+	__global int *pParam,
+	__global unsigned char *pHaplo,
+	__global unsigned char *pGeno,
+	__global double *outProb)
+{
+	const int i1 = get_global_id(0);
+	const int i2 = get_global_id(1);
+	if (i2 < i1) return;
+
+	const int n_haplo = pParam[0];  // the number of haplotypes
+	if (i1 >= n_haplo || i2 >= n_haplo) return;
+
+	// constants
+	const size_t sz_haplo = 16;
+	const int sz_hla = nHLA * (nHLA + 1) >> 1;
+	const int n_snp  = pParam[1];
+	const int st_samp = pParam[2];
+	const int n_samp  = pParam[3];
+
+	pParam += 4 + totNSample;
+	for (int ii=0; ii < n_samp; ii++)
+	{
+		// the first haplotype
+		__global unsigned char *p1 = pHaplo + (i1 << 5);
+		const double fq1 = *(__global double*)(p1 + sz_haplo);
+		const int h1 = *(__global int*)(p1 + 28);
+
+		// the second haplotype
+		__global unsigned char *p2 = pHaplo + (i2 << 5);
+		const double fq2 = *(__global double*)(p2 + sz_haplo);
+		const int h2 = *(__global int*)(p2 + 28);
+
+		// SNP genotype
+		__global unsigned char *p_geno = pGeno + (pParam[st_samp+ii] << 6);
+
+		// genotype frequency
+		int d = hamming_dist(n_snp, p_geno, p1, p2);
+		double ff = (i1 != i2) ? (2 * fq1 * fq2) : (fq1 * fq2);
+		ff *= exp_log_min_rare_freq[d];  // account for mutation and error rate
+
+		// update
+		int k = h2 + (h1 * ((nHLA << 1) - h1 - 1) >> 1);
+		atomic_fadd(&outProb[k], ff);
+
+		outProb += sz_hla;
+	}
+}
+"
+
+
 code_predict_prob <- "
 __kernel void pred_calc_prob(
 	const int nHLA,
@@ -461,6 +568,10 @@ hlaGPU_Init <- function(device=NULL, use_double=NA, force=FALSE, verbose=TRUE)
 	if (use_double)
 	{
 		.packageEnv$precision <- "double"
+		.packageEnv$code_build <- paste(
+			"#pragma OPENCL EXTENSION cl_khr_fp64 : enable",
+			code_atomic_add_f64,
+			code_hamming_dist, code_build_model, collapse="\n")
 		.packageEnv$code_predict <- paste(
 			"#pragma OPENCL EXTENSION cl_khr_fp64 : enable",
 			code_atomic_add_f64,
@@ -469,6 +580,12 @@ hlaGPU_Init <- function(device=NULL, use_double=NA, force=FALSE, verbose=TRUE)
 		.packageEnv$precision <- "single"
 		src <- c("double", "sz_haplo = 16")
 		dst <- c("float", "sz_haplo = 24")
+		# build
+		s <- code_build_model
+		for (i in seq_along(src))
+			s <- gsub(src[i], dst[i], s, fixed=TRUE)
+		.packageEnv$code_build <- paste(
+			code_atomic_add_f32, code_hamming_dist, s, collapse="\n")
 		# predict
 		s <- code_predict_prob
 		for (i in seq_along(src))
@@ -477,6 +594,14 @@ hlaGPU_Init <- function(device=NULL, use_double=NA, force=FALSE, verbose=TRUE)
 			code_atomic_add_f32, code_hamming_dist, s, collapse="\n")
 	}
 
+	# build kernels for constructing classifiers
+	k <- hlaGPU_BuildKernel(device,
+		c("build_calc_oob", "build_calc_ib"),
+		.packageEnv$code_build, precision=.packageEnv$precision)
+	.packageEnv$kernel_build_oob <- k[[1L]]
+	.packageEnv$kernel_build_ib  <- k[[2L]]
+
+	# build kernels for prediction
 	k <- hlaGPU_BuildKernel(device,
 		c("pred_calc_prob", "pred_calc_sumprob", "pred_calc_addprob"),
 		.packageEnv$code_predict, precision=.packageEnv$precision)
@@ -486,9 +611,12 @@ hlaGPU_Init <- function(device=NULL, use_double=NA, force=FALSE, verbose=TRUE)
 
 	# set double floating flag
 	.Call(gpu_set_val, 0L, use_double)
-	.Call(gpu_set_val, 1L, .packageEnv$kernel_pred)
-	.Call(gpu_set_val, 2L, .packageEnv$kernel_pred_sumprob)
-	.Call(gpu_set_val, 3L, .packageEnv$kernel_pred_addprob)
+	# set OpenCL kernels
+	.Call(gpu_set_val,  1L, .packageEnv$kernel_build_oob)
+	.Call(gpu_set_val,  2L, .packageEnv$kernel_build_ib)
+	.Call(gpu_set_val, 11L, .packageEnv$kernel_pred)
+	.Call(gpu_set_val, 12L, .packageEnv$kernel_pred_sumprob)
+	.Call(gpu_set_val, 13L, .packageEnv$kernel_pred_addprob)
 
 	invisible()
 }

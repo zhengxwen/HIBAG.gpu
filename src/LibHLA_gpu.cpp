@@ -46,16 +46,6 @@
 #endif
 
 
-// 32-bit or 64-bit registers
-
-#ifdef __LP64__
-#	define HIBAG_REG_BIT64
-#else
-#	ifdef HIBAG_REG_BIT64
-#	   undef HIBAG_REG_BIT64
-#	endif
-#endif
-
 
 #define GPU_CREATE_MEM(x, flag, size, ptr)	  \
 	x = clCreateBuffer(gpu_context, flag, size, ptr, &err); \
@@ -222,10 +212,14 @@ namespace HLA_LIB
 	struct TypeGPUExtProc
 	{
 		/// initialize the internal structure for building a model
-		void (*build_acc_init)(int nHLA, THaplotype pHaplo[], int nHaplo,
-			TGenotype pGeno[], int nGeno);
+		void (*build_init)(int nHLA, int nSample);
 		/// finalize the structure for building a model
-		void (*build_acc_done)();
+		void (*build_done)();
+		/// initialize bottstrapping
+		void (*build_set_bootstrap)(const int oob_cnt[]);
+		/// initialize haplotypes and SNPs genotypes
+		void (*build_set_haplo_geno)(const THaplotype haplo[], int n_haplo,
+			const TGenotype geno[], int n_snp);
 		/// calculate the out-of-bag accuracy (the number of correct alleles)
 		int (*build_acc_oob)();
 		/// calculate the in-bag log likelihood
@@ -245,13 +239,14 @@ namespace HLA_LIB
 	} GPU_Proc;
 
 
-
+	// used for work-group size (1-dim and 2-dim)
 	const size_t gpu_local_size_d1 = 64;
 	const size_t gpu_local_size_d2 = 16;
 
 	// GPU variables
 	static int Num_HLA;
 	static int Num_Classifier;
+	static int Num_Sample;
 
 	static cl_context gpu_context = NULL;
 	static cl_command_queue gpu_commands = NULL;
@@ -262,6 +257,33 @@ namespace HLA_LIB
 
 	// haplotypes of all classifiers
 	static cl_mem mem_exp_log_min_rare_freq = NULL;
+	// haplotype list
+	static cl_mem mem_haplo_list = NULL;
+	// SNP genotypes
+	static cl_mem mem_snpgeno = NULL;
+
+	// the buffer of numeric values
+	// double[nHLA*(nHLA+1)/2][] -- prob. for each classifier
+	static cl_mem mem_prob_buffer = NULL;
+	static size_t msize_probbuf_each = 0;
+	static size_t msize_probbuf_total = 0;
+
+
+	// ===================================================================== //
+	// building classifiers
+
+	static SEXP kernel_build_oob = NULL;
+	static SEXP kernel_build_ib = NULL;
+
+	// parameters
+	static cl_mem mem_build_param = NULL;
+
+	// the max number of samples can be hold in mem_prob_buffer
+	static int mem_nmax_sample = 0;
+	// the max number of haplotypes can be hold in mem_haplo_list
+	static int mem_build_haplo_nmax = 0;
+
+	static int num_oob, num_ib, num_haplo, num_snp;
 
 
 	// ===================================================================== //
@@ -271,18 +293,8 @@ namespace HLA_LIB
 	static SEXP kernel_predict_sumprob = NULL;
 	static SEXP kernel_predict_addprob = NULL;
 
-	// haplotypes of all classifiers
-	static cl_mem mem_pred_haplo = NULL;
 	// num of haplotypes and SNPs for each classifier
 	static cl_mem mem_pred_haplo_num = NULL;
-	// SNP genotypes
-	static cl_mem mem_pred_snpgeno = NULL;
-
-	// the buffer of numeric values
-	// double[nHLA*(nHLA+1)/2][] -- tmp_prob for each classifier
-	static cl_mem mem_pred_probbuf = NULL;
-	static size_t memsize_buf_param = 0;
-	static size_t memsize_prob = 0;
 
 	// classifier weight
 	static cl_mem mem_pred_weight = NULL;
@@ -474,20 +486,6 @@ static double get_sum_f64(const double *p, size_t n)
 }
 
 // mul operation
-static void fmul_f32(float *p, size_t n, float scalar)
-{
-#ifdef __SSE2__
-	__m128 a = _mm_set_ps1(scalar);
-	for (; n >= 4; n-=4, p+=4)
-	{
-		__m128 v = _mm_mul_ps(_mm_loadu_ps(p), a);
-		_mm_storeu_ps(p, v);
-	}
-#endif
-	for (; n > 0; n--) (*p++) *= scalar;
-}
-
-// mul operation
 static void fmul_f64(double *p, size_t n, double scalar)
 {
 #ifdef __SSE2__
@@ -514,15 +512,316 @@ SEXP gpu_set_val(SEXP idx, SEXP val)
 		case 0:
 			gpu_f64_flag = Rf_asLogical(val) == TRUE; break;
 		case 1:
-			kernel_predict = val; break;
+			kernel_build_oob = val; break;
 		case 2:
+			kernel_build_ib = val; break;
+		case 11:
+			kernel_predict = val; break;
+		case 12:
 			kernel_predict_sumprob = val; break;
-		case 3:
+		case 13:
 			kernel_predict_addprob = val; break;
 	}
 	return R_NilValue;
 }
 
+
+// ===================================================================== //
+
+// initialize the internal structure for building a model
+void build_init(int nHLA, int nSample)
+{
+	cl_int err;
+	gpu_kernel	= get_kernel(kernel_build_oob);
+	gpu_kernel2 = get_kernel(kernel_build_ib);
+	gpu_context = NULL;
+	if (clGetKernelInfo(gpu_kernel, CL_KERNEL_CONTEXT,
+			sizeof(gpu_context), &gpu_context, NULL) != CL_SUCCESS || !gpu_context)
+		throw "Cannot obtain kernel context via clGetKernelInfo";
+
+	// get device id from kernel R object
+	cl_device_id device_id = getDeviceID(getAttrib(kernel_predict,
+		Rf_install("device")));
+	// build a command
+	gpu_commands = clCreateCommandQueue(gpu_context, device_id, 0, &err);
+	if (!gpu_commands)
+		throw err_text("Failed to create a command queue", err);
+
+	// assign
+	Num_HLA = nHLA;
+	Num_Sample = nSample;
+	const size_t size_hla = nHLA * (nHLA+1) >> 1;
+
+	// ====  allocate OpenCL buffers  ====
+
+	GPU_CREATE_MEM(mem_build_param, CL_MEM_READ_ONLY,
+		sizeof(int)*(4+2*nSample), NULL);
+
+	// build_calc_oob -- exp_log_min_rare_freq
+	GPU_CREATE_MEM(mem_exp_log_min_rare_freq, CL_MEM_READ_ONLY | CL_MEM_USE_HOST_PTR,
+		gpu_f64_flag ? sizeof(EXP_LOG_MIN_RARE_FREQ) : sizeof(EXP_LOG_MIN_RARE_FREQ_f32),
+		gpu_f64_flag ? (void*)EXP_LOG_MIN_RARE_FREQ : (void*)EXP_LOG_MIN_RARE_FREQ_f32)
+
+	// build_calc_oob -- pHaplo
+	mem_build_haplo_nmax = nSample * 8;
+	const size_t msize_haplo = sizeof(THaplotype)*mem_build_haplo_nmax;
+	GPU_CREATE_MEM(mem_haplo_list, CL_MEM_READ_ONLY, msize_haplo, NULL);
+
+	// build_calc_oob -- pGeno
+	GPU_CREATE_MEM(mem_snpgeno, CL_MEM_READ_ONLY, sizeof(TGenotype)*nSample, NULL);
+
+	// build_calc_oob -- outProb
+	msize_probbuf_each = size_hla * (gpu_f64_flag ? sizeof(double) : sizeof(float));
+	for (mem_nmax_sample = nSample; mem_nmax_sample > 0; )
+	{
+		msize_probbuf_total = msize_probbuf_each * mem_nmax_sample;
+		mem_prob_buffer = clCreateBuffer(gpu_context, CL_MEM_READ_WRITE,
+			msize_probbuf_total, NULL, &err);
+		if (mem_prob_buffer) break;
+		mem_nmax_sample -= 256;
+	}
+	if (!mem_prob_buffer) 
+		err_text("Unable to create buffer mem_prob_buffer", err);
+
+	// arguments for gpu_kernel: out-of-bag
+	GPU_SETARG(gpu_kernel, 0, nHLA);
+	GPU_SETARG(gpu_kernel, 1, mem_exp_log_min_rare_freq);
+	GPU_SETARG(gpu_kernel, 2, mem_build_param);
+	GPU_SETARG(gpu_kernel, 3, mem_haplo_list);
+	GPU_SETARG(gpu_kernel, 4, mem_snpgeno);
+	GPU_SETARG(gpu_kernel, 5, mem_prob_buffer);
+
+	// arguments for gpu_kernel2: in-bag
+	GPU_SETARG(gpu_kernel2, 0, nHLA);
+	GPU_SETARG(gpu_kernel2, 1, nSample);
+	GPU_SETARG(gpu_kernel2, 2, mem_exp_log_min_rare_freq);
+	GPU_SETARG(gpu_kernel2, 3, mem_build_param);
+	GPU_SETARG(gpu_kernel2, 4, mem_haplo_list);
+	GPU_SETARG(gpu_kernel2, 5, mem_snpgeno);
+	GPU_SETARG(gpu_kernel2, 6, mem_prob_buffer);
+}
+
+
+void build_done()
+{
+	GPU_FREE_MEM(mem_exp_log_min_rare_freq);
+	GPU_FREE_MEM(mem_build_param);
+	GPU_FREE_MEM(mem_haplo_list);
+	GPU_FREE_MEM(mem_snpgeno);
+	GPU_FREE_MEM(mem_prob_buffer);
+	GPU_FREE_COM(gpu_commands);
+}
+
+void build_set_bootstrap(const int oob_cnt[])
+{
+	cl_int err;
+	void *ptr_buf;
+	GPU_MAP_MEM(mem_build_param, ptr_buf, sizeof(int)*(4 + 2*Num_Sample));
+
+	int *p_oob = (int*)((char*)ptr_buf + sizeof(int)*4);
+	int *p_ib  = p_oob + Num_Sample;
+	num_oob = num_ib  = 0;
+	for (int i=0; i < Num_Sample; i++)
+	{
+		if (oob_cnt[i] <= 0)
+			p_oob[num_oob++] = i;
+		else
+			p_ib[num_ib++] = i;
+	}
+
+	GPU_UNMAP_MEM(mem_build_param, ptr_buf);
+}
+
+void build_set_haplo_geno(const THaplotype haplo[], int n_haplo,
+	const TGenotype geno[], int n_snp)
+{
+	if (n_haplo > mem_build_haplo_nmax)
+		throw "There are too many haplotypes out of the limit, please contact the package author.";
+
+	cl_int err;
+	wdim_n_haplo = num_haplo = n_haplo;
+	if (wdim_n_haplo % gpu_local_size_d2)
+		wdim_n_haplo = (wdim_n_haplo/gpu_local_size_d2 + 1)*gpu_local_size_d2;
+	GPU_WRITE_MEM(mem_haplo_list, 0, sizeof(THaplotype)*n_haplo, (void*)haplo);
+
+	num_snp = n_snp;
+	GPU_WRITE_MEM(mem_snpgeno, 0, sizeof(TGenotype)*Num_Sample, (void*)geno);
+}
+
+inline static int compare(const THLAType &H1, const THLAType &H2)
+{
+	int P1=H1.Allele1, P2=H1.Allele2;
+	int T1=H2.Allele1, T2=H2.Allele2;
+	int cnt = 0;
+	if ((P1==T1) || (P1==T2))
+	{
+		cnt = 1;
+		if (P1==T1) T1 = -1; else T2 = -1;
+	}
+	if ((P2==T1) || (P2==T2)) cnt ++;
+	return cnt;
+}
+
+int build_acc_oob()
+{
+	if (num_oob > mem_nmax_sample)
+		throw "There are too many sample out of the limit of GPU memory, please contact the package author.";
+
+	cl_int err;
+	void *ptr_buf;
+
+	// initialize
+	const size_t msize_buffer = msize_probbuf_each * num_oob;
+	GPU_ZERO_FILL(mem_prob_buffer, msize_buffer);
+	int param[4] = { num_haplo, num_snp, 0, num_oob };
+	GPU_WRITE_MEM(mem_build_param, 0, sizeof(param), param);
+
+	// run OpenCL
+	size_t wdims_k1[2] = { wdim_n_haplo, wdim_n_haplo };
+	static const size_t local_size_k1[2] = { gpu_local_size_d2, gpu_local_size_d2 };
+	GPU_RUN_KERNAL(gpu_kernel, 2, wdims_k1, local_size_k1);
+
+	// result
+	int corrent_cnt = 0;
+
+	void *ptr_geno, *ptr_index;
+	GPU_MAP_MEM(mem_prob_buffer, ptr_buf, msize_buffer);
+	GPU_MAP_MEM(mem_snpgeno, ptr_geno, sizeof(TGenotype)*Num_Sample);
+	GPU_MAP_MEM(mem_build_param, ptr_index, sizeof(int)*(2*Num_Sample + 4));
+
+	TGenotype *pGeno = (TGenotype *)ptr_geno;
+	int *pIdx = (int*)ptr_index + 4;
+	THLAType rv;
+
+	if (gpu_f64_flag)
+	{
+		double *p = (double*)ptr_buf;
+		for (int i=0; i < num_oob; i++)
+		{
+			rv.Allele1 = rv.Allele2 = NA_INTEGER;
+			double max=0;
+			for (int h1=0; h1 < Num_HLA; h1++)
+			{
+				for (int h2=h1; h2 < Num_HLA; h2++)
+				{
+					if (max < *p)
+					{
+						max = *p;
+						rv.Allele1 = h1; rv.Allele2 = h2;
+					}
+					p ++;
+				}
+			}
+			corrent_cnt += compare(rv, pGeno[pIdx[i]].aux_hla_type);
+		}
+	} else {
+		float *p = (float*)ptr_buf;
+		for (int i=0; i < num_oob; i++)
+		{
+			rv.Allele1 = rv.Allele2 = NA_INTEGER;
+			float max=0;
+			for (int h1=0; h1 < Num_HLA; h1++)
+			{
+				for (int h2=h1; h2 < Num_HLA; h2++)
+				{
+					if (max < *p)
+					{
+						max = *p;
+						rv.Allele1 = h1; rv.Allele2 = h2;
+					}
+					p ++;
+				}
+			}
+			corrent_cnt += compare(rv, pGeno[pIdx[i]].aux_hla_type);
+		}
+	}
+
+	GPU_UNMAP_MEM(mem_prob_buffer, ptr_buf);
+	GPU_UNMAP_MEM(mem_snpgeno, ptr_geno);
+	GPU_UNMAP_MEM(mem_build_param, ptr_index);
+
+	return corrent_cnt;
+}
+
+
+double build_acc_ib()
+{
+	if (num_ib > mem_nmax_sample)
+		throw "There are too many sample out of the limit of GPU memory, please contact the package author.";
+
+	cl_int err;
+	void *ptr_buf;
+
+	// initialize
+	const size_t msize_buffer = msize_probbuf_each * num_ib;
+	GPU_ZERO_FILL(mem_prob_buffer, msize_buffer);
+	int param[4] = { num_haplo, num_snp, 0, num_ib };
+	GPU_WRITE_MEM(mem_build_param, 0, sizeof(param), param);
+
+	// run OpenCL
+	size_t wdims_k1[2] = { wdim_n_haplo, wdim_n_haplo };
+	static const size_t local_size_k1[2] = { gpu_local_size_d2, gpu_local_size_d2 };
+	GPU_RUN_KERNAL(gpu_kernel2, 2, wdims_k1, local_size_k1);
+
+	// result
+	double LogLik = 0;
+	const size_t size_hla = Num_HLA * (Num_HLA+1) >> 1;
+
+	void *ptr_geno, *ptr_index;
+	GPU_MAP_MEM(mem_prob_buffer, ptr_buf, msize_buffer);
+	GPU_MAP_MEM(mem_snpgeno, ptr_geno, sizeof(TGenotype)*Num_Sample);
+	GPU_MAP_MEM(mem_build_param, ptr_index, sizeof(int)*(2*Num_Sample + 4));
+
+	TGenotype *pGeno = (TGenotype *)ptr_geno;
+	int *pIdx = (int*)ptr_index + 4 + Num_Sample;
+
+	if (gpu_f64_flag)
+	{
+		double *p = (double *)ptr_buf;
+		for (int i=0; i < num_ib; i++)
+		{
+			double sum = get_sum_f64(p, size_hla);
+			if (sum > 0)
+			{
+				TGenotype &geno = pGeno[pIdx[i]];
+				int h1 = geno.aux_hla_type.Allele1;
+				int h2 = geno.aux_hla_type.Allele2;
+				if (h2 < h1)
+					{ int w = h2; h2 = h1; h1 = w; }
+				int k = h2 + (h1 * (Num_HLA*2 - h1 - 1) >> 1);
+				LogLik += geno.BootstrapCount * log(p[k] / sum);
+			}
+			p += size_hla;
+		}
+	} else {
+		float *p = (float *)ptr_buf;
+		for (int i=0; i < num_ib; i++)
+		{
+			double sum = get_sum_f32(p, size_hla);
+			if (sum > 0)
+			{
+				TGenotype &geno = pGeno[pIdx[i]];
+				int h1 = geno.aux_hla_type.Allele1;
+				int h2 = geno.aux_hla_type.Allele2;
+				if (h2 < h1)
+					{ int w = h2; h2 = h1; h1 = w; }
+				int k = h2 + (h1 * (Num_HLA*2 - h1 - 1) >> 1);
+				LogLik += geno.BootstrapCount * log(p[k] / sum);
+			}
+			p += size_hla;
+		}
+	}
+
+	GPU_UNMAP_MEM(mem_prob_buffer, ptr_buf);
+	GPU_UNMAP_MEM(mem_snpgeno, ptr_geno);
+	GPU_UNMAP_MEM(mem_build_param, ptr_index);
+
+	return -2 * LogLik;
+}
+
+
+
+// ===================================================================== //
 
 /// initialize the internal structure for predicting
 void predict_init(int nHLA, int nClassifier, const THaplotype *const pHaplo[],
@@ -571,9 +870,9 @@ void predict_init(int nHLA, int nClassifier, const THaplotype *const pHaplo[],
 
 	// pred_calc_prob -- pHaplo
 	const size_t msize_haplo = sizeof(THaplotype)*sum_n_haplo;
-	GPU_CREATE_MEM(mem_pred_haplo, CL_MEM_READ_ONLY, msize_haplo, NULL);
+	GPU_CREATE_MEM(mem_haplo_list, CL_MEM_READ_ONLY, msize_haplo, NULL);
 	void *ptr_haplo;
-	GPU_MAP_MEM(mem_pred_haplo, ptr_haplo, msize_haplo);
+	GPU_MAP_MEM(mem_haplo_list, ptr_haplo, msize_haplo);
 	THaplotype *p = (THaplotype *)ptr_haplo;
 	for (int i=0; i < nClassifier; i++)
 	{
@@ -581,29 +880,29 @@ void predict_init(int nHLA, int nClassifier, const THaplotype *const pHaplo[],
 		memcpy(p, pHaplo[i], sizeof(THaplotype)*m);
 		p += m;
 	}
-	GPU_UNMAP_MEM(mem_pred_haplo, ptr_haplo);
+	GPU_UNMAP_MEM(mem_haplo_list, ptr_haplo);
 
 	// pred_calc_prob -- nHaplo
 	GPU_CREATE_MEM(mem_pred_haplo_num, CL_MEM_READ_ONLY | CL_MEM_USE_HOST_PTR,
 		sizeof(int)*2*nClassifier, (void*)nHaplo);
 
 	// pred_calc_prob -- pGeno
-	GPU_CREATE_MEM(mem_pred_snpgeno, CL_MEM_READ_ONLY,
+	GPU_CREATE_MEM(mem_snpgeno, CL_MEM_READ_ONLY,
 		sizeof(TGenotype)*nClassifier, NULL);
 
 	// pred_calc_prob -- out_prob
-	memsize_prob = size_hla * (gpu_f64_flag ? sizeof(double) : sizeof(float));
-	memsize_buf_param = memsize_prob * nClassifier;
-	GPU_CREATE_MEM(mem_pred_probbuf, CL_MEM_READ_WRITE, memsize_buf_param, NULL);
+	msize_probbuf_each = size_hla * (gpu_f64_flag ? sizeof(double) : sizeof(float));
+	msize_probbuf_total = msize_probbuf_each * nClassifier;
+	GPU_CREATE_MEM(mem_prob_buffer, CL_MEM_READ_WRITE, msize_probbuf_total, NULL);
 
 	// arguments for gpu_kernel
 	GPU_SETARG(gpu_kernel, 0, nHLA);
 	GPU_SETARG(gpu_kernel, 1, nClassifier);
 	GPU_SETARG(gpu_kernel, 2, mem_exp_log_min_rare_freq);
-	GPU_SETARG(gpu_kernel, 3, mem_pred_haplo);
+	GPU_SETARG(gpu_kernel, 3, mem_haplo_list);
 	GPU_SETARG(gpu_kernel, 4, mem_pred_haplo_num);
-	GPU_SETARG(gpu_kernel, 5, mem_pred_snpgeno);
-	GPU_SETARG(gpu_kernel, 6, mem_pred_probbuf);
+	GPU_SETARG(gpu_kernel, 5, mem_snpgeno);
+	GPU_SETARG(gpu_kernel, 6, mem_prob_buffer);
 
 	// pred_calc_addprob -- weight
 	GPU_CREATE_MEM(mem_pred_weight, CL_MEM_READ_WRITE | CL_MEM_ALLOC_HOST_PTR,
@@ -616,14 +915,14 @@ void predict_init(int nHLA, int nClassifier, const THaplotype *const pHaplo[],
 	if (sz_hla % gpu_local_size_d1) sz_per_local++;
 	GPU_SETARG(gpu_kernel2, 1, sz_per_local);
 	GPU_SETARG(gpu_kernel2, 2, nClassifier);
-	GPU_SETARG(gpu_kernel2, 3, mem_pred_probbuf);
+	GPU_SETARG(gpu_kernel2, 3, mem_prob_buffer);
 	GPU_SETARG(gpu_kernel2, 4, mem_pred_weight);
 
 	// arguments for gpu_kernel3
 	GPU_SETARG(gpu_kernel3, 0, sz_hla);
 	GPU_SETARG(gpu_kernel3, 1, nClassifier);
 	GPU_SETARG(gpu_kernel3, 2, mem_pred_weight);
-	GPU_SETARG(gpu_kernel3, 3, mem_pred_probbuf);
+	GPU_SETARG(gpu_kernel3, 3, mem_prob_buffer);
 	wdim_pred_addprob = size_hla;
 	if (wdim_pred_addprob % gpu_local_size_d1)
 		wdim_pred_addprob = (wdim_pred_addprob/gpu_local_size_d1 + 1) * gpu_local_size_d1;
@@ -634,10 +933,10 @@ void predict_init(int nHLA, int nClassifier, const THaplotype *const pHaplo[],
 void predict_done()
 {
 	GPU_FREE_MEM(mem_exp_log_min_rare_freq);
-	GPU_FREE_MEM(mem_pred_haplo);
+	GPU_FREE_MEM(mem_haplo_list);
 	GPU_FREE_MEM(mem_pred_haplo_num);
-	GPU_FREE_MEM(mem_pred_snpgeno);
-	GPU_FREE_MEM(mem_pred_probbuf);
+	GPU_FREE_MEM(mem_snpgeno);
+	GPU_FREE_MEM(mem_prob_buffer);
 	GPU_FREE_COM(gpu_commands);
 }
 
@@ -651,10 +950,10 @@ void predict_avg_prob(const TGenotype geno[], const double weight[],
 
 	// write to genotype buffer
 	cl_int err;
-	GPU_WRITE_MEM(mem_pred_snpgeno, 0, sizeof(TGenotype)*Num_Classifier, geno);
+	GPU_WRITE_MEM(mem_snpgeno, 0, sizeof(TGenotype)*Num_Classifier, geno);
 
 	// initialize
-	GPU_ZERO_FILL(mem_pred_probbuf, memsize_buf_param);
+	GPU_ZERO_FILL(mem_prob_buffer, msize_probbuf_total);
 
 	// run OpenCL
 	size_t wdims_k1[2] = { wdim_n_haplo, wdim_n_haplo };
@@ -667,7 +966,7 @@ void predict_avg_prob(const TGenotype geno[], const double weight[],
 	
 	} else {
 		// using double in hosts to improve precision
-		GPU_MAP_MEM(mem_pred_probbuf, ptr_buf, memsize_buf_param);
+		GPU_MAP_MEM(mem_prob_buffer, ptr_buf, msize_probbuf_total);
 
 		memset(out_prob, 0, sizeof(double)*num_size);
 		const float *pb = (const float*)ptr_buf;
@@ -685,7 +984,7 @@ void predict_avg_prob(const TGenotype geno[], const double weight[],
 			pb += num_size;
 		}
 
-		GPU_UNMAP_MEM(mem_pred_probbuf, ptr_buf);
+		GPU_UNMAP_MEM(mem_prob_buffer, ptr_buf);
 
 		*out_match = psum / Num_Classifier;
 		fmul_f64(out_prob, num_size, 1 / get_sum_f64(out_prob, num_size));
@@ -729,24 +1028,27 @@ void predict_avg_prob(const TGenotype geno[], const double weight[],
 
 	if (gpu_f64_flag)
 	{
-		GPU_READ_MEM(mem_pred_probbuf, sizeof(double)*num_size, out_prob);
+		GPU_READ_MEM(mem_prob_buffer, sizeof(double)*num_size, out_prob);
 		// normalize out_prob
 		fmul_f64(out_prob, num_size, 1 / get_sum_f64(out_prob, num_size));
 	} else {
-		GPU_MAP_MEM(mem_pred_probbuf, ptr_buf, sizeof(float)*num_size);
+		GPU_MAP_MEM(mem_prob_buffer, ptr_buf, sizeof(float)*num_size);
 		const float *s = (const float*)ptr_buf;
 		double *p=out_prob, sum=0;
 		for (size_t n=num_size; n > 0; n--)
 		{
 			sum += *s; *p++ = *s++;
 		}
-		GPU_UNMAP_MEM(mem_pred_probbuf, ptr_buf);
+		GPU_UNMAP_MEM(mem_prob_buffer, ptr_buf);
 
 		// normalize out_prob
 		fmul_f64(out_prob, num_size, 1 / sum);
 	}
 }
 
+
+
+// ===================================================================== //
 
 /// initialize GPU structure and return a pointer object
 SEXP gpu_init_proc()
@@ -766,9 +1068,17 @@ SEXP gpu_init_proc()
 	// for (int i=0; i < n; i++)
 	// Rprintf("%3d, f64: %e, f32: %e\n", i, EXP_LOG_MIN_RARE_FREQ[i], EXP_LOG_MIN_RARE_FREQ_f32[i]);
 
+	GPU_Proc.build_init = build_init;
+	GPU_Proc.build_done = build_done;
+	GPU_Proc.build_set_bootstrap = build_set_bootstrap;
+	GPU_Proc.build_set_haplo_geno = build_set_haplo_geno;
+	GPU_Proc.build_acc_oob = build_acc_oob;
+	GPU_Proc.build_acc_ib = build_acc_ib;
+
 	GPU_Proc.predict_init = predict_init;
 	GPU_Proc.predict_done = predict_done;
 	GPU_Proc.predict_avg_prob = predict_avg_prob;
+
 	return R_MakeExternalPtr(&GPU_Proc, R_NilValue, R_NilValue);
 }
 
