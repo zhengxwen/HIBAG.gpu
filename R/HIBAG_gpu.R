@@ -109,7 +109,7 @@ inline static int hamming_dist(int n, __global unsigned char *g,
 
 
 code_build_model <- "
-__kernel void build_calc_oob(
+__kernel void build_calc_prob(
 	const int nHLA,
 	__constant double *exp_log_min_rare_freq,
 	__global int *pParam,
@@ -131,7 +131,8 @@ __kernel void build_calc_oob(
 	const int st_samp = pParam[2];
 	const int n_samp  = pParam[3];
 
-	pParam += 4;
+	pParam += pParam[4];  // offset pParam
+
 	for (int ii=0; ii < n_samp; ii++)
 	{
 		// the first haplotype
@@ -160,55 +161,83 @@ __kernel void build_calc_oob(
 	}
 }
 
-__kernel void build_calc_ib(
-	const int nHLA,
-	const int totNSample,
-	__constant double *exp_log_min_rare_freq,
-	__global int *pParam,
-	__global unsigned char *pHaplo,
-	__global unsigned char *pGeno,
-	__global double *outProb)
+// since LibHLA_gpu.cpp: gpu_local_size_d1 = 64
+#define LOCAL_SIZE    64
+
+__kernel void build_find_maxprob(const int num_hla_geno,
+	const int sz_per_local, __global double *prob, __global int *out_idx)
 {
-	const int i1 = get_global_id(0);
-	const int i2 = get_global_id(1);
-	if (i2 < i1) return;
+	__local double local_max[LOCAL_SIZE];
+	__local int    local_idx[LOCAL_SIZE];
 
-	const int n_haplo = pParam[0];  // the number of haplotypes
-	if (i1 >= n_haplo || i2 >= n_haplo) return;
+	const int i  = get_local_id(0);
+	int j = i * sz_per_local;
+	const int i_samp = get_global_id(1);
+	prob += num_hla_geno * i_samp;
 
-	// constants
-	const size_t sz_haplo = 16;
-	const int sz_hla = nHLA * (nHLA + 1) >> 1;
-	const int n_snp  = pParam[1];
-	const int st_samp = pParam[2];
-	const int n_samp  = pParam[3];
-
-	pParam += 4 + totNSample;
-	for (int ii=0; ii < n_samp; ii++)
+	double max_pb = 0;
+	int max_idx = -1;
+	for (size_t n=sz_per_local; n>0 && j<num_hla_geno; n--, j++)
 	{
-		// the first haplotype
-		__global unsigned char *p1 = pHaplo + (i1 << 5);
-		const double fq1 = *(__global double*)(p1 + sz_haplo);
-		const int h1 = *(__global int*)(p1 + 28);
+		if (max_pb < prob[j])
+			{ max_pb = prob[j]; max_idx = j; }
+	}
+	if (i < LOCAL_SIZE)
+		{ local_max[i] = max_pb; local_idx[i] = max_idx; }
 
-		// the second haplotype
-		__global unsigned char *p2 = pHaplo + (i2 << 5);
-		const double fq2 = *(__global double*)(p2 + sz_haplo);
-		const int h2 = *(__global int*)(p2 + 28);
+	barrier(CLK_LOCAL_MEM_FENCE);
+	if (i == 0)
+	{
+		max_pb = 0; max_idx = -1;
+		for (int j=0; j < LOCAL_SIZE; j++)
+		{
+			if (max_pb < local_max[j])
+			{
+				max_pb = local_max[j];
+				max_idx = local_idx[j];
+			}
+		}
+		out_idx[i_samp] = max_idx;
+	}
+}
+
+
+__kernel void build_sum_prob(const int nHLA, const int num_hla_geno,
+	const int sz_per_local, __global int *pParam, __global unsigned char *pGeno,
+	__global double *prob, __global double *out_prob)
+{
+	__local double local_sum[LOCAL_SIZE];
+
+	const int i  = get_local_id(0);
+	int j = i * sz_per_local;
+	const int i_samp = get_global_id(1);
+	prob += num_hla_geno * i_samp;
+
+	double sum = 0;
+	for (size_t n=sz_per_local; n>0 && j<num_hla_geno; n--)
+		sum += prob[j++];
+	if (i < LOCAL_SIZE) local_sum[i] = sum;
+
+	barrier(CLK_LOCAL_MEM_FENCE);
+	if (i == 0)
+	{
+		sum = 0;
+		for (int j=0; j < LOCAL_SIZE; j++)
+			sum += local_sum[j];
+
+		out_prob += (i_samp << 1) + i_samp;
+		out_prob[0] = sum;
 
 		// SNP genotype
-		__global unsigned char *p_geno = pGeno + (pParam[st_samp+ii] << 6);
+		pParam += pParam[4];  // offset pParam
+		__global unsigned char *p = pGeno + (pParam[i_samp] << 6);
 
-		// genotype frequency
-		int d = hamming_dist(n_snp, p_geno, p1, p2);
-		double ff = (i1 != i2) ? (2 * fq1 * fq2) : (fq1 * fq2);
-		ff *= exp_log_min_rare_freq[d];  // account for mutation and error rate
+		out_prob[1] = *(__global int *)(p + 48);  // BootstrapCount
 
-		// update
+		int h1 = *(__global int *)(p + 52);  // aux_hla_type.Allele1
+		int h2 = *(__global int *)(p + 56);  // aux_hla_type.Allele2
 		int k = h2 + (h1 * ((nHLA << 1) - h1 - 1) >> 1);
-		atomic_fadd(&outProb[k], ff);
-
-		outProb += sz_hla;
+		out_prob[2] = prob[k];
 	}
 }
 "
@@ -264,11 +293,12 @@ __kernel void pred_calc_prob(
 	}
 }
 
+// since LibHLA_gpu.cpp: gpu_local_size_d1 = 64
+#define LOCAL_SIZE    64
+
 __kernel void pred_calc_sumprob(const int num_hla_geno, const int sz_per_local,
 	const int nClassifier, __global double *prob, __global double *out_sum)
 {
-	// since LibHLA_gpu.cpp: gpu_local_size_d1 = 64
-	#define LOCAL_SIZE    64
 	__local double local_sum[LOCAL_SIZE];
 	const int i  = get_local_id(0);
 	int i1 = i * sz_per_local;
@@ -596,10 +626,11 @@ hlaGPU_Init <- function(device=NULL, use_double=NA, force=FALSE, verbose=TRUE)
 
 	# build kernels for constructing classifiers
 	k <- hlaGPU_BuildKernel(device,
-		c("build_calc_oob", "build_calc_ib"),
+		c("build_calc_prob", "build_find_maxprob", "build_sum_prob"),
 		.packageEnv$code_build, precision=.packageEnv$precision)
-	.packageEnv$kernel_build_oob <- k[[1L]]
-	.packageEnv$kernel_build_ib  <- k[[2L]]
+	.packageEnv$build_calc_prob <- k[[1L]]
+	.packageEnv$build_find_maxprob <- k[[2L]]
+	.packageEnv$build_sum_prob <- k[[3L]]
 
 	# build kernels for prediction
 	k <- hlaGPU_BuildKernel(device,
@@ -612,8 +643,9 @@ hlaGPU_Init <- function(device=NULL, use_double=NA, force=FALSE, verbose=TRUE)
 	# set double floating flag
 	.Call(gpu_set_val, 0L, use_double)
 	# set OpenCL kernels
-	.Call(gpu_set_val,  1L, .packageEnv$kernel_build_oob)
-	.Call(gpu_set_val,  2L, .packageEnv$kernel_build_ib)
+	.Call(gpu_set_val,  1L, .packageEnv$build_calc_prob)
+	.Call(gpu_set_val,  2L, .packageEnv$build_find_maxprob)
+	.Call(gpu_set_val,  3L, .packageEnv$build_sum_prob)
 	.Call(gpu_set_val, 11L, .packageEnv$kernel_pred)
 	.Call(gpu_set_val, 12L, .packageEnv$kernel_pred_sumprob)
 	.Call(gpu_set_val, 13L, .packageEnv$kernel_pred_addprob)
