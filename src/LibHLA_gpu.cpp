@@ -456,25 +456,6 @@ static const char *err_text(const char *txt, int err)
 }
 
 
-// get the sum of float array
-static float get_sum_f32(const float *p, size_t n)
-{
-#ifdef __SSE__
-	__m128 a, s = _mm_setzero_ps();
-	for (; n >= 4; n-=4, p+=4)
-		s = _mm_add_ps(s, _mm_loadu_ps(p));
-	a = _mm_shuffle_ps(s, s, _MM_SHUFFLE(1,0,3,2));
-	s = _mm_add_ps(s, a);
-	a = _mm_shuffle_ps(s, s, _MM_SHUFFLE(0,0,0,1));
-	s = _mm_add_ps(s, a);
-	float sum = _mm_cvtss_f32(s);
-#else
-	float sum = 0;
-#endif
-	for (; n > 0; n--) sum += *p++;
-	return sum;
-}
-
 // get the sum of double array
 static double get_sum_f64(const double *p, size_t n)
 {
@@ -537,6 +518,22 @@ SEXP gpu_set_val(SEXP idx, SEXP val)
 
 // ===================================================================== //
 
+static inline void init_command(SEXP kernel)
+{
+	gpu_context = NULL;
+	cl_int err = clGetKernelInfo(gpu_kernel, CL_KERNEL_CONTEXT,
+		sizeof(gpu_context), &gpu_context, NULL);
+	if (err != CL_SUCCESS || !gpu_context)
+		throw err_text("Cannot obtain kernel context via clGetKernelInfo", err);
+
+	// get device id from kernel R object
+	cl_device_id device_id = getDeviceID(getAttrib(kernel, Rf_install("device")));
+	// build a command
+	gpu_commands = clCreateCommandQueue(gpu_context, device_id, 0, &err);
+	if (!gpu_commands)
+		throw err_text("Failed to create a command queue", err);
+}
+
 static inline void init_exp_log_memory()
 {
 	cl_int err;
@@ -559,18 +556,7 @@ void build_init(int nHLA, int nSample)
 	gpu_kernel	= get_kernel(kernel_build_prob);
 	gpu_kernel2 = get_kernel(kernel_build_find_maxprob);
 	gpu_kernel3 = get_kernel(kernel_build_sum_prob);
-	gpu_context = NULL;
-	if (clGetKernelInfo(gpu_kernel, CL_KERNEL_CONTEXT,
-			sizeof(gpu_context), &gpu_context, NULL) != CL_SUCCESS || !gpu_context)
-		throw "Cannot obtain kernel context via clGetKernelInfo";
-
-	// get device id from kernel R object
-	cl_device_id device_id = getDeviceID(getAttrib(kernel_predict,
-		Rf_install("device")));
-	// build a command
-	gpu_commands = clCreateCommandQueue(gpu_context, device_id, 0, &err);
-	if (!gpu_commands)
-		throw err_text("Failed to create a command queue", err);
+	init_command(kernel_build_prob);
 
 	// assign
 	Num_HLA = nHLA;
@@ -764,68 +750,6 @@ int build_acc_oob()
 	GPU_UNMAP_MEM(mem_snpgeno, ptr_geno);
 
 	return corrent_cnt;
-
-
-
-	void *ptr_buf;
-
-	GPU_MAP_MEM(mem_snpgeno, ptr_geno, sizeof(TGenotype)*Num_Sample);
-	GPU_MAP_MEM(mem_build_param, ptr_index, sizeof(int)*(offset_build_param + 2*Num_Sample));
-
-	GPU_MAP_MEM(mem_prob_buffer, ptr_buf, msize_buffer);
-
-	pGeno = (TGenotype *)ptr_geno;
-	pIdx = (int*)ptr_index + offset_build_param;
-	THLAType rv;
-
-	if (gpu_f64_flag)
-	{
-		double *p = (double*)ptr_buf;
-		for (int i=0; i < num_oob; i++)
-		{
-			rv.Allele1 = rv.Allele2 = NA_INTEGER;
-			double max=0;
-			for (int h1=0; h1 < Num_HLA; h1++)
-			{
-				for (int h2=h1; h2 < Num_HLA; h2++)
-				{
-					if (max < *p)
-					{
-						max = *p;
-						rv.Allele1 = h1; rv.Allele2 = h2;
-					}
-					p ++;
-				}
-			}
-			corrent_cnt += compare(rv, pGeno[pIdx[i]].aux_hla_type);
-		}
-	} else {
-		float *p = (float*)ptr_buf;
-		for (int i=0; i < num_oob; i++)
-		{
-			rv.Allele1 = rv.Allele2 = NA_INTEGER;
-			float max=0;
-			for (int h1=0; h1 < Num_HLA; h1++)
-			{
-				for (int h2=h1; h2 < Num_HLA; h2++)
-				{
-					if (max < *p)
-					{
-						max = *p;
-						rv.Allele1 = h1; rv.Allele2 = h2;
-					}
-					p ++;
-				}
-			}
-			corrent_cnt += compare(rv, pGeno[pIdx[i]].aux_hla_type);
-		}
-	}
-
-	GPU_UNMAP_MEM(mem_prob_buffer, ptr_buf);
-	GPU_UNMAP_MEM(mem_snpgeno, ptr_geno);
-	GPU_UNMAP_MEM(mem_build_param, ptr_index);
-
-	return corrent_cnt;
 }
 
 
@@ -835,10 +759,8 @@ double build_acc_ib()
 	if (num_ib > mem_nmax_sample)
 		throw "There are too many sample out of the limit of GPU memory, please contact the package author.";
 
-	cl_int err;
-	void *ptr_buf;
-
 	// initialize
+	cl_int err;
 	const size_t msize_buffer = msize_probbuf_each * num_ib;
 	GPU_ZERO_FILL(mem_prob_buffer, msize_buffer);
 	int param[5] = { num_haplo, num_snp, 0, num_ib, offset_build_param+Num_Sample };
@@ -880,61 +802,6 @@ double build_acc_ib()
 	GPU_UNMAP_MEM(mem_build_output, ptr_out);
 
 	return -2 * LogLik;
-
-
-
-	const size_t size_hla = Num_HLA * (Num_HLA+1) >> 1;
-
-	void *ptr_geno, *ptr_index;
-	GPU_MAP_MEM(mem_prob_buffer, ptr_buf, msize_buffer);
-	GPU_MAP_MEM(mem_snpgeno, ptr_geno, sizeof(TGenotype)*Num_Sample);
-	GPU_MAP_MEM(mem_build_param, ptr_index, sizeof(int)*(offset_build_param + 2*Num_Sample));
-
-	TGenotype *pGeno = (TGenotype *)ptr_geno;
-	int *pIdx = (int*)ptr_index + offset_build_param + Num_Sample;
-
-	if (gpu_f64_flag)
-	{
-		double *p = (double *)ptr_buf;
-		for (int i=0; i < num_ib; i++)
-		{
-			double sum = get_sum_f64(p, size_hla);
-			if (sum > 0)
-			{
-				TGenotype &geno = pGeno[pIdx[i]];
-				int h1 = geno.aux_hla_type.Allele1;
-				int h2 = geno.aux_hla_type.Allele2;
-				if (h2 < h1)
-					{ int w = h2; h2 = h1; h1 = w; }
-				int k = h2 + (h1 * (Num_HLA*2 - h1 - 1) >> 1);
-				LogLik += geno.BootstrapCount * log(p[k] / sum);
-			}
-			p += size_hla;
-		}
-	} else {
-		float *p = (float *)ptr_buf;
-		for (int i=0; i < num_ib; i++)
-		{
-			double sum = get_sum_f32(p, size_hla);
-			if (sum > 0)
-			{
-				TGenotype &geno = pGeno[pIdx[i]];
-				int h1 = geno.aux_hla_type.Allele1;
-				int h2 = geno.aux_hla_type.Allele2;
-				if (h2 < h1)
-					{ int w = h2; h2 = h1; h1 = w; }
-				int k = h2 + (h1 * (Num_HLA*2 - h1 - 1) >> 1);
-				LogLik += geno.BootstrapCount * log(p[k] / sum);
-			}
-			p += size_hla;
-		}
-	}
-
-	GPU_UNMAP_MEM(mem_prob_buffer, ptr_buf);
-	GPU_UNMAP_MEM(mem_snpgeno, ptr_geno);
-	GPU_UNMAP_MEM(mem_build_param, ptr_index);
-
-	return -2 * LogLik;
 }
 
 
@@ -949,18 +816,7 @@ void predict_init(int nHLA, int nClassifier, const THaplotype *const pHaplo[],
 	gpu_kernel	= get_kernel(kernel_predict);
 	gpu_kernel2 = get_kernel(kernel_predict_sumprob);
 	gpu_kernel3 = get_kernel(kernel_predict_addprob);
-	gpu_context = NULL;
-	if (clGetKernelInfo(gpu_kernel, CL_KERNEL_CONTEXT,
-			sizeof(gpu_context), &gpu_context, NULL) != CL_SUCCESS || !gpu_context)
-		throw "Cannot obtain kernel context via clGetKernelInfo";
-
-	// get device id from kernel R object
-	cl_device_id device_id = getDeviceID(getAttrib(kernel_predict,
-		Rf_install("device")));
-	// build a command
-	gpu_commands = clCreateCommandQueue(gpu_context, device_id, 0, &err);
-	if (!gpu_commands)
-		throw err_text("Failed to create a command queue", err);
+	init_command(kernel_predict);
 
 	// assign
 	Num_HLA = nHLA;

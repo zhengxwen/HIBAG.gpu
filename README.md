@@ -1,3 +1,3 @@
 # HIBAG.gpu
 
-R package -- GPU-based implementation for the HIBAG package
+R package -- a GPU-based extension for the [HIBAG](https://github.com/zhengxwen/HIBAG) package

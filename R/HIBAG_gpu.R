@@ -363,8 +363,8 @@ hlaAttrBagging_gpu <- function(hla, snp, nclassifier=100,
 	stopifnot(is.logical(verbose.detail), length(verbose.detail)==1L)
 	if (verbose.detail) verbose <- TRUE
 
-	# check GPU platform
-
+	# GPU platform
+	on.exit({ HIBAG:::.hlaClearGPU() })
 
 	# get the common samples
 	samp.id <- intersect(hla$value$sample.id, snp$sample.id)
@@ -518,6 +518,10 @@ hlaPredict_gpu <- function(object, snp,
 	same.strand=FALSE, verbose=TRUE)
 {
 	stopifnot(inherits(object, "hlaAttrBagClass"))
+
+	# GPU platform
+	on.exit({ HIBAG:::.hlaClearGPU() })
+
 	predict(object, snp, NULL, type, vote, allele.check, match.type,
 		same.strand, verbose, proc_ptr=.packageEnv$gpu_proc_ptr)
 }
