@@ -615,20 +615,16 @@ void build_init(int nHLA, int nSample)
 	// arguments for gpu_kernel2: build_find_maxprob
 	int sz_hla = size_hla;
 	GPU_SETARG(gpu_kernel2, 0, sz_hla);
-	int sz_per_local = sz_hla / gpu_local_size_d1;
-	if (sz_hla % gpu_local_size_d1) sz_per_local++;
-	GPU_SETARG(gpu_kernel2, 1, sz_per_local);
-	GPU_SETARG(gpu_kernel2, 2, mem_prob_buffer);
-	GPU_SETARG(gpu_kernel2, 3, mem_build_output);
+	GPU_SETARG(gpu_kernel2, 1, mem_prob_buffer);
+	GPU_SETARG(gpu_kernel2, 2, mem_build_output);
 
-	// arguments for gpu_kernel3: build_find_maxprob
+	// arguments for gpu_kernel3: build_sum_prob
 	GPU_SETARG(gpu_kernel3, 0, nHLA);
 	GPU_SETARG(gpu_kernel3, 1, sz_hla);
-	GPU_SETARG(gpu_kernel3, 2, sz_per_local);
-	GPU_SETARG(gpu_kernel3, 3, mem_build_param);
-	GPU_SETARG(gpu_kernel3, 4, mem_snpgeno);
-	GPU_SETARG(gpu_kernel3, 5, mem_prob_buffer);
-	GPU_SETARG(gpu_kernel3, 6, mem_build_output);
+	GPU_SETARG(gpu_kernel3, 2, mem_build_param);
+	GPU_SETARG(gpu_kernel3, 3, mem_snpgeno);
+	GPU_SETARG(gpu_kernel3, 4, mem_prob_buffer);
+	GPU_SETARG(gpu_kernel3, 5, mem_build_output);
 }
 
 
@@ -875,7 +871,7 @@ void predict_init(int nHLA, int nClassifier, const THaplotype *const pHaplo[],
 	msize_probbuf_total = msize_probbuf_each * nClassifier;
 	GPU_CREATE_MEM(mem_prob_buffer, CL_MEM_READ_WRITE, msize_probbuf_total, NULL);
 
-	// arguments for gpu_kernel
+	// arguments for gpu_kernel, pred_calc_prob
 	GPU_SETARG(gpu_kernel, 0, nHLA);
 	GPU_SETARG(gpu_kernel, 1, nClassifier);
 	GPU_SETARG(gpu_kernel, 2, mem_exp_log_min_rare_freq);
@@ -888,17 +884,13 @@ void predict_init(int nHLA, int nClassifier, const THaplotype *const pHaplo[],
 	GPU_CREATE_MEM(mem_pred_weight, CL_MEM_READ_WRITE | CL_MEM_ALLOC_HOST_PTR,
 		sizeof(double)*nClassifier, NULL);
 
-	// arguments for gpu_kernel2
+	// arguments for gpu_kernel2, pred_calc_sumprob
 	int sz_hla = size_hla;
 	GPU_SETARG(gpu_kernel2, 0, sz_hla);
-	int sz_per_local = sz_hla / gpu_local_size_d1;
-	if (sz_hla % gpu_local_size_d1) sz_per_local++;
-	GPU_SETARG(gpu_kernel2, 1, sz_per_local);
-	GPU_SETARG(gpu_kernel2, 2, nClassifier);
-	GPU_SETARG(gpu_kernel2, 3, mem_prob_buffer);
-	GPU_SETARG(gpu_kernel2, 4, mem_pred_weight);
+	GPU_SETARG(gpu_kernel2, 1, mem_prob_buffer);
+	GPU_SETARG(gpu_kernel2, 2, mem_pred_weight);
 
-	// arguments for gpu_kernel3
+	// arguments for gpu_kernel3, pred_calc_addprob
 	GPU_SETARG(gpu_kernel3, 0, sz_hla);
 	GPU_SETARG(gpu_kernel3, 1, nClassifier);
 	GPU_SETARG(gpu_kernel3, 2, mem_pred_weight);

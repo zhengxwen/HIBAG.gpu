@@ -162,26 +162,28 @@ __kernel void build_calc_prob(
 // since LibHLA_gpu.cpp: gpu_local_size_d1 = 64
 #define LOCAL_SIZE    64
 
-__kernel void build_find_maxprob(const int num_hla_geno,
-	const int sz_per_local, __global double *prob, __global int *out_idx)
+__kernel void build_find_maxprob(const int num_hla_geno, __global double *prob,
+	__global int *out_idx)
 {
 	__local double local_max[LOCAL_SIZE];
 	__local int    local_idx[LOCAL_SIZE];
 
-	const int i  = get_local_id(0);
-	int j = i * sz_per_local;
+	const int i = get_local_id(0);
 	const int i_samp = get_global_id(1);
 	prob += num_hla_geno * i_samp;
 
 	double max_pb = 0;
 	int max_idx = -1;
-	for (size_t n=sz_per_local; n>0 && j<num_hla_geno; n--, j++)
+	for (int k=i; k < num_hla_geno; k+=LOCAL_SIZE)
 	{
-		if (max_pb < prob[j])
-			{ max_pb = prob[j]; max_idx = j; }
+		if (max_pb < prob[k])
+			{ max_pb = prob[k]; max_idx = k; }
 	}
 	if (i < LOCAL_SIZE)
-		{ local_max[i] = max_pb; local_idx[i] = max_idx; }
+	{
+		local_max[i] = max_pb;
+		local_idx[i] = max_idx;
+	}
 
 	barrier(CLK_LOCAL_MEM_FENCE);
 	if (i == 0)
@@ -201,27 +203,25 @@ __kernel void build_find_maxprob(const int num_hla_geno,
 
 
 __kernel void build_sum_prob(const int nHLA, const int num_hla_geno,
-	const int sz_per_local, __global int *pParam, __global unsigned char *pGeno,
-	__global double *prob, __global double *out_prob)
+	__global int *pParam, __global unsigned char *pGeno, __global double *prob,
+	__global double *out_prob)
 {
 	__local double local_sum[LOCAL_SIZE];
 
-	const int i  = get_local_id(0);
-	int j = i * sz_per_local;
+	const int i = get_local_id(0);
 	const int i_samp = get_global_id(1);
 	prob += num_hla_geno * i_samp;
 
 	double sum = 0;
-	for (size_t n=sz_per_local; n>0 && j<num_hla_geno; n--)
-		sum += prob[j++];
+	for (int k=i; k < num_hla_geno; k+=LOCAL_SIZE)
+		sum += prob[k];
 	if (i < LOCAL_SIZE) local_sum[i] = sum;
 
 	barrier(CLK_LOCAL_MEM_FENCE);
 	if (i == 0)
 	{
 		sum = 0;
-		for (int j=0; j < LOCAL_SIZE; j++)
-			sum += local_sum[j];
+		for (int j=0; j < LOCAL_SIZE; j++) sum += local_sum[j];
 
 		out_prob += (i_samp << 1) + i_samp;
 		out_prob[0] = sum;
@@ -294,18 +294,17 @@ __kernel void pred_calc_prob(
 // since LibHLA_gpu.cpp: gpu_local_size_d1 = 64
 #define LOCAL_SIZE    64
 
-__kernel void pred_calc_sumprob(const int num_hla_geno, const int sz_per_local,
-	const int nClassifier, __global double *prob, __global double *out_sum)
+__kernel void pred_calc_sumprob(const int num_hla_geno, __global double *prob,
+	__global double *out_sum)
 {
 	__local double local_sum[LOCAL_SIZE];
-	const int i  = get_local_id(0);
-	int i1 = i * sz_per_local;
-	const int i2 = get_global_id(1);
+	const int i = get_local_id(0);
+	const int i_cfr = get_global_id(1);
+	prob += num_hla_geno * i_cfr;
 
-	prob += num_hla_geno * i2;
 	double sum = 0;
-	for (size_t n=sz_per_local; n>0 && i1<num_hla_geno; n--)
-		sum += prob[i1++];
+	for (int k=i; k < num_hla_geno; k+=LOCAL_SIZE)
+		sum += prob[k];
 	if (i < LOCAL_SIZE) local_sum[i] = sum;
 
 	barrier(CLK_LOCAL_MEM_FENCE);
@@ -313,7 +312,7 @@ __kernel void pred_calc_sumprob(const int num_hla_geno, const int sz_per_local,
 	{
 		sum = 0;
 		for (int i=0; i < LOCAL_SIZE; i++) sum += local_sum[i];
-		out_sum[i2] = sum;
+		out_sum[i_cfr] = sum;
 	}
 }
 
