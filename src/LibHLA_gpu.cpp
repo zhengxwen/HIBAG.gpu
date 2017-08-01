@@ -788,14 +788,22 @@ double build_acc_ib()
 		for (int i=0; i < num_ib; i++, p+=3)
 		{
 			if (p[0] > 0)
-				LogLik += p[1] * log(double(p[2]) / p[0]);
+			{
+				double v = p[2];
+				if (v <= 0) v = 1e-128;
+				LogLik += p[1] * log(v / p[0]);
+			}
 		}
 	} else {
 		float *p = (float *)ptr_out;
 		for (int i=0; i < num_ib; i++, p+=3)
 		{
 			if (p[0] > 0)
-				LogLik += p[1] * log(double(p[2]) / p[0]);
+			{
+				double v = p[2];
+				if (v <= 0) v = 1e-64;
+				LogLik += p[1] * log(v / p[0]);
+			}
 		}
 	}
 

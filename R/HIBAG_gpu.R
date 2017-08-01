@@ -46,8 +46,8 @@ inline static void atomic_fadd(volatile __global float *addr, float val)
 	current.f32 = *addr;
 	do{
 		expected.f32 = current.f32;
-		next.f32	 = expected.f32 + val;
-		current.u32	 = atomic_cmpxchg((volatile __global unsigned int *)addr,
+		next.f32     = expected.f32 + val;
+		current.u32  = atomic_cmpxchg((volatile __global unsigned int *)addr,
 			expected.u32, next.u32);
 	} while (current.u32 != expected.u32);
 }
@@ -64,8 +64,8 @@ inline static void atomic_fadd(volatile __global double *addr, double val)
 	current.f64 = *addr;
 	do{
 		expected.f64 = current.f64;
-		next.f64	 = expected.f64 + val;
-		current.u64	 = atom_cmpxchg((volatile __global ulong*)addr,
+		next.f64     = expected.f64 + val;
+		current.u64  = atom_cmpxchg((volatile __global ulong*)addr,
 			expected.u64, next.u64);
 	} while (current.u64 != expected.u64);
 }
@@ -88,8 +88,6 @@ inline static int hamming_dist(int n, __global unsigned char *g,
 		uint H1 = *h1++, H2 = *h2++;
 		uint S1 = *s1++, S2 = *s2++, M = *sM++;
 		uint MASK = ((H1 ^ S2) | (H2 ^ S1)) & M;
-		if (n < 32)
-			MASK &= ~(((uint)-1) << n);
 
 		// popcount for '(H1 ^ S1) & MASK'
 		uint v1 = (H1 ^ S1) & MASK;
@@ -491,7 +489,7 @@ hlaAttrBagging_gpu <- function(hla, snp, nclassifier=100,
 		verbose, verbose.detail, .packageEnv$gpu_proc_ptr, PACKAGE="HIBAG")
 
 	# output
-	rv <- list(n.samp = n.samp, n.snp = n.snp, sample.id = samp.id,
+	mod <- list(n.samp = n.samp, n.snp = n.snp, sample.id = samp.id,
 		snp.id = tmp.snp.id, snp.position = tmp.snp.position,
 		snp.allele = tmp.snp.allele,
 		snp.allele.freq = 0.5*rowMeans(snp.geno, na.rm=TRUE),
@@ -500,10 +498,21 @@ hlaAttrBagging_gpu <- function(hla, snp, nclassifier=100,
 		assembly = as.character(snp$assembly)[1L],
 		model = ABmodel,
 		appendix = list())
-	if (is.na(rv$assembly)) rv$assembly <- "unknown"
+	if (is.na(mod$assembly)) mod$assembly <- "unknown"
 
-	class(rv) <- "hlaAttrBagClass"
-	rv
+	class(mod) <- "hlaAttrBagClass"
+
+
+    ###################################################################
+    # calculate matching statistic
+    if (verbose)
+        cat("Calculating matching statistic:\n")
+    pd <- hlaPredict_gpu(mod, snp.geno, verbose=FALSE)
+    mod$matching <- pd$value$matching
+    if (verbose)
+        print(summary(mod$matching))
+
+    mod
 }
 
 
