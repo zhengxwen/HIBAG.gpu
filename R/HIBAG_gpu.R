@@ -478,6 +478,7 @@ hlaAttrBagging_gpu <- function(hla, snp, nclassifier=100,
 			mtry, "\n", sep="")
 		cat("# of SNPs: ", n.snp, ", # of samples: ", n.samp, "\n", sep="")
 		cat("# of unique HLA alleles: ", n.hla, "\n", sep="")
+		cat("using ", .packageEnv$prec_build, "-precision floating-point numbers in GPU computing\n", sep="")
 	}
 
 
@@ -529,6 +530,11 @@ hlaPredict_gpu <- function(object, snp,
 
 	# GPU platform
 	on.exit({ HIBAG:::.hlaClearGPU() })
+	if (verbose)
+	{
+		cat("Using ", .packageEnv$prec_predict,
+			"-precision floating-point numbers in GPU computing\n", sep="")
+	}
 
 	predict(object, snp, NULL, type, vote, allele.check, match.type,
 		same.strand, verbose, proc_ptr=.packageEnv$gpu_proc_ptr)
@@ -552,86 +558,83 @@ hlaGPU_BuildKernel <- function(device, name, code, precision=c("single", "double
 
 
 
-hlaGPU_Init <- function(device=NULL, use_double=NA, force=FALSE, verbose=TRUE)
+.gpu_init <- function(device, use_double, force, showmsg)
 {
-	# check
-	stopifnot(is.null(device) | inherits(device, "clDeviceID"))
-	stopifnot(is.logical(use_double), length(use_double)==1L)
-	stopifnot(is.logical(force), length(force)==1L)
-	stopifnot(is.logical(verbose), length(verbose)==1L)
-
-	if (is.null(device))
-	{
-		device <- oclDevices(oclPlatforms()[[1L]])[[1L]]
-		if (!inherits(device, "clDeviceID"))
-			stop("No available GPU device.")
-	}
-
+	stopifnot(inherits(device, "clDeviceID"))
 	exts <- oclInfo(device)$exts
 
-	# support 64-bit floating number or not
+	# support 64-bit floating-point number or not
 	dev_fp64 <- any(grepl("cl_khr_fp64", exts))
 	if (dev_fp64)
 	{
-		if (verbose)
-			message("GPU device supports 64-bit floating-point number.")
 		if (!grepl("cl_khr_int64_base_atomics", exts))
 		{
-			if (verbose)
-				message("    no support of `cl_khr_int64_base_atomics`")
-			if (!isTRUE(force)) dev_fp64 <- FALSE
+			showmsg("GPU device supports 64-bit floating-point number,")
+			showmsg("    but it does not support the extension 'cl_khr_int64_base_atomics'")
+			if (isTRUE(force))
+			{
+				showmsg("    force to use 64-bit floating-point number since `force=TRUE`")
+			} else {
+				showmsg("    switch to 32-bit floating-point number due to the hardware limit")
+				dev_fp64 <- FALSE
+			}
+		} else {
+			showmsg("GPU device supports 64-bit floating-point number.")
 		}
 	} else {
-		if (verbose)
-			message("GPU device does not support 64-bit floating-point number.")
-		use_double <- FALSE
+		showmsg("GPU device does not support 64-bit floating-point number.")
 	}
 
-	if (is.na(use_double))
+	if (is.na(use_double) & dev_fp64)
 	{
-		use_double <- dev_fp64
+		f64_build <- FALSE
+		f64_pred  <- TRUE
+		showmsg("By default, training uses 32-bit floating-point number and prediction uses 64-bit floating-point number in GPU computing.")
 	} else if (isTRUE(use_double))
 	{
 		if (!dev_fp64)
-		{
-			message("Switch to 32-bit floating-point number due to the hardware limit.")
-			use_double <- FALSE
-		}
+			stop("Fail to use 64-bit floating-point number in GPU computing.")
+		f64_build <- f64_pred <- TRUE
+		showmsg("Training and prediction both use 64-bit floating-point number in GPU computing.")
+	} else {
+		f64_build <- FALSE
+		f64_pred  <- FALSE
+		showmsg("Training and prediction both use 32-bit floating-point number in GPU computing.")
 	}
 
-	if (verbose)
-	{
-		if (use_double)
-			message("using 64-bit floating-point number")
-		else
-			message("using 32-bit floating-point number")
-	}
+	## build OpenCL kernels
 
-	if (use_double)
+	code_src <- c("double", "sz_haplo = 16")
+	code_dst <- c("float", "sz_haplo = 24")
+
+	if (f64_build)
 	{
-		.packageEnv$precision <- "double"
+		.packageEnv$prec_build <- "double"
 		.packageEnv$code_build <- paste(
 			"#pragma OPENCL EXTENSION cl_khr_fp64 : enable",
 			code_atomic_add_f64,
 			code_hamming_dist, code_build_model, collapse="\n")
+	} else {
+		.packageEnv$prec_build <- "single"
+		s <- code_build_model
+		for (i in seq_along(code_src))
+			s <- gsub(code_src[i], code_dst[i], s, fixed=TRUE)
+		.packageEnv$code_build <- paste(
+			code_atomic_add_f32, code_hamming_dist, s, collapse="\n")
+	}
+
+	if (f64_pred)
+	{
+		.packageEnv$prec_predict <- "double"
 		.packageEnv$code_predict <- paste(
 			"#pragma OPENCL EXTENSION cl_khr_fp64 : enable",
 			code_atomic_add_f64,
 			code_hamming_dist, code_predict_prob, collapse="\n")
 	} else {
-		.packageEnv$precision <- "single"
-		src <- c("double", "sz_haplo = 16")
-		dst <- c("float", "sz_haplo = 24")
-		# build
-		s <- code_build_model
-		for (i in seq_along(src))
-			s <- gsub(src[i], dst[i], s, fixed=TRUE)
-		.packageEnv$code_build <- paste(
-			code_atomic_add_f32, code_hamming_dist, s, collapse="\n")
-		# predict
+		.packageEnv$prec_predict <- "single"
 		s <- code_predict_prob
-		for (i in seq_along(src))
-			s <- gsub(src[i], dst[i], s, fixed=TRUE)
+		for (i in seq_along(code_src))
+			s <- gsub(code_src[i], code_dst[i], s, fixed=TRUE)
 		.packageEnv$code_predict <- paste(
 			code_atomic_add_f32, code_hamming_dist, s, collapse="\n")
 	}
@@ -639,7 +642,7 @@ hlaGPU_Init <- function(device=NULL, use_double=NA, force=FALSE, verbose=TRUE)
 	# build kernels for constructing classifiers
 	k <- hlaGPU_BuildKernel(device,
 		c("build_calc_prob", "build_find_maxprob", "build_sum_prob"),
-		.packageEnv$code_build, precision=.packageEnv$precision)
+		.packageEnv$code_build, precision=.packageEnv$prec_build)
 	.packageEnv$build_calc_prob <- k[[1L]]
 	.packageEnv$build_find_maxprob <- k[[2L]]
 	.packageEnv$build_sum_prob <- k[[3L]]
@@ -647,7 +650,7 @@ hlaGPU_Init <- function(device=NULL, use_double=NA, force=FALSE, verbose=TRUE)
 	# build kernels for prediction
 	k <- hlaGPU_BuildKernel(device,
 		c("pred_calc_prob", "pred_calc_sumprob", "pred_calc_addprob"),
-		.packageEnv$code_predict, precision=.packageEnv$precision)
+		.packageEnv$code_predict, precision=.packageEnv$prec_predict)
 	.packageEnv$kernel_pred <- k[[1L]]
 	.packageEnv$kernel_pred_sumprob <- k[[2L]]
 	.packageEnv$kernel_pred_addprob <- k[[3L]] 
@@ -666,6 +669,28 @@ hlaGPU_Init <- function(device=NULL, use_double=NA, force=FALSE, verbose=TRUE)
 }
 
 
+hlaGPU_Init <- function(device=NULL, use_double=NA, force=FALSE, verbose=TRUE)
+{
+	# check
+	stopifnot(is.null(device) | inherits(device, "clDeviceID"))
+	stopifnot(is.logical(use_double), length(use_double)==1L)
+	stopifnot(is.logical(force), length(force)==1L)
+	stopifnot(is.logical(verbose), length(verbose)==1L)
+
+	if (is.null(device))
+	{
+		device <- oclDevices(oclPlatforms()[[1L]])[[1L]]
+		if (!inherits(device, "clDeviceID"))
+			stop("No available GPU device.")
+	}
+
+	.gpu_init(device, use_double, force,
+		ifelse(verbose, message, function(x) {}))
+
+	invisible()
+}
+
+
 
 #######################################################################
 # Export stardard R library function(s)
@@ -673,17 +698,17 @@ hlaGPU_Init <- function(device=NULL, use_double=NA, force=FALSE, verbose=TRUE)
 
 .onAttach <- function(lib, pkg)
 {
+	packageStartupMessage("Available OpenCL platform(s):")
 	platform <- oclPlatforms()
 	for (i in seq_along(platform))
 	{
 		ii <- oclInfo(platform[[i]])
-		s <- paste0("Available OpenCL platform: ", ii$name, ", ", ii$version)
-		packageStartupMessage(s)
+		packageStartupMessage(paste0("    ", ii$name, ", ", ii$version))
 		dev <- oclDevices(platform[[i]])
 		for (j in seq_along(dev))
 		{
 			ii <- oclInfo(dev[[i]])
-			s <- paste0("    Device: ", ii$vendor, " ", ii$name)
+			s <- paste0("        Device: ", ii$vendor, " ", ii$name)
 			packageStartupMessage(s)
 		}
 	}
@@ -696,22 +721,10 @@ hlaGPU_Init <- function(device=NULL, use_double=NA, force=FALSE, verbose=TRUE)
 	if (!grepl("cl_khr_global_int32_base_atomics", exts))
 		stop("Need the OpenCL extension cl_khr_global_int32_base_atomics.")
 
-	# support 64-bit floating number or not
-	dev_fp64 <- any(grepl("cl_khr_fp64", exts))
-	if (dev_fp64)
-	{
-		packageStartupMessage("GPU device supports 64-bit floating number.")
-		if (!grepl("cl_khr_int64_base_atomics", exts))
-		{
-			packageStartupMessage("But it does not support cl_khr_int64_base_atomics, switch to 32-bit floating number.")
-			dev_fp64 <- FALSE
-		}
-	} else {
-		packageStartupMessage("No support of 64-bit floating number and use 32-bit floating number instead.")
-	}
+	# initialize
+	.gpu_init(dev, NA, FALSE, packageStartupMessage)
 
-	hlaGPU_Init(dev, dev_fp64, verbose=FALSE)
-
+	# set procedure pointer
 	.packageEnv$gpu_proc_ptr <- .Call(gpu_init_proc)
 
 	TRUE
