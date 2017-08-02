@@ -46,6 +46,13 @@
 #endif
 
 
+#define HIBAG_ENABLE_TIMING
+
+#ifdef HIBAG_ENABLE_TIMING
+#   include <time.h>
+#endif
+
+
 
 #define GPU_CREATE_MEM(x, flag, size, ptr)	  \
 	x = clCreateBuffer(gpu_context, flag, size, ptr, &err); \
@@ -315,6 +322,35 @@ namespace HLA_LIB
 using namespace std;
 using namespace HLA_LIB;
 
+
+// ========================================================================= //
+
+#ifdef HIBAG_ENABLE_TIMING
+
+static clock_t timing_array[5];
+
+template<size_t I> struct TTiming
+{
+	clock_t start;
+	inline TTiming() { start = clock(); }
+	inline ~TTiming() { Stop(); }
+	inline void Stop() { timing_array[I] += clock() - start; }
+};
+
+#define HIBAG_TIMING(i)    TTiming<i> tm;
+#define TM_BUILD_TOTAL         0
+#define TM_BUILD_OOB_PROB      1
+#define TM_BUILD_OOB_MAXIDX    2
+#define TM_BUILD_IB_PROB       3
+#define TM_BUILD_IB_LOGLIK     4
+
+#else
+#   define HIBAG_TIMING(i)
+#endif
+
+
+// ========================================================================= //
+
 extern "C"
 {
 
@@ -552,6 +588,11 @@ static inline void init_exp_log_memory()
 // initialize the internal structure for building a model
 void build_init(int nHLA, int nSample)
 {
+#ifdef HIBAG_ENABLE_TIMING
+	memset(timing_array, 0, sizeof(timing_array));
+	timing_array[TM_BUILD_TOTAL] = clock();
+#endif
+
 	cl_int err;
 	gpu_kernel	= get_kernel(kernel_build_prob);
 	gpu_kernel2 = get_kernel(kernel_build_find_maxprob);
@@ -638,6 +679,25 @@ void build_done()
 	GPU_FREE_MEM(mem_build_output);
 	GPU_FREE_MEM(mem_prob_buffer);
 	GPU_FREE_COM(gpu_commands);
+
+#ifdef HIBAG_ENABLE_TIMING
+	timing_array[TM_BUILD_TOTAL] = clock() - timing_array[TM_BUILD_TOTAL];
+	Rprintf("It took %0.2f seconds in total:\n"
+			"    OOB prob(): %0.2f%%, %0.2fs\n"
+			"    OOB max index: %0.2f%%, %0.2fs\n"
+			"    IB prob(): %0.2f%%, %0.2fs\n"
+			"    IB log likelihood(): %0.2f%%, %0.2fs\n",
+		((double)timing_array[TM_BUILD_TOTAL]) / CLOCKS_PER_SEC,
+		100.0 * timing_array[TM_BUILD_OOB_PROB] / timing_array[TM_BUILD_TOTAL],
+		((double)timing_array[TM_BUILD_OOB_PROB]) / CLOCKS_PER_SEC,
+		100.0 * timing_array[TM_BUILD_OOB_MAXIDX] / timing_array[TM_BUILD_TOTAL],
+		((double)timing_array[TM_BUILD_OOB_MAXIDX]) / CLOCKS_PER_SEC,
+		100.0 * timing_array[TM_BUILD_IB_PROB] / timing_array[TM_BUILD_TOTAL],
+		((double)timing_array[TM_BUILD_IB_PROB]) / CLOCKS_PER_SEC,
+		100.0 * timing_array[TM_BUILD_IB_LOGLIK] / timing_array[TM_BUILD_TOTAL],
+		((double)timing_array[TM_BUILD_IB_LOGLIK]) / CLOCKS_PER_SEC
+	);
+#endif
 }
 
 void build_set_bootstrap(const int oob_cnt[])
@@ -705,18 +765,24 @@ int build_acc_oob()
 	int param[5] = { num_haplo, num_snp, 0, num_oob, offset_build_param };
 	GPU_WRITE_MEM(mem_build_param, 0, sizeof(param), param);
 
-	// run OpenCL
-	size_t wdims_k1[2] = { wdim_n_haplo, wdim_n_haplo };
-	static const size_t local_size_k1[2] = { gpu_local_size_d2, gpu_local_size_d2 };
-	GPU_RUN_KERNAL(gpu_kernel, 2, wdims_k1, local_size_k1);
+	// run OpenCL (calculating probabilities)
+	{
+		HIBAG_TIMING(TM_BUILD_OOB_PROB)
+		size_t wdims[2] = { wdim_n_haplo, wdim_n_haplo };
+		static const size_t local_size[2] = { gpu_local_size_d2, gpu_local_size_d2 };
+		GPU_RUN_KERNAL(gpu_kernel, 2, wdims, local_size);
+	}
 
 	// result
 	int corrent_cnt = 0;
 
 	// find max index
-	size_t wdims_k2[2] = { gpu_local_size_d1, num_oob };
-	static const size_t local_size_k2[2] = { gpu_local_size_d1, 1 };
-	GPU_RUN_KERNAL(gpu_kernel2, 2, wdims_k2, local_size_k2);
+	{
+		HIBAG_TIMING(TM_BUILD_OOB_MAXIDX)
+		size_t wdims[2] = { gpu_local_size_d1, num_oob };
+		static const size_t local_size[2] = { gpu_local_size_d1, 1 };
+		GPU_RUN_KERNAL(gpu_kernel2, 2, wdims, local_size);
+	}
 
 	void *ptr_geno, *ptr_index, *ptr_out;
 	GPU_MAP_MEM(mem_snpgeno, ptr_geno, sizeof(TGenotype)*Num_Sample);
@@ -762,18 +828,24 @@ double build_acc_ib()
 	int param[5] = { num_haplo, num_snp, 0, num_ib, offset_build_param+Num_Sample };
 	GPU_WRITE_MEM(mem_build_param, 0, sizeof(param), param);
 
-	// run OpenCL
-	size_t wdims_k1[2] = { wdim_n_haplo, wdim_n_haplo };
-	static const size_t local_size_k1[2] = { gpu_local_size_d2, gpu_local_size_d2 };
-	GPU_RUN_KERNAL(gpu_kernel, 2, wdims_k1, local_size_k1);
+	// run OpenCL (calculating probabilities)
+	{
+		HIBAG_TIMING(TM_BUILD_IB_PROB)
+		size_t wdims[2] = { wdim_n_haplo, wdim_n_haplo };
+		static const size_t local_size[2] = { gpu_local_size_d2, gpu_local_size_d2 };
+		GPU_RUN_KERNAL(gpu_kernel, 2, wdims, local_size);
+	}
 
 	// result
 	double LogLik = 0;
 
 	// get log likelihood
-	size_t wdims_k3[2] = { gpu_local_size_d1, num_ib };
-	static const size_t local_size_k3[2] = { gpu_local_size_d1, 1 };
-	GPU_RUN_KERNAL(gpu_kernel3, 2, wdims_k3, local_size_k3);
+	{
+		HIBAG_TIMING(TM_BUILD_IB_LOGLIK)
+		size_t wdims[2] = { gpu_local_size_d1, num_ib };
+		static const size_t local_size[2] = { gpu_local_size_d1, 1 };
+		GPU_RUN_KERNAL(gpu_kernel3, 2, wdims, local_size);
+	}
 
 	void *ptr_out;
 	GPU_MAP_MEM(mem_build_output, ptr_out, sizeof(double)*num_ib*3);
