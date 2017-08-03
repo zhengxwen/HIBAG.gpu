@@ -260,6 +260,7 @@ namespace HLA_LIB
 	static cl_kernel gpu_kernel	 = NULL;
 	static cl_kernel gpu_kernel2 = NULL;
 	static cl_kernel gpu_kernel3 = NULL;
+	static cl_kernel gpu_kernel_clear = NULL;
 	static bool gpu_f64_flag = false;
 
 	// haplotypes of all classifiers
@@ -282,6 +283,7 @@ namespace HLA_LIB
 	static SEXP kernel_build_prob = NULL;
 	static SEXP kernel_build_find_maxprob = NULL;
 	static SEXP kernel_build_sum_prob = NULL;
+	static SEXP kernel_build_clear = NULL;
 
 	// parameters
 	static cl_mem mem_build_param = NULL;
@@ -327,7 +329,7 @@ using namespace HLA_LIB;
 
 #ifdef HIBAG_ENABLE_TIMING
 
-static clock_t timing_array[5];
+static clock_t timing_array[7];
 
 template<size_t I> struct TTiming
 {
@@ -339,10 +341,12 @@ template<size_t I> struct TTiming
 
 #define HIBAG_TIMING(i)    TTiming<i> tm;
 #define TM_BUILD_TOTAL         0
-#define TM_BUILD_OOB_PROB      1
-#define TM_BUILD_OOB_MAXIDX    2
-#define TM_BUILD_IB_PROB       3
-#define TM_BUILD_IB_LOGLIK     4
+#define TM_BUILD_OOB_CLEAR     1
+#define TM_BUILD_OOB_PROB      2
+#define TM_BUILD_OOB_MAXIDX    3
+#define TM_BUILD_IB_CLEAR      4
+#define TM_BUILD_IB_PROB       5
+#define TM_BUILD_IB_LOGLIK     6
 
 #else
 #   define HIBAG_TIMING(i)
@@ -541,6 +545,8 @@ SEXP gpu_set_val(SEXP idx, SEXP val)
 			kernel_build_find_maxprob = val; break;
 		case 3:
 			kernel_build_sum_prob = val; break;
+		case 4:
+			kernel_build_clear = val; break;
 		case 11:
 			kernel_predict = val; break;
 		case 12:
@@ -585,6 +591,18 @@ static inline void init_exp_log_memory()
 	}
 }
 
+static inline void clear_prob_buffer(size_t size)
+{
+	cl_int err;
+	int n = size >> 2;
+	GPU_SETARG(gpu_kernel_clear, 0, n);
+	size_t wdim = n / gpu_local_size_d1;
+	if (n % gpu_local_size_d1) wdim++;
+	wdim *= gpu_local_size_d1;
+	GPU_RUN_KERNAL(gpu_kernel_clear, 1, &wdim, &gpu_local_size_d1);
+}
+
+
 // initialize the internal structure for building a model
 void build_init(int nHLA, int nSample)
 {
@@ -597,6 +615,7 @@ void build_init(int nHLA, int nSample)
 	gpu_kernel	= get_kernel(kernel_build_prob);
 	gpu_kernel2 = get_kernel(kernel_build_find_maxprob);
 	gpu_kernel3 = get_kernel(kernel_build_sum_prob);
+	gpu_kernel_clear = get_kernel(kernel_build_clear);
 	init_command(kernel_build_prob);
 
 	// assign
@@ -666,6 +685,9 @@ void build_init(int nHLA, int nSample)
 	GPU_SETARG(gpu_kernel3, 3, mem_snpgeno);
 	GPU_SETARG(gpu_kernel3, 4, mem_prob_buffer);
 	GPU_SETARG(gpu_kernel3, 5, mem_build_output);
+
+	// arguments for gpu_kernel_clear: clear_memory
+	GPU_SETARG(gpu_kernel_clear, 1, mem_prob_buffer);
 }
 
 
@@ -682,16 +704,22 @@ void build_done()
 
 #ifdef HIBAG_ENABLE_TIMING
 	timing_array[TM_BUILD_TOTAL] = clock() - timing_array[TM_BUILD_TOTAL];
-	Rprintf("It took %0.2f seconds in total:\n"
+	Rprintf("GPU implementation took %0.2f seconds in total:\n"
+			"    OOB init(): %0.2f%%, %0.2fs\n"
 			"    OOB prob(): %0.2f%%, %0.2fs\n"
 			"    OOB max index: %0.2f%%, %0.2fs\n"
+			"    IB init(): %0.2f%%, %0.2fs\n"
 			"    IB prob(): %0.2f%%, %0.2fs\n"
 			"    IB log likelihood(): %0.2f%%, %0.2fs\n",
 		((double)timing_array[TM_BUILD_TOTAL]) / CLOCKS_PER_SEC,
+		100.0 * timing_array[TM_BUILD_OOB_CLEAR] / timing_array[TM_BUILD_TOTAL],
+		((double)timing_array[TM_BUILD_OOB_CLEAR]) / CLOCKS_PER_SEC,
 		100.0 * timing_array[TM_BUILD_OOB_PROB] / timing_array[TM_BUILD_TOTAL],
 		((double)timing_array[TM_BUILD_OOB_PROB]) / CLOCKS_PER_SEC,
 		100.0 * timing_array[TM_BUILD_OOB_MAXIDX] / timing_array[TM_BUILD_TOTAL],
 		((double)timing_array[TM_BUILD_OOB_MAXIDX]) / CLOCKS_PER_SEC,
+		100.0 * timing_array[TM_BUILD_IB_CLEAR] / timing_array[TM_BUILD_TOTAL],
+		((double)timing_array[TM_BUILD_IB_CLEAR]) / CLOCKS_PER_SEC,
 		100.0 * timing_array[TM_BUILD_IB_PROB] / timing_array[TM_BUILD_TOTAL],
 		((double)timing_array[TM_BUILD_IB_PROB]) / CLOCKS_PER_SEC,
 		100.0 * timing_array[TM_BUILD_IB_LOGLIK] / timing_array[TM_BUILD_TOTAL],
@@ -760,10 +788,12 @@ int build_acc_oob()
 	cl_int err;
 
 	// initialize
-	const size_t msize_buffer = msize_probbuf_each * num_oob;
-	GPU_ZERO_FILL(mem_prob_buffer, msize_buffer);
-	int param[5] = { num_haplo, num_snp, 0, num_oob, offset_build_param };
-	GPU_WRITE_MEM(mem_build_param, 0, sizeof(param), param);
+	{
+		HIBAG_TIMING(TM_BUILD_OOB_CLEAR)
+		clear_prob_buffer(msize_probbuf_each * num_oob);
+		int param[5] = { num_haplo, num_snp, 0, num_oob, offset_build_param };
+		GPU_WRITE_MEM(mem_build_param, 0, sizeof(param), param);
+	}
 
 	// run OpenCL (calculating probabilities)
 	{
@@ -821,12 +851,15 @@ double build_acc_ib()
 	if (num_ib > mem_nmax_sample)
 		throw "There are too many sample out of the limit of GPU memory, please contact the package author.";
 
-	// initialize
 	cl_int err;
-	const size_t msize_buffer = msize_probbuf_each * num_ib;
-	GPU_ZERO_FILL(mem_prob_buffer, msize_buffer);
-	int param[5] = { num_haplo, num_snp, 0, num_ib, offset_build_param+Num_Sample };
-	GPU_WRITE_MEM(mem_build_param, 0, sizeof(param), param);
+
+	// initialize
+	{
+		HIBAG_TIMING(TM_BUILD_IB_CLEAR)
+		clear_prob_buffer(msize_probbuf_each * num_ib);
+		int param[5] = { num_haplo, num_snp, 0, num_ib, offset_build_param+Num_Sample };
+		GPU_WRITE_MEM(mem_build_param, 0, sizeof(param), param);
+	}
 
 	// run OpenCL (calculating probabilities)
 	{
@@ -847,6 +880,7 @@ double build_acc_ib()
 		GPU_RUN_KERNAL(gpu_kernel3, 2, wdims, local_size);
 	}
 
+	// sum of log likelihood
 	void *ptr_out;
 	GPU_MAP_MEM(mem_build_output, ptr_out, sizeof(double)*num_ib*3);
 
@@ -1109,9 +1143,6 @@ SEXP gpu_init_proc()
 	}
 	for (int i=0; i < n; i++)
 		EXP_LOG_MIN_RARE_FREQ_f32[i] = double(1) * EXP_LOG_MIN_RARE_FREQ[i];
-
-	// for (int i=0; i < n; i++)
-	// Rprintf("%3d, f64: %e, f32: %e\n", i, EXP_LOG_MIN_RARE_FREQ[i], EXP_LOG_MIN_RARE_FREQ_f32[i]);
 
 	GPU_Proc.build_init = build_init;
 	GPU_Proc.build_done = build_done;

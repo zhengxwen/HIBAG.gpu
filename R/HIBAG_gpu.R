@@ -105,6 +105,14 @@ inline static int hamming_dist(int n, __global unsigned char *g,
 }
 "
 
+code_clear_memory <- "
+__kernel void clear_memory(const int n, __global int *p)
+{
+	const int i = get_global_id(0);
+	if (i < n) p[i] = 0;
+}
+"
+
 
 code_build_model <- "
 __kernel void build_calc_prob(
@@ -563,43 +571,46 @@ hlaGPU_BuildKernel <- function(device, name, code, precision=c("single", "double
 	stopifnot(inherits(device, "clDeviceID"))
 	exts <- oclInfo(device)$exts
 
-	# support 64-bit floating-point number or not
+	# support 64-bit floating-point numbers or not
 	dev_fp64 <- any(grepl("cl_khr_fp64", exts))
 	if (dev_fp64)
 	{
 		if (!grepl("cl_khr_int64_base_atomics", exts))
 		{
-			showmsg("GPU device supports 64-bit floating-point number,")
+			showmsg("GPU device supports 64-bit floating-point numbers,")
 			showmsg("    but it does not support the extension 'cl_khr_int64_base_atomics'")
 			if (isTRUE(force))
 			{
-				showmsg("    force to use 64-bit floating-point number since `force=TRUE`")
+				showmsg("    force to use 64-bit floating-point numbers since `force=TRUE`")
 			} else {
-				showmsg("    switch to 32-bit floating-point number due to the hardware limit")
+				showmsg("    switch to 32-bit floating-point numbers due to the hardware limit")
 				dev_fp64 <- FALSE
 			}
 		} else {
-			showmsg("GPU device supports 64-bit floating-point number.")
+			showmsg("GPU device supports 64-bit floating-point numbers.")
 		}
 	} else {
-		showmsg("GPU device does not support 64-bit floating-point number.")
+		showmsg("GPU device does not support 64-bit floating-point numbers.")
 	}
 
 	if (is.na(use_double) & dev_fp64)
 	{
 		f64_build <- FALSE
 		f64_pred  <- TRUE
-		showmsg("By default, training uses 32-bit floating-point number and prediction uses 64-bit floating-point number in GPU computing.")
+		showmsg("By default, training uses 32-bit floating-point numbers and prediction uses 64-bit floating-point numbers in GPU computing.")
 	} else if (isTRUE(use_double))
 	{
 		if (!dev_fp64)
-			stop("Fail to use 64-bit floating-point number in GPU computing.")
+		{
+			stop("Unable to use 64-bit floating-point numbers in GPU computing.",
+				call.=FALSE)
+		}
 		f64_build <- f64_pred <- TRUE
-		showmsg("Training and prediction both use 64-bit floating-point number in GPU computing.")
+		showmsg("Training and prediction both use 64-bit floating-point numbers in GPU computing.")
 	} else {
 		f64_build <- FALSE
 		f64_pred  <- FALSE
-		showmsg("Training and prediction both use 32-bit floating-point number in GPU computing.")
+		showmsg("Training and prediction both use 32-bit floating-point numbers in GPU computing.")
 	}
 
 	## build OpenCL kernels
@@ -612,15 +623,16 @@ hlaGPU_BuildKernel <- function(device, name, code, precision=c("single", "double
 		.packageEnv$prec_build <- "double"
 		.packageEnv$code_build <- paste(
 			"#pragma OPENCL EXTENSION cl_khr_fp64 : enable",
-			code_atomic_add_f64,
-			code_hamming_dist, code_build_model, collapse="\n")
+			code_atomic_add_f64, code_hamming_dist,
+			code_build_model, code_clear_memory, collapse="\n")
 	} else {
 		.packageEnv$prec_build <- "single"
 		s <- code_build_model
 		for (i in seq_along(code_src))
 			s <- gsub(code_src[i], code_dst[i], s, fixed=TRUE)
 		.packageEnv$code_build <- paste(
-			code_atomic_add_f32, code_hamming_dist, s, collapse="\n")
+			code_atomic_add_f32, code_hamming_dist, s, code_clear_memory,
+			collapse="\n")
 	}
 
 	if (f64_pred)
@@ -641,11 +653,12 @@ hlaGPU_BuildKernel <- function(device, name, code, precision=c("single", "double
 
 	# build kernels for constructing classifiers
 	k <- hlaGPU_BuildKernel(device,
-		c("build_calc_prob", "build_find_maxprob", "build_sum_prob"),
+		c("build_calc_prob", "build_find_maxprob", "build_sum_prob", "clear_memory"),
 		.packageEnv$code_build, precision=.packageEnv$prec_build)
-	.packageEnv$build_calc_prob <- k[[1L]]
-	.packageEnv$build_find_maxprob <- k[[2L]]
-	.packageEnv$build_sum_prob <- k[[3L]]
+	.packageEnv$kernel_build_calc_prob <- k[[1L]]
+	.packageEnv$kernel_build_find_maxprob <- k[[2L]]
+	.packageEnv$kernel_build_sum_prob <- k[[3L]]
+	.packageEnv$kernel_build_clearmem <- k[[4L]]
 
 	# build kernels for prediction
 	k <- hlaGPU_BuildKernel(device,
@@ -658,9 +671,10 @@ hlaGPU_BuildKernel <- function(device, name, code, precision=c("single", "double
 	# set double floating flag
 	.Call(gpu_set_val, 0L, use_double)
 	# set OpenCL kernels
-	.Call(gpu_set_val,  1L, .packageEnv$build_calc_prob)
-	.Call(gpu_set_val,  2L, .packageEnv$build_find_maxprob)
-	.Call(gpu_set_val,  3L, .packageEnv$build_sum_prob)
+	.Call(gpu_set_val,  1L, .packageEnv$kernel_build_calc_prob)
+	.Call(gpu_set_val,  2L, .packageEnv$kernel_build_find_maxprob)
+	.Call(gpu_set_val,  3L, .packageEnv$kernel_build_sum_prob)
+	.Call(gpu_set_val,  4L, .packageEnv$kernel_build_clearmem)
 	.Call(gpu_set_val, 11L, .packageEnv$kernel_pred)
 	.Call(gpu_set_val, 12L, .packageEnv$kernel_pred_sumprob)
 	.Call(gpu_set_val, 13L, .packageEnv$kernel_pred_addprob)
