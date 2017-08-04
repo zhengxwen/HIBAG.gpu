@@ -542,6 +542,11 @@ hlaPredict_gpu <- function(object, snp,
 	{
 		cat("Using ", .packageEnv$prec_predict,
 			"-precision floating-point numbers in GPU computing\n", sep="")
+		if (.packageEnv$prec_predict == "single")
+		{
+			warning("single precision may reduce the prediction accuracy (slightly).",
+				call.=FALSE, immediate.=TRUE)
+		}
 	}
 
 	predict(object, snp, NULL, type, vote, allele.check, match.type,

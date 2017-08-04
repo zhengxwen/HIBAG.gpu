@@ -803,9 +803,6 @@ int build_acc_oob()
 		GPU_RUN_KERNAL(gpu_kernel, 2, wdims, local_size);
 	}
 
-	// result
-	int corrent_cnt = 0;
-
 	// find max index
 	{
 		HIBAG_TIMING(TM_BUILD_OOB_MAXIDX)
@@ -813,6 +810,9 @@ int build_acc_oob()
 		static const size_t local_size[2] = { gpu_local_size_d1, 1 };
 		GPU_RUN_KERNAL(gpu_kernel2, 2, wdims, local_size);
 	}
+
+	// result
+	int corrent_cnt = 0;
 
 	void *ptr_geno, *ptr_index, *ptr_out;
 	GPU_MAP_MEM(mem_snpgeno, ptr_geno, sizeof(TGenotype)*Num_Sample);
