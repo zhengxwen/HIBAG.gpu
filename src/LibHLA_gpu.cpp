@@ -248,7 +248,7 @@ namespace HLA_LIB
 
 	// used for work-group size (1-dim and 2-dim)
 	const size_t gpu_local_size_d1 = 64;
-	const size_t gpu_local_size_d2 = 16;
+	const size_t gpu_local_size_d2 = 8;
 
 	// GPU variables
 	static int Num_HLA;
