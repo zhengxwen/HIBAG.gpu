@@ -2,7 +2,7 @@
 #
 # Package Name: HIBAG.gpu
 # Description:
-#	HIBAG -- GPU-based implementation for the HIBAG package
+#	HIBAG.gpu -- GPU-based implementation for the HIBAG package
 #
 # HIBAG R package, HLA Genotype Imputation with Attribute Bagging
 # Copyright (C) 2017   Xiuwen Zheng (zhengx@u.washington.edu)

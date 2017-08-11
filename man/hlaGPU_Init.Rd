@@ -37,7 +37,7 @@ p = oclPlatforms()
 d = oclDevices(p[[1]])
 
 # use the second GPU device
-hlaGPU_Init(d[[2L]])
+hlaGPU_Init(d[[2]])
 }
 }
 
