@@ -160,4 +160,5 @@ unlink(c("HIBAG_model.RData", "testgeno.RData", "HLASplit.RData"), force=TRUE)
 
 \keyword{HLA}
 \keyword{SNP}
+\keyword{GPU}
 \keyword{genetics}

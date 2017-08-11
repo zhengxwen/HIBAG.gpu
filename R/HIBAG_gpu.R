@@ -559,18 +559,18 @@ hlaPredict_gpu <- function(object, snp,
 # GPU utilities
 #
 
-hlaGPU_BuildKernel <- function(device, name, code, precision=c("single", "double"))
+# build opencl kernel from source code
+.build_kernel <- function(device, name, code, precision=c("single", "double"))
 {
 	stopifnot(inherits(device, "clDeviceID"))
 	stopifnot(is.character(name))
 	stopifnot(is.character(code))
 	precision <- match.arg(precision)
-
 	.Call(gpu_build_kernel, device, name, code, precision)
 }
 
 
-
+# initialize GPU device
 .gpu_init <- function(device, use_double, force, showmsg)
 {
 	stopifnot(inherits(device, "clDeviceID"))
@@ -661,7 +661,7 @@ hlaGPU_BuildKernel <- function(device, name, code, precision=c("single", "double
 	}
 
 	# build kernels for constructing classifiers
-	k <- hlaGPU_BuildKernel(device,
+	k <- .build_kernel(device,
 		c("build_calc_prob", "build_find_maxprob", "build_sum_prob", "clear_memory"),
 		.packageEnv$code_build, precision=.packageEnv$prec_build)
 	.packageEnv$kernel_build_calc_prob <- k[[1L]]
@@ -670,7 +670,7 @@ hlaGPU_BuildKernel <- function(device, name, code, precision=c("single", "double
 	.packageEnv$kernel_build_clearmem <- k[[4L]]
 
 	# build kernels for prediction
-	k <- hlaGPU_BuildKernel(device,
+	k <- .build_kernel(device,
 		c("pred_calc_prob", "pred_calc_sumprob", "pred_calc_addprob"),
 		.packageEnv$code_predict, precision=.packageEnv$prec_predict)
 	.packageEnv$kernel_pred <- k[[1L]]
@@ -692,6 +692,7 @@ hlaGPU_BuildKernel <- function(device, name, code, precision=c("single", "double
 }
 
 
+# initialize the internal GPU methods
 hlaGPU_Init <- function(device=NULL, use_double=NA, force=FALSE, verbose=TRUE)
 {
 	# check

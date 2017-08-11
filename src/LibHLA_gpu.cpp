@@ -46,7 +46,8 @@
 #endif
 
 
-#define HIBAG_ENABLE_TIMING
+// disable timing
+// #define HIBAG_ENABLE_TIMING
 
 #ifdef HIBAG_ENABLE_TIMING
 #   include <time.h>

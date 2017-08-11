@@ -109,4 +109,5 @@ pred <- hlaPredict_gpu(model, test.geno)
 
 \keyword{HLA}
 \keyword{SNP}
+\keyword{GPU}
 \keyword{genetics}
