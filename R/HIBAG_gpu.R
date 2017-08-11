@@ -574,28 +574,32 @@ hlaGPU_BuildKernel <- function(device, name, code, precision=c("single", "double
 .gpu_init <- function(device, use_double, force, showmsg)
 {
 	stopifnot(inherits(device, "clDeviceID"))
+
+	info <- oclInfo(device)
+	showmsg(paste("Using", info$vendor, info$name))
 	exts <- oclInfo(device)$exts
 
 	# support 64-bit floating-point numbers or not
 	dev_fp64 <- any(grepl("cl_khr_fp64", exts))
 	if (dev_fp64)
 	{
+		showmsg("GPU device supports 64-bit floating-point numbers")
 		if (!grepl("cl_khr_int64_base_atomics", exts))
 		{
-			showmsg("GPU device supports 64-bit floating-point numbers,")
-			showmsg("    but it does not support the extension 'cl_khr_int64_base_atomics'")
-			if (isTRUE(force))
+			if (!grepl("NVIDIA", oclInfo(device)$vendor))
 			{
-				showmsg("    force to use 64-bit floating-point numbers since `force=TRUE`")
-			} else {
-				showmsg("    switch to 32-bit floating-point numbers due to the hardware limit")
-				dev_fp64 <- FALSE
+				showmsg("    but it does not support the extension 'cl_khr_int64_base_atomics'")
+				if (isTRUE(force))
+				{
+					showmsg("    force to use 64-bit floating-point numbers since `force=TRUE`")
+				} else {
+					showmsg("    switch to 32-bit floating-point numbers due to the hardware limit")
+					dev_fp64 <- FALSE
+				}
 			}
-		} else {
-			showmsg("GPU device supports 64-bit floating-point numbers.")
 		}
 	} else {
-		showmsg("GPU device does not support 64-bit floating-point numbers.")
+		showmsg("GPU device does not support 64-bit floating-point numbers")
 	}
 
 	if (is.na(use_double) & dev_fp64)
@@ -726,8 +730,8 @@ hlaGPU_Init <- function(device=NULL, use_double=NA, force=FALSE, verbose=TRUE)
 		dev <- oclDevices(platform[[i]])
 		for (j in seq_along(dev))
 		{
-			ii <- oclInfo(dev[[i]])
-			s <- paste0("        Device: ", ii$vendor, " ", ii$name)
+			ii <- oclInfo(dev[[j]])
+			s <- paste0("        Device #", j, ": ", ii$vendor, " ", ii$name)
 			packageStartupMessage(s)
 		}
 	}
@@ -741,6 +745,7 @@ hlaGPU_Init <- function(device=NULL, use_double=NA, force=FALSE, verbose=TRUE)
 		stop("Need the OpenCL extension cl_khr_global_int32_base_atomics.")
 
 	# initialize
+	packageStartupMessage("")
 	.gpu_init(dev, NA, FALSE, packageStartupMessage)
 
 	# set procedure pointer
