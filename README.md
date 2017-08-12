@@ -8,6 +8,15 @@ R package -- a GPU-based extension for the [HIBAG](https://github.com/zhengxwen/
 * [OpenCL](https://cran.r-project.org/web/packages/OpenCL/index.html) R package
 
 
+## Performance
+
+Speedup:
+
+| Baseline (CPU, a single thread) | CPU + POPCNT, a single thread | NVIDIA Tesla K20Xm | NVIDIA Tesla M40 | NVIDIA Tesla P100 |
+|---------------------------------|-------------------------------|--------------------|------------------|-------------------|
+|                                 | 1                             | 14.2               | 21.7             | 74.6              |
+
+
 ## Installation
 
 * Development version from Github:
