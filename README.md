@@ -12,9 +12,11 @@ R package -- a GPU-based extension for the [HIBAG](https://github.com/zhengxwen/
 
 Speedup:
 
-| CPU (1 core) | CPU + POPCNT (1 core) | NVIDIA Tesla K20Xm | NVIDIA Tesla K80 | NVIDIA Tesla M40 | NVIDIA Tesla P100 |
-|:------------:|:---------------------:|:------------------:|:----------------:|:----------------:|:-----------------:|
-|              | 1                     | 14.2               | 14.9             | 21.7             | 74.6              |
+| CPU (1 core) | CPU + POPCNT (1 core) | NVIDIA Tesla K80 | NVIDIA Tesla M40 | NVIDIA Tesla P100 |
+|:------------:|:---------------------:|:----------------:|:----------------:|:-----------------:|
+|              | 1                     | 14.9             | 21.7             | 74.6              |
+
+*This work was made possible, in part, through HPC time donated by Microway, Inc. We gratefully acknowledge Microway for providing access to their GPU-accelerated compute cluster (http://www.microway.com/gpu-test-drive/).*
 
 
 ## Installation
