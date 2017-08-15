@@ -12,9 +12,9 @@ R package -- a GPU-based extension for the [HIBAG](https://github.com/zhengxwen/
 
 Speedup:
 
-| Baseline (CPU, a single thread) | CPU + POPCNT, a single thread | NVIDIA Tesla K20Xm | NVIDIA Tesla M40 | NVIDIA Tesla P100 |
-|---------------------------------|-------------------------------|--------------------|------------------|-------------------|
-|                                 | 1                             | 14.2               | 21.7             | 74.6              |
+| CPU (1 core) | CPU + POPCNT (1 core) | NVIDIA Tesla K20Xm | NVIDIA Tesla K80 | NVIDIA Tesla M40 | NVIDIA Tesla P100 |
+|:------------:|:---------------------:|:------------------:|:----------------:|:----------------:|:-----------------:|
+|              | 1                     | 14.2               | 14.9             | 21.7             | 74.6              |
 
 
 ## Installation
