@@ -69,14 +69,6 @@ hla <- hlaAllele(HLA_Type_Table$sample.id,
     H2 = HLA_Type_Table[, paste(hla.id, ".2", sep="")],
     locus=hla.id, assembly="hg19")
 
-# divide HLA types randomly
-set.seed(100)
-hlatab <- hlaSplitAllele(hla, train.prop=0.5)
-names(hlatab)
-# "training"   "validation"
-summary(hlatab$training)
-summary(hlatab$validation)
-
 # SNP predictors within the flanking region on each side
 region <- 500   # kb
 snpid <- hlaFlankingSNP(HapMap_CEU_Geno$snp.id, HapMap_CEU_Geno$snp.position,
@@ -84,17 +76,12 @@ snpid <- hlaFlankingSNP(HapMap_CEU_Geno$snp.id, HapMap_CEU_Geno$snp.position,
 length(snpid)  # 275
 
 # training and validation genotypes
-train.geno <- hlaGenoSubset(HapMap_CEU_Geno,
-    snp.sel=match(snpid, HapMap_CEU_Geno$snp.id),
-    samp.sel=match(hlatab$training$value$sample.id,
-    HapMap_CEU_Geno$sample.id))
-test.geno <- hlaGenoSubset(HapMap_CEU_Geno,
-    samp.sel=match(hlatab$validation$value$sample.id,
-    HapMap_CEU_Geno$sample.id))
+train.geno <- hlaGenoSubset(HapMap_CEU_Geno, snp.sel=match(snpid, HapMap_CEU_Geno$snp.id))
+summary(train.geno)
 
 # train a HIBAG model
 set.seed(100)
-model <- hlaAttrBagging_gpu(hlatab$training, train.geno, nclassifier=10)
+model <- hlaAttrBagging_gpu(hla, train.geno, nclassifier=10)
 summary(model)
 ```
 
@@ -113,17 +100,16 @@ summary(model)
 
 ```R
 # validation
-pred <- hlaPredict_gpu(model, test.geno)
+pred <- hlaPredict_gpu(model, train.geno)
 summary(pred)
 
 # compare
-(comp <- hlaCompareAllele(hlatab$validation, pred, allele.limit=model,
-    call.threshold=0)$overall)
+(comp <- hlaCompareAllele(hla, pred, allele.limit=model, call.threshold=0)$overall)
 ```
 
 ```
 ##   total.num.ind crt.num.ind crt.num.haplo   acc.ind acc.haplo call.threshold
-## 1            26          22            48 0.8461538 0.9230769              0
+## 1            60          58           118 0.9666667 0.9833333              0
 ##   n.call call.rate
-## 1     26         1
+## 1     60         1
 ```
