@@ -511,16 +511,16 @@ hlaAttrBagging_gpu <- function(hla, snp, nclassifier=100,
 	class(mod) <- "hlaAttrBagClass"
 
 
-    ###################################################################
-    # calculate matching statistic
-    if (verbose)
-        cat("Calculating matching statistic:\n")
-    pd <- hlaPredict_gpu(mod, snp.geno, verbose=FALSE)
-    mod$matching <- pd$value$matching
-    if (verbose)
-        print(summary(mod$matching))
+	###################################################################
+	# calculate matching statistic
+	if (verbose)
+		cat("Calculating matching proportion:\n")
+	pd <- hlaPredict_gpu(mod, snp.geno, verbose=FALSE)
+	mod$matching <- pd$value$matching
+	if (verbose)
+		print(summary(mod$matching))
 
-    mod
+	mod
 }
 
 
@@ -677,8 +677,8 @@ hlaPredict_gpu <- function(object, snp,
 	.packageEnv$kernel_pred_sumprob <- k[[2L]]
 	.packageEnv$kernel_pred_addprob <- k[[3L]] 
 
-	# set double floating flag
-	.Call(gpu_set_val, 0L, use_double)
+	# set float/double flag
+	.Call(gpu_set_val,  0L, c(f64_build, f64_pred))
 	# set OpenCL kernels
 	.Call(gpu_set_val,  1L, .packageEnv$kernel_build_calc_prob)
 	.Call(gpu_set_val,  2L, .packageEnv$kernel_build_find_maxprob)

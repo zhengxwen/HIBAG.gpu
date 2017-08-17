@@ -251,18 +251,26 @@ namespace HLA_LIB
 	const size_t gpu_local_size_d1 = 64;
 	const size_t gpu_local_size_d2 = 8;
 
-	// GPU variables
+	// the number of unique HLA alleles
 	static int Num_HLA;
+	// the number of individual classifiers
 	static int Num_Classifier;
+	// the number of samples
 	static int Num_Sample;
 
+	// OpenCL device variables
 	static cl_context gpu_context = NULL;
 	static cl_command_queue gpu_commands = NULL;
+
+	// OpenCL kernel functions
 	static cl_kernel gpu_kernel	 = NULL;
 	static cl_kernel gpu_kernel2 = NULL;
 	static cl_kernel gpu_kernel3 = NULL;
 	static cl_kernel gpu_kernel_clear = NULL;
-	static bool gpu_f64_flag = false;
+
+	// flags for usage of double or single precision
+	static bool gpu_f64_build_flag = false;
+	static bool gpu_f64_pred_flag = false;
 
 	// haplotypes of all classifiers
 	static cl_mem mem_exp_log_min_rare_freq = NULL;
@@ -539,7 +547,9 @@ SEXP gpu_set_val(SEXP idx, SEXP val)
 	switch (Rf_asInteger(idx))
 	{
 		case 0:
-			gpu_f64_flag = (Rf_asLogical(val) == TRUE); break;
+			gpu_f64_build_flag = LOGICAL(val)[0] == TRUE;
+			gpu_f64_pred_flag  = LOGICAL(val)[1] == TRUE;
+			break;
 		case 1:
 			kernel_build_prob = val; break;
 		case 2:
@@ -577,10 +587,10 @@ static inline void init_command(SEXP kernel)
 		throw err_text("Failed to create a command queue", err);
 }
 
-static inline void init_exp_log_memory()
+static inline void init_exp_log_memory(bool f64_flag)
 {
 	cl_int err;
-	if (gpu_f64_flag)
+	if (f64_flag)
 	{
 		GPU_CREATE_MEM(mem_exp_log_min_rare_freq,
 			CL_MEM_READ_ONLY | CL_MEM_USE_HOST_PTR,
@@ -603,6 +613,8 @@ static inline void clear_prob_buffer(size_t size)
 	GPU_RUN_KERNAL(gpu_kernel_clear, 1, &wdim, &gpu_local_size_d1);
 }
 
+
+// ===================================================================== //
 
 // initialize the internal structure for building a model
 void build_init(int nHLA, int nSample)
@@ -635,7 +647,7 @@ void build_init(int nHLA, int nSample)
 	// ====  allocate OpenCL buffers  ====
 
 	// build_calc_prob -- exp_log_min_rare_freq
-	init_exp_log_memory();
+	init_exp_log_memory(gpu_f64_build_flag);
 
 	// build_calc_prob -- pParam
 	GPU_CREATE_MEM(mem_build_param, CL_MEM_READ_ONLY,
@@ -653,7 +665,7 @@ void build_init(int nHLA, int nSample)
 	GPU_CREATE_MEM(mem_build_output, CL_MEM_READ_WRITE, sizeof(double)*nSample*3, NULL);
 
 	// build_calc_prob -- outProb
-	msize_probbuf_each = size_hla * (gpu_f64_flag ? sizeof(double) : sizeof(float));
+	msize_probbuf_each = size_hla * (gpu_f64_build_flag ? sizeof(double) : sizeof(float));
 	for (mem_nmax_sample = nSample; mem_nmax_sample > 0; )
 	{
 		msize_probbuf_total = msize_probbuf_each * mem_nmax_sample;
@@ -885,7 +897,7 @@ double build_acc_ib()
 	void *ptr_out;
 	GPU_MAP_MEM(mem_build_output, ptr_out, sizeof(double)*num_ib*3);
 
-	if (gpu_f64_flag)
+	if (gpu_f64_build_flag)
 	{
 		double *p = (double *)ptr_out;
 		for (int i=0; i < num_ib; i++, p+=3)
@@ -949,7 +961,7 @@ void predict_init(int nHLA, int nClassifier, const THaplotype *const pHaplo[],
 	// ====  allocate OpenCL buffers  ====
 
 	// pred_calc_prob -- exp_log_min_rare_freq
-	init_exp_log_memory();
+	init_exp_log_memory(gpu_f64_pred_flag);
 
 	// pred_calc_prob -- pHaplo
 	const size_t msize_haplo = sizeof(THaplotype)*sum_n_haplo;
@@ -974,7 +986,7 @@ void predict_init(int nHLA, int nClassifier, const THaplotype *const pHaplo[],
 		sizeof(TGenotype)*nClassifier, NULL);
 
 	// pred_calc_prob -- out_prob
-	msize_probbuf_each = size_hla * (gpu_f64_flag ? sizeof(double) : sizeof(float));
+	msize_probbuf_each = size_hla * (gpu_f64_pred_flag ? sizeof(double) : sizeof(float));
 	msize_probbuf_total = msize_probbuf_each * nClassifier;
 	GPU_CREATE_MEM(mem_prob_buffer, CL_MEM_READ_WRITE, msize_probbuf_total, NULL);
 
@@ -1041,7 +1053,7 @@ void predict_avg_prob(const TGenotype geno[], const double weight[],
 
 /*
 	// use host to calculate
-	if (gpu_f64_flag)
+	if (gpu_f64_pred_flag)
 	{
 	
 	} else {
@@ -1080,7 +1092,7 @@ void predict_avg_prob(const TGenotype geno[], const double weight[],
 	// map to host memory
 	GPU_MAP_MEM(mem_pred_weight, ptr_buf, sizeof(double)*Num_Classifier);
 	double psum = 0;
-	if (gpu_f64_flag)
+	if (gpu_f64_pred_flag)
 	{
 		double *w = (double*)ptr_buf;
 		for (int i=0; i < Num_Classifier; i++)
@@ -1106,7 +1118,7 @@ void predict_avg_prob(const TGenotype geno[], const double weight[],
 	size_t wdim = wdim_pred_addprob;
 	GPU_RUN_KERNAL(gpu_kernel3, 1, &wdim, &gpu_local_size_d1);
 
-	if (gpu_f64_flag)
+	if (gpu_f64_pred_flag)
 	{
 		GPU_READ_MEM(mem_prob_buffer, sizeof(double)*num_size, out_prob);
 		// normalize out_prob

@@ -12,9 +12,9 @@ R package -- a GPU-based extension for the [HIBAG](https://github.com/zhengxwen/
 
 Speedup:
 
-| CPU (1 core) | CPU + POPCNT (1 core) | NVIDIA Tesla K80 | NVIDIA Tesla M40 | NVIDIA Tesla P100 |
-|:------------:|:---------------------:|:----------------:|:----------------:|:-----------------:|
-|              | 1                     | 14.9             | 21.7             | 74.6              |
+| CPU (1 core) | CPU (1 core, POPCNT) | NVIDIA Tesla K80 | NVIDIA Tesla M40 | NVIDIA Tesla P100 |
+|:------------:|:--------------------:|:----------------:|:----------------:|:-----------------:|
+|              | 1                    | 14.9             | 21.7             | 74.6              |
 
 *This work was made possible, in part, through HPC time donated by Microway, Inc. We gratefully acknowledge Microway for providing access to their GPU-accelerated compute cluster (http://www.microway.com/gpu-test-drive/).*
 
@@ -47,16 +47,16 @@ library(HIBAG.gpu)
 ```
 
 ```
-## Loading required package: OpenCL
 ## Loading required package: HIBAG
 ## HIBAG (HLA Genotype Imputation with Attribute Bagging)
 ## Kernel Version: v1.4
-## Supported by Streaming SIMD Extensions (SSE2 + hardware POPCNT) [64-bit]
+## Supported by Streaming SIMD Extensions (SSE2) [64-bit]
+## Loading required package: OpenCL
 ## Available OpenCL platform(s):
 ##     NVIDIA CUDA, OpenCL 1.1 CUDA 4.2.1
-##         Device #1: NVIDIA Corporation Tesla K20X
+##         Device #1: NVIDIA Corporation Tesla K20Xm
 ##
-## Using NVIDIA Corporation Tesla K20X
+## Using NVIDIA Corporation Tesla K20Xm
 ## GPU device supports 64-bit floating-point numbers
 ## By default, training uses 32-bit floating-point numbers and prediction uses 64-bit floating-point numbers in GPU computing.
 ```
@@ -81,21 +81,28 @@ summary(train.geno)
 
 # train a HIBAG model
 set.seed(100)
-model <- hlaAttrBagging_gpu(hla, train.geno, nclassifier=10)
+model <- hlaAttrBagging_gpu(hla, train.geno, nclassifier=100)
 summary(model)
 ```
 
 ```
-## Training dataset: 34 samples X 266 SNPs
+## Gene: A
+## Training dataset: 60 samples X 266 SNPs
 ##     # of HLA alleles: 14
-##     # of individual classifiers: 10
-##     total # of SNPs used: 98
-##     avg. # of SNPs in an individual classifier: 15.80
-##         (sd: 2.94, min: 12, max: 22, median: 15.50)
-##     avg. # of haplotypes in an individual classifier: 34.30
-##         (sd: 9.68, min: 23, max: 47, median: 34.00)
-##     avg. out-of-bag accuracy: 87.37%
-##         (sd: 10.43%, min: 66.67%, max: 100.00%, median: 87.12%)
+##     # of individual classifiers: 100
+##     total # of SNPs used: 247
+##     avg. # of SNPs in an individual classifier: 15.85
+##         (sd: 2.43, min: 11, max: 23, median: 16.00)
+##     avg. # of haplotypes in an individual classifier: 44.09
+##         (sd: 17.05, min: 17, max: 105, median: 41.50)
+##     avg. out-of-bag accuracy: 93.65%
+##         (sd: 4.97%, min: 78.95%, max: 100.00%, median: 94.22%)
+## Matching proportion:
+##         Min.     0.1% Qu.       1% Qu.      1st Qu.       Median      3rd Qu. 
+## 0.0003151000 0.0003286631 0.0004505229 0.0035640000 0.0097760000 0.0204600000 
+##         Max.         Mean           SD 
+## 0.4542000000 0.0400800000 0.0994271682 
+## Genome assembly: hg19
 ```
 
 ```R
@@ -109,7 +116,7 @@ summary(pred)
 
 ```
 ##   total.num.ind crt.num.ind crt.num.haplo   acc.ind acc.haplo call.threshold
-## 1            60          58           118 0.9666667 0.9833333              0
+## 1            60          59           119 0.9833333 0.9916667              0
 ##   n.call call.rate
 ## 1     60         1
 ```
