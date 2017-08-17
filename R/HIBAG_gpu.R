@@ -515,10 +515,18 @@ hlaAttrBagging_gpu <- function(hla, snp, nclassifier=100,
 	# calculate matching statistic
 	if (verbose)
 		cat("Calculating matching proportion:\n")
-	pd <- hlaPredict_gpu(mod, snp.geno, verbose=FALSE)
+	pd <- hlaPredict_gpu(mod, snp, verbose=FALSE)
 	mod$matching <- pd$value$matching
 	if (verbose)
+	{
 		print(summary(mod$matching))
+		acc <- hlaCompareAllele(hla, pd)$overall$acc.haplo
+		cat(sprintf("Accuracy with training data: %.1f%%\n", acc*100))
+		# out-of-bag accuracy
+		mobj <- hlaModelToObj(mod)
+		acc <- sapply(mobj$classifiers, function(x) x$outofbag.acc)
+		cat(sprintf("Out-of-bag accuracy: %.1f%%\n", mean(acc)*100))
+	}
 
 	mod
 }
