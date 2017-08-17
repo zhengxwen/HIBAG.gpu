@@ -1,5 +1,8 @@
 # HIBAG.gpu -- GPU-based implementation for the HLA genotype imputation method
 
+![GPLv3](http://www.gnu.org/graphics/gplv3-88x31.png)
+[GNU General Public License, GPLv3](http://www.gnu.org/copyleft/gpl.html)
+
 R package -- a GPU-based extension for the [HIBAG](https://github.com/zhengxwen/HIBAG) package
 
 
@@ -14,7 +17,7 @@ Speedup:
 
 | CPU (1 core) | CPU (1 core, POPCNT) | NVIDIA Tesla K80 | NVIDIA Tesla M40 | NVIDIA Tesla P100 |
 |:------------:|:--------------------:|:----------------:|:----------------:|:-----------------:|
-|              | 1                    | 14.9             | 21.7             | 74.6              |
+|              | 1 x                  | 14.9 x           | 21.7 x           | 74.6 x            |
 
 *This work was made possible, in part, through HPC time donated by Microway, Inc. We gratefully acknowledge Microway for providing access to their GPU-accelerated compute cluster (http://www.microway.com/gpu-test-drive/).*
 
