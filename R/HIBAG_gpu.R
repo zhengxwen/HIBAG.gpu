@@ -520,7 +520,7 @@ hlaAttrBagging_gpu <- function(hla, snp, nclassifier=100,
 	if (verbose)
 	{
 		print(summary(mod$matching))
-		acc <- hlaCompareAllele(hla, pd)$overall$acc.haplo
+		acc <- hlaCompareAllele(hla, pd, verbose=FALSE)$overall$acc.haplo
 		cat(sprintf("Accuracy with training data: %.1f%%\n", acc*100))
 		# out-of-bag accuracy
 		mobj <- hlaModelToObj(mod)
@@ -552,7 +552,7 @@ hlaPredict_gpu <- function(object, snp,
 			"-precision floating-point numbers in GPU computing\n", sep="")
 		if (.packageEnv$prec_predict == "single")
 		{
-			warning("single precision may reduce the prediction accuracy (slightly).",
+			warning("single precision may reduce the prediction accuracy slightly.",
 				call.=FALSE, immediate.=TRUE)
 		}
 	}
