@@ -13,11 +13,15 @@ R package -- a GPU-based extension for the [HIBAG](https://github.com/zhengxwen/
 
 ## Performance
 
-Speedup:
+Speedup ratios for training HIBAG models:
 
-| CPU (1 core) | CPU (1 core, POPCNT) | NVIDIA Tesla K80 | NVIDIA Tesla M40 | NVIDIA Tesla P100 |
-|:------------:|:--------------------:|:----------------:|:----------------:|:-----------------:|
-|              | 1 x                  | 14.9 x           | 21.7 x           | 74.6 x            |
+| CPU (1 core) | CPU (1 core, POPCNT) | 1x NVIDIA Tesla K80 | 1x NVIDIA Tesla M40 | 1x NVIDIA Tesla P100 |
+|:------------:|:--------------------:|:-------------------:|:-------------------:|:--------------------:|
+| 1 x          | 1.63 x               | 24.3 x              | 35.4 x              | 121.5 x              |
+
+*CPU (1 core), the default installation from Bioconductor supporting SIMD SSE2 instructions*
+
+*CPU (1 core, POPCNT), optimization with Intel/AMD POPCNT instruction*
 
 *This work was made possible, in part, through HPC time donated by Microway, Inc. We gratefully acknowledge Microway for providing access to their GPU-accelerated compute cluster (http://www.microway.com/gpu-test-drive/).*
 
