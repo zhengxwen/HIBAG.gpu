@@ -19,9 +19,9 @@ Speedup ratios for training HIBAG models:
 |:------------:|:--------------------:|:-------------------:|:-------------------:|:--------------------:|
 | 1 x          | 1.63 x               | 24.3 x              | 35.4 x              | 121.5 x              |
 
-*CPU (1 core), the default installation from Bioconductor supporting SIMD SSE2 instructions*
+*CPU (1 core), the default installation from Bioconductor supporting SIMD SSE2 instructions, using Intel(R) Xeon(R) CPU E5-2630L @2.40GHz*
 
-*CPU (1 core, POPCNT), optimization with Intel/AMD POPCNT instruction*
+*CPU (1 core, POPCNT), optimization with Intel/AMD POPCNT instruction, using Intel(R) Xeon(R) CPU E5-2630L @2.40GHz*
 
 *This work was made possible, in part, through HPC time donated by Microway, Inc. We gratefully acknowledge Microway for providing access to their GPU-accelerated compute cluster (http://www.microway.com/gpu-test-drive/).*
 
@@ -61,9 +61,9 @@ library(HIBAG.gpu)
 ## Loading required package: OpenCL
 ## Available OpenCL platform(s):
 ##     NVIDIA CUDA, OpenCL 1.1 CUDA 4.2.1
-##         Device #1: NVIDIA Corporation Tesla K20Xm
+##         Device #1: NVIDIA Corporation Tesla K80
 ##
-## Using NVIDIA Corporation Tesla K20Xm
+## Using Dev#1: NVIDIA Corporation Tesla K80
 ## GPU device supports 64-bit floating-point numbers
 ## By default, training uses 32-bit floating-point numbers and prediction uses 64-bit floating-point numbers in GPU computing.
 ```

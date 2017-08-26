@@ -579,12 +579,16 @@ hlaPredict_gpu <- function(object, snp,
 
 
 # initialize GPU device
-.gpu_init <- function(device, use_double, force, showmsg)
+.gpu_init <- function(device, use_double, force, num, showmsg)
 {
 	stopifnot(inherits(device, "clDeviceID"))
 
 	info <- oclInfo(device)
-	showmsg(paste("Using", info$vendor, info$name))
+	if (num > 0L)
+		s <- paste0("Using Dev#", num, ": ", info$vendor, " ", info$name)
+	else
+		s <- paste("Using", info$vendor, info$name)
+	showmsg(s)
 	exts <- oclInfo(device)$exts
 
 	# support 64-bit floating-point numbers or not
@@ -701,22 +705,28 @@ hlaPredict_gpu <- function(object, snp,
 
 
 # initialize the internal GPU methods
-hlaGPU_Init <- function(device=NULL, use_double=NA, force=FALSE, verbose=TRUE)
+hlaGPU_Init <- function(device=1L, use_double=NA, force=FALSE, verbose=TRUE)
 {
 	# check
-	stopifnot(is.null(device) | inherits(device, "clDeviceID"))
+	stopifnot(is.numeric(device) | inherits(device, "clDeviceID"))
 	stopifnot(is.logical(use_double), length(use_double)==1L)
 	stopifnot(is.logical(force), length(force)==1L)
 	stopifnot(is.logical(verbose), length(verbose)==1L)
 
-	if (is.null(device))
+	if (is.numeric(device))
 	{
-		device <- oclDevices(oclPlatforms()[[1L]])[[1L]]
-		if (!inherits(device, "clDeviceID"))
-			stop("No available GPU device.")
+		num <- device
+		stopifnot(length(num) == 1L)
+		stopifnot(!is.na(num), num > 0L)
+		devlist <- sapply(oclPlatforms(), function(x) oclDevices(x))
+		if (num > length(devlist))
+			stop("No available device #", num, ".")
+		device <- devlist[[num]]
+	} else {
+		num <- 0L
 	}
 
-	.gpu_init(device, use_double, force,
+	.gpu_init(device, use_double, force, num,
 		ifelse(verbose, message, function(x) {}))
 
 	invisible()
@@ -755,7 +765,7 @@ hlaGPU_Init <- function(device=NULL, use_double=NA, force=FALSE, verbose=TRUE)
 
 	# initialize
 	packageStartupMessage("")
-	.gpu_init(dev, NA, FALSE, packageStartupMessage)
+	.gpu_init(dev, NA, FALSE, 1L, packageStartupMessage)
 
 	# set procedure pointer
 	.packageEnv$gpu_proc_ptr <- .Call(gpu_init_proc)
