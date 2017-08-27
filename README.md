@@ -19,6 +19,8 @@ Speedup ratios for training HIBAG models:
 |:------------:|:--------------------:|:-------------------:|:-------------------:|:--------------------:|
 | 1 x          | 1.63 x               | 24.3 x              | 35.4 x              | 121.5 x              |
 
+*using HIBAG v1.14.0 and HIBAG.gpu v0.9*
+
 *CPU (1 core), the default installation from Bioconductor supporting SIMD SSE2 instructions, using Intel(R) Xeon(R) CPU E5-2630L @2.40GHz*
 
 *CPU (1 core, POPCNT), optimization with Intel/AMD POPCNT instruction, using Intel(R) Xeon(R) CPU E5-2630L @2.40GHz*

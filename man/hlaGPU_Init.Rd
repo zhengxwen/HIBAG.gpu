@@ -33,11 +33,8 @@ numbers and prediction uses 64-bit floating-point numbers in GPU computing.
 \dontrun{
 library(OpenCL)
 
-p = oclPlatforms()
-d = oclDevices(p[[1]])
-
 # use the second GPU device
-hlaGPU_Init(d[[2]])
+hlaGPU_Init(2)
 }
 }
 
