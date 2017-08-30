@@ -357,13 +357,16 @@ __kernel void pred_calc_addprob(const int num_hla_geno, const int nClassifier,
 }
 
 hlaAttrBagging_gpu <- function(hla, snp, nclassifier=100,
-	mtry=c("sqrt", "all", "one"), prune=TRUE, rm.na=TRUE,
+	mtry=c("sqrt", "all", "one"), prune=TRUE, na.rm=TRUE,
 	verbose=TRUE, verbose.detail=FALSE)
 {
 	# check
 	stopifnot(inherits(hla, "hlaAlleleClass"))
 	stopifnot(inherits(snp, "hlaSNPGenoClass"))
-	stopifnot(is.character(mtry) | is.numeric(mtry), length(mtry)>0L)
+    stopifnot(is.numeric(nclassifier), length(nclassifier)==1L)
+    stopifnot(is.character(mtry) | is.numeric(mtry), length(mtry)>0L)
+    stopifnot(is.logical(prune), length(prune)==1L)
+    stopifnot(is.logical(na.rm), length(na.rm)==1L)
 	stopifnot(is.logical(verbose), length(verbose)==1L)
 	stopifnot(is.logical(verbose.detail), length(verbose.detail)==1L)
 	if (verbose.detail) verbose <- TRUE
@@ -378,7 +381,7 @@ hlaAttrBagging_gpu <- function(hla, snp, nclassifier=100,
 	samp.flag <- match(samp.id, hla$value$sample.id)
 	hla.allele1 <- hla$value$allele1[samp.flag]
 	hla.allele2 <- hla$value$allele2[samp.flag]
-	if (rm.na)
+	if (na.rm)
 	{
 		if (any(is.na(c(hla.allele1, hla.allele2))))
 		{
@@ -720,7 +723,7 @@ hlaGPU_Init <- function(device=1L, use_double=NA, force=FALSE, verbose=TRUE)
 		stopifnot(!is.na(num), num > 0L)
 		devlist <- sapply(oclPlatforms(), function(x) oclDevices(x))
 		if (num > length(devlist))
-			stop("No available device #", num, ".")
+			stop("No existing device #", num, ".")
 		device <- devlist[[num]]
 	} else {
 		num <- 0L
