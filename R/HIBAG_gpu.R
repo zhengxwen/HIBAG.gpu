@@ -91,15 +91,23 @@ inline static int hamming_dist(int n, __global unsigned char *g,
 
 		// popcount for '(H1 ^ S1) & MASK'
 		uint v1 = (H1 ^ S1) & MASK;
+	#if defined(__OPENCL_VERSION__) && (__OPENCL_VERSION__ >= 120)
+		ans += popcount(v1);
+	#else
 		v1 -= ((v1 >> 1) & 0x55555555);
 		v1 = (v1 & 0x33333333) + ((v1 >> 2) & 0x33333333);
 		ans += (((v1 + (v1 >> 4)) & 0x0F0F0F0F) * 0x01010101) >> 24;
+	#endif
 
 		// popcount for '(H2 ^ S2) & MASK'
 		uint v2 = (H2 ^ S2) & MASK;
+	#if defined(__OPENCL_VERSION__) && (__OPENCL_VERSION__ >= 120)
+		ans += popcount(v2);
+	#else
 		v2 -= ((v2 >> 1) & 0x55555555);
 		v2 = (v2 & 0x33333333) + ((v2 >> 2) & 0x33333333);
 		ans += (((v2 + (v2 >> 4)) & 0x0F0F0F0F) * 0x01010101) >> 24;
+	#endif
 	}
 	return ans;
 }
@@ -553,11 +561,6 @@ hlaPredict_gpu <- function(object, snp,
 	{
 		cat("Using ", .packageEnv$prec_predict,
 			"-precision floating-point numbers in GPU computing\n", sep="")
-		if (.packageEnv$prec_predict == "single")
-		{
-			warning("single precision may reduce the prediction accuracy slightly.",
-				call.=FALSE, immediate.=TRUE)
-		}
 	}
 
 	predict(object, snp, NULL, type, vote, allele.check, match.type,
@@ -621,7 +624,7 @@ hlaPredict_gpu <- function(object, snp,
 	{
 		f64_build <- FALSE
 		f64_pred  <- TRUE
-		showmsg("By default, training uses 32-bit floating-point numbers and prediction uses 64-bit floating-point numbers in GPU computing.")
+		showmsg("By default, training uses 32-bit floating-point numbers in GPU and prediction uses 64-bit floating-point numbers.")
 	} else if (isTRUE(use_double))
 	{
 		if (!dev_fp64)
@@ -630,11 +633,11 @@ hlaPredict_gpu <- function(object, snp,
 				call.=FALSE)
 		}
 		f64_build <- f64_pred <- TRUE
-		showmsg("Training and prediction both use 64-bit floating-point numbers in GPU computing.")
+		showmsg("Training and prediction both use 64-bit floating-point numbers in GPU.")
 	} else {
 		f64_build <- FALSE
 		f64_pred  <- FALSE
-		showmsg("Training and prediction both use 32-bit floating-point numbers in GPU computing.")
+		showmsg("Training and prediction both use 32-bit floating-point numbers in GPU.")
 	}
 
 	## build OpenCL kernels
