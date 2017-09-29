@@ -17,7 +17,7 @@ Speedup ratios for training HIBAG models:
 
 | CPU (1 core) | CPU (1 core, POPCNT) | 1x NVIDIA Tesla K80 | 1x NVIDIA Tesla M40 | 1x NVIDIA Tesla P100 |
 |:------------:|:--------------------:|:-------------------:|:-------------------:|:--------------------:|
-| 1 x          | 1.63 x               | 24.3 x              | 35.4 x              | 121.5 x              |
+| 1            | 1.63 x               | 24.3 x              | 35.4 x              | 121.5 x              |
 
 *using HIBAG v1.14.0 and HIBAG.gpu v0.9*
 
