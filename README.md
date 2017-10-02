@@ -67,7 +67,7 @@ library(HIBAG.gpu)
 ##
 ## Using Dev#1: NVIDIA Corporation Tesla K80
 ## GPU device supports 64-bit floating-point numbers
-## By default, training uses 32-bit floating-point numbers and prediction uses 64-bit floating-point numbers in GPU computing.
+## By default, training uses 32-bit floating-point numbers in GPU partly and prediction uses 64-bit floating-point numbers.
 ```
 
 ```R
