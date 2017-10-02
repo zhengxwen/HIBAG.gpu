@@ -624,7 +624,7 @@ hlaPredict_gpu <- function(object, snp,
 	{
 		f64_build <- FALSE
 		f64_pred  <- TRUE
-		showmsg("By default, training uses 32-bit floating-point numbers in GPU partially and prediction uses 64-bit floating-point numbers.")
+		showmsg("By default, training uses 32-bit floating-point numbers in GPU partly and prediction uses 64-bit floating-point numbers.")
 	} else if (isTRUE(use_double))
 	{
 		if (!dev_fp64)
@@ -637,7 +637,7 @@ hlaPredict_gpu <- function(object, snp,
 	} else {
 		f64_build <- FALSE
 		f64_pred  <- FALSE
-		showmsg("Training and prediction both use 32-bit floating-point numbers in GPU partially.")
+		showmsg("Training and prediction both use 32-bit floating-point numbers in GPU partly.")
 	}
 
 	## build OpenCL kernels
