@@ -10,6 +10,8 @@ R package -- a GPU-based extension for the [HIBAG](https://github.com/zhengxwen/
 
 * [OpenCL](https://cran.r-project.org/web/packages/OpenCL/index.html) R package
 
+* [HIBAG](https://github.com/zhengxwen/HIBAG) R package (>= v1.13.5)
+
 
 ## Performance
 
