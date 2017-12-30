@@ -138,8 +138,10 @@ __kernel void build_calc_prob(
 	const int n_haplo = pParam[0];  // the number of haplotypes
 	if (i1 >= n_haplo || i2 >= n_haplo) return;
 
+	// macro, single: SZ_HAPLO=16; double: SZ_HAPLO=24
+	#define SZ_HAPLO  16
+
 	// constants
-	const size_t sz_haplo = 16;
 	const int sz_hla = nHLA * (nHLA + 1) >> 1;
 	const int n_snp  = pParam[1];
 	const int st_samp = pParam[2];
@@ -151,12 +153,12 @@ __kernel void build_calc_prob(
 	{
 		// the first haplotype
 		__global unsigned char *p1 = pHaplo + (i1 << 5);
-		const double fq1 = *(__global double*)(p1 + sz_haplo);
+		const double fq1 = *(__global double*)(p1 + SZ_HAPLO);
 		const int h1 = *(__global int*)(p1 + 28);
 
 		// the second haplotype
 		__global unsigned char *p2 = pHaplo + (i2 << 5);
-		const double fq2 = *(__global double*)(p2 + sz_haplo);
+		const double fq2 = *(__global double*)(p2 + SZ_HAPLO);
 		const int h2 = *(__global int*)(p2 + 28);
 
 		// SNP genotype
@@ -271,8 +273,10 @@ __kernel void pred_calc_prob(
 	const int i2 = get_global_id(1);
 	if (i2 < i1) return;
 
+	// macro, single: SZ_HAPLO=16; double: SZ_HAPLO=24
+	#define SZ_HAPLO  16
+
 	// constants
-	const size_t sz_haplo = 16;
 	const int sz_hla = nHLA * (nHLA + 1) >> 1;
 
 	for (int i_cfr=0; i_cfr < nClassifier; i_cfr++)
@@ -283,12 +287,12 @@ __kernel void pred_calc_prob(
 		{
 			// the first haplotype
 			__global unsigned char *p1 = pHaplo + (i1 << 5);
-			const double fq1 = *(__global double*)(p1 + sz_haplo);
+			const double fq1 = *(__global double*)(p1 + SZ_HAPLO);
 			const int h1 = *(__global int*)(p1 + 28);
 
 			// the second haplotype
 			__global unsigned char *p2 = pHaplo + (i2 << 5);
-			const double fq2 = *(__global double*)(p2 + sz_haplo);
+			const double fq2 = *(__global double*)(p2 + SZ_HAPLO);
 			const int h2 = *(__global int*)(p2 + 28);
 
 			// genotype frequency
@@ -642,8 +646,8 @@ hlaPredict_gpu <- function(object, snp,
 
 	## build OpenCL kernels
 
-	code_src <- c("double", "sz_haplo = 16")
-	code_dst <- c("float", "sz_haplo = 24")
+	code_src <- c("double", "SZ_HAPLO  16")
+	code_dst <- c("float", "SZ_HAPLO  24")
 
 	if (f64_build)
 	{
