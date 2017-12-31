@@ -140,6 +140,8 @@ __kernel void build_calc_prob(
 
 	// macro, single: SZ_HAPLO=16; double: SZ_HAPLO=24
 	#define SZ_HAPLO  16
+	// macro, single: DIST_MAX=9; double: DIST_MAX=64
+	#define DIST_MAX  64
 
 	// constants
 	const int sz_hla = nHLA * (nHLA + 1) >> 1;
@@ -153,25 +155,26 @@ __kernel void build_calc_prob(
 	{
 		// the first haplotype
 		__global unsigned char *p1 = pHaplo + (i1 << 5);
-		const double fq1 = *(__global double*)(p1 + SZ_HAPLO);
-		const int h1 = *(__global int*)(p1 + 28);
-
 		// the second haplotype
 		__global unsigned char *p2 = pHaplo + (i2 << 5);
-		const double fq2 = *(__global double*)(p2 + SZ_HAPLO);
-		const int h2 = *(__global int*)(p2 + 28);
-
 		// SNP genotype
 		__global unsigned char *p_geno = pGeno + (pParam[st_samp+ii] << 6);
-
-		// genotype frequency
+		// hamming distance
 		int d = hamming_dist(n_snp, p_geno, p1, p2);
-		double ff = (i1 != i2) ? (2 * fq1 * fq2) : (fq1 * fq2);
-		ff *= exp_log_min_rare_freq[d];  // account for mutation and error rate
 
-		// update
-		int k = h2 + (h1 * ((nHLA << 1) - h1 - 1) >> 1);
-		atomic_fadd(&outProb[k], ff);
+		if (d <= DIST_MAX)  // since exp_log_min_rare_freq[>DIST_MAX] = 0
+		{
+			const double fq1 = *(__global double*)(p1 + SZ_HAPLO);
+			const int h1 = *(__global int*)(p1 + 28);
+			const double fq2 = *(__global double*)(p2 + SZ_HAPLO);
+			const int h2 = *(__global int*)(p2 + 28);
+			// genotype frequency
+			double ff = (i1 != i2) ? (2 * fq1 * fq2) : (fq1 * fq2);
+			ff *= exp_log_min_rare_freq[d];  // account for mutation and error rate
+			// update
+			int k = h2 + (h1 * ((nHLA << 1) - h1 - 1) >> 1);
+			atomic_fadd(&outProb[k], ff);
+		}
 
 		outProb += sz_hla;
 	}
@@ -275,6 +278,8 @@ __kernel void pred_calc_prob(
 
 	// macro, single: SZ_HAPLO=16; double: SZ_HAPLO=24
 	#define SZ_HAPLO  16
+	// macro, single: DIST_MAX=9; double: DIST_MAX=64
+	#define DIST_MAX  64
 
 	// constants
 	const int sz_hla = nHLA * (nHLA + 1) >> 1;
@@ -287,22 +292,24 @@ __kernel void pred_calc_prob(
 		{
 			// the first haplotype
 			__global unsigned char *p1 = pHaplo + (i1 << 5);
-			const double fq1 = *(__global double*)(p1 + SZ_HAPLO);
-			const int h1 = *(__global int*)(p1 + 28);
-
 			// the second haplotype
 			__global unsigned char *p2 = pHaplo + (i2 << 5);
-			const double fq2 = *(__global double*)(p2 + SZ_HAPLO);
-			const int h2 = *(__global int*)(p2 + 28);
-
-			// genotype frequency
+			// hamming distance
 			int d = hamming_dist(nHaplo[1], pGeno, p1, p2);
-			double ff = (i1 != i2) ? (2 * fq1 * fq2) : (fq1 * fq2);
-			ff *= exp_log_min_rare_freq[d];  // account for mutation and error rate
 
-			// update
-			int k = h2 + (h1 * ((nHLA << 1) - h1 - 1) >> 1);
-			atomic_fadd(&outProb[k], ff);
+			if (d <= DIST_MAX)  // since exp_log_min_rare_freq[>DIST_MAX] = 0
+			{
+				const double fq1 = *(__global double*)(p1 + SZ_HAPLO);
+				const int h1 = *(__global int*)(p1 + 28);
+				const double fq2 = *(__global double*)(p2 + SZ_HAPLO);
+				const int h2 = *(__global int*)(p2 + 28);
+				// genotype frequency
+				double ff = (i1 != i2) ? (2 * fq1 * fq2) : (fq1 * fq2);
+				ff *= exp_log_min_rare_freq[d];  // account for mutation and error rate
+				// update
+				int k = h2 + (h1 * ((nHLA << 1) - h1 - 1) >> 1);
+				atomic_fadd(&outProb[k], ff);
+			}
 		}
 		pHaplo += (n_haplo << 5);
 		nHaplo += 2;
@@ -646,8 +653,8 @@ hlaPredict_gpu <- function(object, snp,
 
 	## build OpenCL kernels
 
-	code_src <- c("double", "SZ_HAPLO  16")
-	code_dst <- c("float", "SZ_HAPLO  24")
+	code_src <- c("double", "SZ_HAPLO  16", "DIST_MAX  64")
+	code_dst <- c("float", "SZ_HAPLO  24", "DIST_MAX  9")
 
 	if (f64_build)
 	{
