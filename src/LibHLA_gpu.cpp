@@ -811,7 +811,7 @@ int build_acc_oob()
 	// run OpenCL (calculating probabilities)
 	{
 		HIBAG_TIMING(TM_BUILD_OOB_PROB)
-		size_t wdims[2] = { wdim_n_haplo, wdim_n_haplo };
+		size_t wdims[2] = { (size_t)wdim_n_haplo, (size_t)wdim_n_haplo };
 		static const size_t local_size[2] = { gpu_local_size_d2, gpu_local_size_d2 };
 		GPU_RUN_KERNAL(gpu_kernel, 2, wdims, local_size);
 	}
@@ -819,7 +819,7 @@ int build_acc_oob()
 	// find max index
 	{
 		HIBAG_TIMING(TM_BUILD_OOB_MAXIDX)
-		size_t wdims[2] = { gpu_local_size_d1, num_oob };
+		size_t wdims[2] = { (size_t)gpu_local_size_d1, (size_t)num_oob };
 		static const size_t local_size[2] = { gpu_local_size_d1, 1 };
 		GPU_RUN_KERNAL(gpu_kernel2, 2, wdims, local_size);
 	}
@@ -877,7 +877,7 @@ double build_acc_ib()
 	// run OpenCL (calculating probabilities)
 	{
 		HIBAG_TIMING(TM_BUILD_IB_PROB)
-		size_t wdims[2] = { wdim_n_haplo, wdim_n_haplo };
+		size_t wdims[2] = { (size_t)wdim_n_haplo, (size_t)wdim_n_haplo };
 		static const size_t local_size[2] = { gpu_local_size_d2, gpu_local_size_d2 };
 		GPU_RUN_KERNAL(gpu_kernel, 2, wdims, local_size);
 	}
@@ -888,7 +888,7 @@ double build_acc_ib()
 	// get log likelihood
 	{
 		HIBAG_TIMING(TM_BUILD_IB_LOGLIK)
-		size_t wdims[2] = { gpu_local_size_d1, num_ib };
+		size_t wdims[2] = { (size_t)gpu_local_size_d1, (size_t)num_ib };
 		static const size_t local_size[2] = { gpu_local_size_d1, 1 };
 		GPU_RUN_KERNAL(gpu_kernel3, 2, wdims, local_size);
 	}
@@ -1047,7 +1047,7 @@ void predict_avg_prob(const TGenotype geno[], const double weight[],
 	GPU_ZERO_FILL(mem_prob_buffer, msize_probbuf_total);
 
 	// pred_calc_prob
-	size_t wdims_k1[2] = { wdim_n_haplo, wdim_n_haplo };
+	size_t wdims_k1[2] = { (size_t)wdim_n_haplo, (size_t)wdim_n_haplo };
 	static const size_t local_size_k1[2] = { gpu_local_size_d2, gpu_local_size_d2 };
 	GPU_RUN_KERNAL(gpu_kernel, 2, wdims_k1, local_size_k1);
 
@@ -1055,7 +1055,7 @@ void predict_avg_prob(const TGenotype geno[], const double weight[],
 	if (gpu_f64_pred_flag)
 	{
 		// sum up all probs per classifier
-		size_t wdims_k2[2] = { gpu_local_size_d1, Num_Classifier };
+		size_t wdims_k2[2] = { (size_t)gpu_local_size_d1, (size_t)Num_Classifier };
 		static const size_t local_size_k2[2] = { gpu_local_size_d1, 1 };
 		GPU_RUN_KERNAL(gpu_kernel2, 2, wdims_k2, local_size_k2);
 
