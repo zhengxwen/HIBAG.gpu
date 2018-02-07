@@ -363,6 +363,16 @@ __kernel void pred_calc_addprob(const int num_hla_geno, const int nClassifier,
 
 
 
+.LoadPackage <- function()
+{
+	if (!suppressWarnings(require("OpenCL")))
+	{
+		if (!suppressWarnings(require("ROpenCL")))
+			stop("The CRAN/OpenCL or git://zhengxwen/ROpenCL package should be installed.")
+	}
+}
+
+
 
 
 ##########################################################################
@@ -730,12 +740,15 @@ hlaGPU_Init <- function(device=1L, use_double=NA, force=FALSE, verbose=TRUE)
 	stopifnot(is.logical(force), length(force)==1L)
 	stopifnot(is.logical(verbose), length(verbose)==1L)
 
+	.LoadPackage()
 	if (is.numeric(device))
 	{
 		num <- device
 		stopifnot(length(num) == 1L)
 		stopifnot(!is.na(num), num > 0L)
-		devlist <- sapply(oclPlatforms(), function(x) oclDevices(x))
+		devlist <- NULL
+		for (x in oclPlatforms())
+			devlist <- c(devlist, oclDevices(x))
 		if (num > length(devlist))
 			stop("No existing device #", num, ".")
 		device <- devlist[[num]]
@@ -758,7 +771,10 @@ hlaGPU_Init <- function(device=1L, use_double=NA, force=FALSE, verbose=TRUE)
 .onAttach <- function(lib, pkg)
 {
 	packageStartupMessage("Available OpenCL platform(s):")
+	.LoadPackage()
+
 	platform <- oclPlatforms()
+	k <- 1L
 	for (i in seq_along(platform))
 	{
 		ii <- oclInfo(platform[[i]])
@@ -767,7 +783,8 @@ hlaGPU_Init <- function(device=1L, use_double=NA, force=FALSE, verbose=TRUE)
 		for (j in seq_along(dev))
 		{
 			ii <- oclInfo(dev[[j]])
-			s <- paste0("        Device #", j, ": ", ii$vendor, " ", ii$name)
+			s <- paste0("        Device #", k, ": ", ii$vendor, " ", ii$name)
+			k <- k + 1L
 			packageStartupMessage(s)
 		}
 	}
