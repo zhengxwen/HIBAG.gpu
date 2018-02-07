@@ -612,7 +612,7 @@ hlaPredict_gpu <- function(object, snp,
 
 	info <- oclInfo(device)
 	if (num > 0L)
-		s <- paste0("Using Dev#", num, ": ", info$vendor, " ", info$name)
+		s <- paste0("Using Device #", num, ": ", info$vendor, " ", info$name)
 	else
 		s <- paste("Using", info$vendor, info$name)
 	showmsg(s)

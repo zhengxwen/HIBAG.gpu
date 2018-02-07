@@ -17,17 +17,22 @@ R package -- a GPU-based extension for the [HIBAG](https://github.com/zhengxwen/
 
 Speedup ratios for training HIBAG models:
 
-| CPU (1 core) | CPU (1 core, POPCNT) | 1x NVIDIA Tesla K80 | 1x NVIDIA Tesla M40 | 1x NVIDIA Tesla P100 |
+| CPU (1 core) | CPU (1 core, POPCNT) | 1x NVIDIA Tesla K80 | 1x NVIDIA Tesla M60 | 1x NVIDIA Tesla V100 |
 |:------------:|:--------------------:|:-------------------:|:-------------------:|:--------------------:|
-| 1            | 1.63 x               | 24.3 x              | 35.4 x              | 121.5 x              |
+| 1            | 1.63 x               | 46.5 x              | 57.5 x              | 246.3 x              |
 
-*using HIBAG v1.14.0 and HIBAG.gpu v0.9*
+*using HIBAG v1.14.0 and HIBAG.gpu v0.9.1*
 
 *CPU (1 core), the default installation from Bioconductor supporting SIMD SSE2 instructions, using Intel(R) Xeon(R) CPU E5-2630L @2.40GHz*
 
 *CPU (1 core, POPCNT), optimization with Intel/AMD POPCNT instruction, using Intel(R) Xeon(R) CPU E5-2630L @2.40GHz*
 
 *This work was made possible, in part, through HPC time donated by Microway, Inc. We gratefully acknowledge Microway for providing access to their GPU-accelerated compute cluster (http://www.microway.com/gpu-test-drive/).*
+
+
+**Floating-point Precision**
+
+The haplotype frequencies are calculated in host CPU using double-precision floating-point numbers. By default, the cross-validation in the model building is computed in GPU using single-precision floating-point numbers.
 
 
 ## Installation
@@ -67,7 +72,7 @@ library(HIBAG.gpu)
 ##     NVIDIA CUDA, OpenCL 1.1 CUDA 4.2.1
 ##         Device #1: NVIDIA Corporation Tesla K80
 ##
-## Using Dev#1: NVIDIA Corporation Tesla K80
+## Using Device #1: NVIDIA Corporation Tesla K80
 ## GPU device supports 64-bit floating-point numbers
 ## By default, training uses 32-bit floating-point numbers in GPU partly and prediction uses 64-bit floating-point numbers.
 ```

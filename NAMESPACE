@@ -9,6 +9,5 @@ export(.onAttach)
 
 # Imports
 import(methods)
-import(ROpenCL)
 import(HIBAG)
 importFrom(stats, predict)

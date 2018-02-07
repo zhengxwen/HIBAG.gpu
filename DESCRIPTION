@@ -2,8 +2,8 @@ Package: HIBAG.gpu
 Type: Package
 Title: GPU-based implementation for the HIBAG package
 Version: 0.9.1
-Date: 2017-12-30
-Depends: R (>= 3.2.0), HIBAG (>= 1.13.5)
+Date: 2018-02-07
+Depends: R (>= 3.2.0), HIBAG (>= 1.14.0)
 Imports: methods, stats
 Suggests: OpenCL, ROpenCL
 Authors@R: person("Xiuwen", "Zheng", role=c("aut", "cre", "cph"),
