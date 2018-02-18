@@ -654,7 +654,7 @@ void build_init(int nHLA, int nSample)
 		sizeof(int) * (offset_build_param + 2*nSample), NULL);
 
 	// build_calc_prob -- pHaplo
-	mem_build_haplo_nmax = nSample * 8;
+	mem_build_haplo_nmax = (nSample<1000 ? 1000 : nSample) * 8;
 	const size_t msize_haplo = sizeof(THaplotype)*mem_build_haplo_nmax;
 	GPU_CREATE_MEM(mem_haplo_list, CL_MEM_READ_ONLY, msize_haplo, NULL);
 
