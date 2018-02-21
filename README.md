@@ -18,7 +18,7 @@ R package -- a GPU-based extension for the [HIBAG](https://github.com/zhengxwen/
 Speedup ratios for training HIBAG models:
 
 | CPU (1 core) | CPU (1 core, POPCNT) | 1x NVIDIA Tesla K80 | 1x NVIDIA Tesla M60 | 1x NVIDIA Tesla P100 | 1x NVIDIA Tesla V100 |
-|:------------:|:--------------------:|:-------------------:|:-------------------:|:--------------------:|
+|:------------:|:--------------------:|:-------------------:|:-------------------:|:--------------------:|:--------------------:|
 | 1            | 1.63 x               | 46.5 x              | 57.5 x              | 209.1 x              | 246.3 x              |
 
 *using HIBAG v1.14.0 and HIBAG.gpu v0.9.1*
