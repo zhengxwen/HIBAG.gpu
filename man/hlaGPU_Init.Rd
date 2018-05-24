@@ -10,8 +10,8 @@
 hlaGPU_Init(device=1L, use_double=NA, force=FALSE, verbose=TRUE)
 }
 \arguments{
-	\item{device}{a \code{clDeviceID} object from \link{oclDevices}; or a
-		numeric value: 1 for the first device, 2 for the second device, ...}
+	\item{device}{a \code{clDeviceID} object from \link[OpenCL]{oclDevices}; or
+	    a numeric value: 1 for the first device, 2 for the second device, ...}
 	\item{use_double}{TRUE, to use double-precision floating-point numbers;
 		FALSE, to use single-precision floating-point numbers; NA, see details}
 	\item{force}{if TRUE, force to use double-precision floating-point numbers}

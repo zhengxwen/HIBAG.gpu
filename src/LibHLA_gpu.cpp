@@ -766,7 +766,7 @@ void build_set_haplo_geno(const THaplotype haplo[], int n_haplo,
 	const TGenotype geno[], int n_snp)
 {
 	if (n_haplo > mem_build_haplo_nmax)
-		throw "There are too many haplotypes out of the limit, please contact the package author.";
+		throw "Too many haplotypes out of the limit, please contact the package author.";
 
 	cl_int err;
 	wdim_n_haplo = num_haplo = n_haplo;
@@ -796,7 +796,7 @@ int build_acc_oob()
 {
 	if (num_oob <= 0) return 0;
 	if (num_oob > mem_nmax_sample)
-		throw "There are too many sample out of the limit of GPU memory, please contact the package author.";
+		throw "Too many sample out of the limit of GPU memory, please contact the package author.";
 
 	cl_int err;
 
@@ -862,7 +862,7 @@ double build_acc_ib()
 {
 	if (num_ib <= 0) return 0;
 	if (num_ib > mem_nmax_sample)
-		throw "There are too many sample out of the limit of GPU memory, please contact the package author.";
+		throw "Too many sample out of the limit of GPU memory, please contact the package author.";
 
 	cl_int err;
 

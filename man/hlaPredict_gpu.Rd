@@ -9,7 +9,7 @@
 \usage{
 hlaPredict_gpu(object, snp,
     type=c("response", "prob", "response+prob"), vote=c("prob", "majority"),
-    allele.check=TRUE, match.type=c("RefSNP+Position", "RefSNP", "Position"),
+    allele.check=TRUE, match.type=c("Position", "RefSNP+Position", "RefSNP"),
     same.strand=FALSE, verbose=TRUE)
 }
 \arguments{

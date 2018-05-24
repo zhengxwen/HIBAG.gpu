@@ -5,7 +5,7 @@
 #	HIBAG.gpu -- GPU-based implementation for the HIBAG package
 #
 # HIBAG R package, HLA Genotype Imputation with Attribute Bagging
-# Copyright (C) 2017   Xiuwen Zheng (zhengx@u.washington.edu)
+# Copyright (C) 2017-2018    Xiuwen Zheng (zhengx@u.washington.edu)
 # All rights reserved.
 #
 # This program is free software: you can redistribute it and/or modify
@@ -517,7 +517,8 @@ hlaAttrBagging_gpu <- function(hla, snp, nclassifier=100,
 		cat("# of SNPs randomly sampled as candidates for each selection: ",
 			mtry, "\n", sep="")
 		cat("# of SNPs: ", n.snp, ", # of samples: ", n.samp, "\n", sep="")
-		cat("# of unique HLA alleles: ", n.hla, "\n", sep="")
+        s <- ifelse(!grepl("^KIR", hla$locus), "HLA", "KIR")
+        cat("# of unique ", s, " alleles: ", n.hla, "\n", sep="")
 		cat("using ", .packageEnv$prec_build, "-precision floating-point numbers in GPU computing\n", sep="")
 	}
 
@@ -571,7 +572,7 @@ hlaAttrBagging_gpu <- function(hla, snp, nclassifier=100,
 
 hlaPredict_gpu <- function(object, snp,
 	type=c("response", "prob", "response+prob"), vote=c("prob", "majority"),
-	allele.check=TRUE, match.type=c("RefSNP+Position", "RefSNP", "Position"),
+	allele.check=TRUE, match.type=c("Position", "RefSNP+Position", "RefSNP"),
 	same.strand=FALSE, verbose=TRUE)
 {
 	stopifnot(inherits(object, "hlaAttrBagClass"))
