@@ -35,6 +35,14 @@ Speedup ratios for training HIBAG models:
 The haplotype frequencies are calculated in host CPU using double-precision floating-point numbers. By default, the cross-validation in the model building is computed in GPU using single-precision floating-point numbers.
 
 
+## Citation
+
+Zheng, X. *et al*. HIBAG-HLA genotype imputation with attribute bagging. *Pharmacogenomics Journal* 14, 192-200 (2014).
+[http://dx.doi.org/10.1038/tpj.2013.18](http://dx.doi.org/10.1038/tpj.2013.18)
+
+Zheng X. (2018) Imputation-Based HLA Typing with SNPs in GWAS Studies. In: Boegel S. (eds) HLA Typing. Methods in Molecular Biology, vol 1802. Humana Press, New York, NY. [DOI: https://doi.org/10.1007/978-1-4939-8546-3_11](https://doi.org/10.1007/978-1-4939-8546-3_11)
+
+
 ## Installation
 
 * Development version from Github:
