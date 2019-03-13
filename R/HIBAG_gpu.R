@@ -5,7 +5,7 @@
 #	HIBAG.gpu -- GPU-based implementation for the HIBAG package
 #
 # HIBAG R package, HLA Genotype Imputation with Attribute Bagging
-# Copyright (C) 2017-2018    Xiuwen Zheng (zhengx@u.washington.edu)
+# Copyright (C) 2017-2019    Xiuwen Zheng (zhengx@u.washington.edu)
 # All rights reserved.
 #
 # This program is free software: you can redistribute it and/or modify
@@ -633,7 +633,7 @@ hlaPredict_gpu <- function(object, snp,
 				{
 					showmsg("    force to use 64-bit floating-point numbers since `force=TRUE`")
 				} else {
-					showmsg("    switch to 32-bit floating-point numbers due to the hardware limit")
+					showmsg("    switch to 32-bit floating-point numbers to avoid the hardware limit")
 					dev_fp64 <- FALSE
 				}
 			}
@@ -745,11 +745,27 @@ hlaGPU_Init <- function(device=1L, use_double=NA, force=FALSE, verbose=TRUE)
 	if (is.numeric(device))
 	{
 		num <- device
-		stopifnot(length(num) == 1L)
-		stopifnot(!is.na(num), num > 0L)
+		stopifnot(length(num)==1L, !is.na(num), num>=0L)
 		devlist <- NULL
+		nm_info <- NULL
 		for (x in oclPlatforms())
-			devlist <- c(devlist, oclDevices(x))
+		{
+			d <- oclDevices(x)
+			devlist <- c(devlist, d)
+			nm_info <- c(nm_info, sapply(d, function(dv) oclInfo(dv)$name))
+		}
+		if (num == 0L)
+		{
+			# find NVIDIA and AMD
+			i1 <- grep("NVIDIA", nm_info, ignore.case=TRUE)
+			i2 <- grep("AMD", nm_info, ignore.case=TRUE)
+			if (length(i1) > 0L)
+				num <- i1[1L]
+			else if (length(i2) > 0L)
+				num <- i2[1L]
+			else
+				num <- 1L
+		}
 		if (num > length(devlist))
 			stop("No existing device #", num, ".")
 		device <- devlist[[num]]
@@ -776,6 +792,7 @@ hlaGPU_Init <- function(device=1L, use_double=NA, force=FALSE, verbose=TRUE)
 
 	platform <- oclPlatforms()
 	k <- 1L
+	nm_info <- NULL
 	for (i in seq_along(platform))
 	{
 		ii <- oclInfo(platform[[i]])
@@ -785,13 +802,27 @@ hlaGPU_Init <- function(device=1L, use_double=NA, force=FALSE, verbose=TRUE)
 		{
 			ii <- oclInfo(dev[[j]])
 			s <- paste0("        Device #", k, ": ", ii$vendor, " ", ii$name)
+			nm_info <- c(nm_info, ii$name)
 			k <- k + 1L
 			packageStartupMessage(s)
 		}
 	}
 
+	# find NVIDIA and AMD
+	i1 <- grep("NVIDIA", nm_info, ignore.case=TRUE)
+	i2 <- grep("AMD", nm_info, ignore.case=TRUE)
+	if (length(i1) > 0L)
+		idx_gpu <- i1[1L]
+	else if (length(i2) > 0L)
+		idx_gpu <- i2[1L]
+	else
+		idx_gpu <- 1L
+
 	# build OpenCL kernels
-	dev <- oclDevices(oclPlatforms()[[1L]])[[1L]]
+	devlist <- NULL
+	for (x in oclPlatforms())
+		devlist <- c(devlist, oclDevices(x))
+	dev <- devlist[[idx_gpu]]
 
 	# check extension
 	exts <- oclInfo(dev)$exts
@@ -800,7 +831,7 @@ hlaGPU_Init <- function(device=1L, use_double=NA, force=FALSE, verbose=TRUE)
 
 	# initialize
 	packageStartupMessage("")
-	.gpu_init(dev, NA, FALSE, 1L, packageStartupMessage)
+	.gpu_init(dev, NA, FALSE, idx_gpu, packageStartupMessage)
 
 	# set procedure pointer
 	.packageEnv$gpu_proc_ptr <- .Call(gpu_init_proc)
