@@ -1,7 +1,7 @@
 // ===============================================================
 //
 // HIBAG.gpu R package (GPU-based implementation for the HIBAG package)
-// Copyright (C) 2017	Xiuwen Zheng (zhengx@u.washington.edu)
+// Copyright (C) 2017-2019    Xiuwen Zheng (zhengx@u.washington.edu)
 // All rights reserved.
 //
 // This program is free software: you can redistribute it and/or modify
@@ -25,6 +25,7 @@
 #include <vector>
 
 #ifdef __APPLE__
+#   define CL_SILENCE_DEPRECATION
 #	include <OpenCL/opencl.h>
 #else
 #	include <CL/opencl.h>
@@ -379,6 +380,71 @@ static float  EXP_LOG_MIN_RARE_FREQ_f32[HIBAG_MAXNUM_SNP_IN_CLASSIFIER*2];
 
 
 
+// OpenCL error code
+static const char *err_code(int err)
+{
+	#define ERR_RET(s)    case s: return #s;
+	switch (err)
+	{
+		ERR_RET(CL_BUILD_PROGRAM_FAILURE)
+		ERR_RET(CL_COMPILER_NOT_AVAILABLE)
+		ERR_RET(CL_DEVICE_NOT_AVAILABLE)
+		ERR_RET(CL_DEVICE_NOT_FOUND)
+		ERR_RET(CL_IMAGE_FORMAT_MISMATCH)
+		ERR_RET(CL_IMAGE_FORMAT_NOT_SUPPORTED)
+		ERR_RET(CL_INVALID_ARG_INDEX)
+		ERR_RET(CL_INVALID_ARG_SIZE)
+		ERR_RET(CL_INVALID_ARG_VALUE)
+		ERR_RET(CL_INVALID_BINARY)
+		ERR_RET(CL_INVALID_BUFFER_SIZE)
+		ERR_RET(CL_INVALID_BUILD_OPTIONS)
+		ERR_RET(CL_INVALID_COMMAND_QUEUE)
+		ERR_RET(CL_INVALID_CONTEXT)
+		ERR_RET(CL_INVALID_DEVICE)
+		ERR_RET(CL_INVALID_DEVICE_TYPE)
+		ERR_RET(CL_INVALID_EVENT)
+		ERR_RET(CL_INVALID_EVENT_WAIT_LIST)
+		ERR_RET(CL_INVALID_GL_OBJECT)
+		ERR_RET(CL_INVALID_GLOBAL_OFFSET)
+		ERR_RET(CL_INVALID_HOST_PTR)
+		ERR_RET(CL_INVALID_IMAGE_FORMAT_DESCRIPTOR)
+		ERR_RET(CL_INVALID_IMAGE_SIZE)
+		ERR_RET(CL_INVALID_KERNEL_NAME)
+		ERR_RET(CL_INVALID_KERNEL)
+		ERR_RET(CL_INVALID_KERNEL_ARGS)
+		ERR_RET(CL_INVALID_KERNEL_DEFINITION)
+		ERR_RET(CL_INVALID_MEM_OBJECT)
+		ERR_RET(CL_INVALID_OPERATION)
+		ERR_RET(CL_INVALID_PLATFORM)
+		ERR_RET(CL_INVALID_PROGRAM)
+		ERR_RET(CL_INVALID_PROGRAM_EXECUTABLE)
+		ERR_RET(CL_INVALID_QUEUE_PROPERTIES)
+		ERR_RET(CL_INVALID_SAMPLER)
+		ERR_RET(CL_INVALID_VALUE)
+		ERR_RET(CL_INVALID_WORK_DIMENSION)
+		ERR_RET(CL_INVALID_WORK_GROUP_SIZE)
+		ERR_RET(CL_INVALID_WORK_ITEM_SIZE)
+		ERR_RET(CL_MAP_FAILURE)
+		ERR_RET(CL_MEM_OBJECT_ALLOCATION_FAILURE)
+		ERR_RET(CL_MEM_COPY_OVERLAP)
+		ERR_RET(CL_OUT_OF_HOST_MEMORY)
+		ERR_RET(CL_OUT_OF_RESOURCES)
+		ERR_RET(CL_PROFILING_INFO_NOT_AVAILABLE)
+		ERR_RET(CL_SUCCESS)
+	}
+	return "UNKNOWN";
+	#undef ERR_RET
+}
+
+// OpenCL error message
+static const char *err_text(const char *txt, int err)
+{
+	static char buf[1024];
+	sprintf(buf, "%s (error: %d, %s).", txt, err, err_code(err));
+	return buf;
+}
+
+
 // get the OpenCL device ID
 static cl_device_id getDeviceID(SEXP device)
 {
@@ -443,7 +509,7 @@ SEXP gpu_build_kernel(SEXP device, SEXP k_name, SEXP code, SEXP prec)
 		Rf_error("invalid precision specification");
 	ctx = clCreateContext(0, 1, &device_id, NULL, NULL, &err);
 	if (!ctx)
-		Rf_error("clCreateContext failed.");
+		Rf_error("clCreateContext() failed (error: %d, %s).", err, err_code(err));
 	sctx = PROTECT(mkContext(ctx));
 	{
 		int sn = LENGTH(code), i;
@@ -454,7 +520,7 @@ SEXP gpu_build_kernel(SEXP device, SEXP k_name, SEXP code, SEXP prec)
 		program = clCreateProgramWithSource(ctx, sn, cptr, NULL, &err);
 		free(cptr);
 		if (!program)
-			Rf_error("clCreateProgramWithSource failed");
+			Rf_error("clCreateProgramWithSource() failed (error: %d, %s).", err, err_code(err));
 	}
 	
 	err = clBuildProgram(program, 0, NULL, NULL, NULL, NULL);
@@ -465,7 +531,8 @@ SEXP gpu_build_kernel(SEXP device, SEXP k_name, SEXP code, SEXP prec)
 		clGetProgramBuildInfo(program, device_id, CL_PROGRAM_BUILD_LOG,
 			sizeof(buffer), buffer, &len);
 		clReleaseProgram(program);
-		Rf_error("clGetProgramBuildInfo failed: %s", buffer);
+		Rf_error("clGetProgramBuildInfo() failed (error: %d, %s): %s",
+			err, err_code(err), buffer);
 	}
 
 	cl_kernel kernel[length(k_name)];
@@ -473,7 +540,7 @@ SEXP gpu_build_kernel(SEXP device, SEXP k_name, SEXP code, SEXP prec)
 	{
 		kernel[i] = clCreateKernel(program, CHAR(STRING_ELT(k_name, i)), &err);
 		if (!kernel[i])
-			Rf_error("clCreateKernel failed.");
+			Rf_error("clCreateKernel() failed (error: %d, %s).", err, err_code(err));
 	}
 
 	clReleaseProgram(program);
@@ -494,15 +561,6 @@ SEXP gpu_build_kernel(SEXP device, SEXP k_name, SEXP code, SEXP prec)
 }
 
 
-
-
-// OpenCL error message
-static const char *err_text(const char *txt, int err)
-{
-	static char buf[1024];
-	sprintf(buf, "%s (error: %d).", txt, err);
-	return buf;
-}
 
 
 // get the sum of double array
@@ -577,7 +635,7 @@ static inline void init_command(SEXP kernel)
 	cl_int err = clGetKernelInfo(gpu_kernel, CL_KERNEL_CONTEXT,
 		sizeof(gpu_context), &gpu_context, NULL);
 	if (err != CL_SUCCESS || !gpu_context)
-		throw err_text("Cannot obtain kernel context via clGetKernelInfo", err);
+		throw err_text("Cannot obtain kernel context via clGetKernelInfo()", err);
 
 	// get device id from kernel R object
 	cl_device_id device_id = getDeviceID(getAttrib(kernel, Rf_install("device")));
@@ -674,8 +732,8 @@ void build_init(int nHLA, int nSample)
 		if (mem_prob_buffer) break;
 		mem_nmax_sample -= 256;
 	}
-	if (!mem_prob_buffer) 
-		err_text("Unable to create buffer mem_prob_buffer", err);
+	if (!mem_prob_buffer)
+		throw err_text("Unable to create buffer mem_prob_buffer", err);
 
 	// arguments for gpu_kernel: build_calc_prob
 	GPU_SETARG(gpu_kernel, 0, nHLA);

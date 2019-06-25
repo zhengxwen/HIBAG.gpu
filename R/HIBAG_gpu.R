@@ -809,29 +809,36 @@ hlaGPU_Init <- function(device=1L, use_double=NA, force=FALSE, verbose=TRUE)
 	}
 
 	# find NVIDIA and AMD
+	packageStartupMessage("")
 	i1 <- grep("NVIDIA", nm_info, ignore.case=TRUE)
 	i2 <- grep("AMD", nm_info, ignore.case=TRUE)
-	if (length(i1) > 0L)
-		idx_gpu <- i1[1L]
-	else if (length(i2) > 0L)
-		idx_gpu <- i2[1L]
-	else
-		idx_gpu <- 1L
+	ii <- c(i1, i2)
+	ii <- c(ii, setdiff(1:(k-1), ii))
+	if (length(ii) <= 0L) ii <- 1L
+	for (idx_gpu in ii)
+	{
+		# build OpenCL kernels
+		devlist <- NULL
+		for (x in oclPlatforms())
+			devlist <- c(devlist, oclDevices(x))
+		dev <- devlist[[idx_gpu]]
 
-	# build OpenCL kernels
-	devlist <- NULL
-	for (x in oclPlatforms())
-		devlist <- c(devlist, oclDevices(x))
-	dev <- devlist[[idx_gpu]]
+		ok <- tryCatch({
+			# check extension
+			exts <- oclInfo(dev)$exts
+			if (!grepl("cl_khr_global_int32_base_atomics", exts))
+				stop("Need the OpenCL extension cl_khr_global_int32_base_atomics.")
+			# initialize
+			.gpu_init(dev, NA, FALSE, idx_gpu, packageStartupMessage)
+			return(TRUE)
+		}, error=function(cond) {
+			packageStartupMessage(cond)
+			return(FALSE)
+		})
+		if (ok) break
+	}
 
-	# check extension
-	exts <- oclInfo(dev)$exts
-	if (!grepl("cl_khr_global_int32_base_atomics", exts))
-		stop("Need the OpenCL extension cl_khr_global_int32_base_atomics.")
-
-	# initialize
-	packageStartupMessage("")
-	.gpu_init(dev, NA, FALSE, idx_gpu, packageStartupMessage)
+    if (!ok) packageStartupMessage("No device supports!")
 
 	# set procedure pointer
 	.packageEnv$gpu_proc_ptr <- .Call(gpu_init_proc)

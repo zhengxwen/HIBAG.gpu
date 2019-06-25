@@ -1,8 +1,8 @@
 Package: HIBAG.gpu
 Type: Package
 Title: GPU-based implementation for the HIBAG package
-Version: 0.9.2
-Date: 2018-05-24
+Version: 0.9.3
+Date: 2019-06-25
 Depends: R (>= 3.2.0), HIBAG (>= 1.14.0)
 Imports: methods, stats
 Suggests: OpenCL, ROpenCL
@@ -17,5 +17,6 @@ Description: It is an extensible component of the HIBAG package for imputing
     of classifier ensembles using bootstrap aggregating and random variable
     selection.
 License: GPL-3 | file LICENSE
+SystemRequirements: GNU make
 LazyData: yes
 URL: http://github.com/zhengxwen/HIBAG.gpu, http://github.com/zhengxwen/HIBAG
