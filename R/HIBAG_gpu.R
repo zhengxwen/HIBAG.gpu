@@ -5,7 +5,7 @@
 #	HIBAG.gpu -- GPU-based implementation for the HIBAG package
 #
 # HIBAG R package, HLA Genotype Imputation with Attribute Bagging
-# Copyright (C) 2017-2019    Xiuwen Zheng (zhengx@u.washington.edu)
+# Copyright (C) 2017-2021    Xiuwen Zheng (zhengx@u.washington.edu)
 # All rights reserved.
 #
 # This program is free software: you can redistribute it and/or modify
@@ -32,7 +32,7 @@
 
 ##########################################################################
 #
-# OpenCL codes
+# OpenCL kernel codes
 #
 
 code_atomic_add_f32 <- "
@@ -318,6 +318,7 @@ __kernel void pred_calc_prob(
 	}
 }
 
+
 // since LibHLA_gpu.cpp: gpu_local_size_d1 = 64
 #define LOCAL_SIZE    64
 
@@ -368,7 +369,7 @@ __kernel void pred_calc_addprob(const int num_hla_geno, const int nClassifier,
 	if (!suppressWarnings(require("OpenCL")))
 	{
 		if (!suppressWarnings(require("ROpenCL")))
-			stop("The CRAN/OpenCL or git://zhengxwen/ROpenCL package should be installed.")
+			stop("The CRAN/OpenCL or github.com/zhengxwen/ROpenCL package should be installed.")
 	}
 }
 
@@ -646,7 +647,7 @@ hlaPredict_gpu <- function(object, snp,
 	{
 		f64_build <- FALSE
 		f64_pred  <- TRUE
-		showmsg("By default, training uses 32-bit floating-point numbers in GPU partly and prediction uses 64-bit floating-point numbers.")
+		showmsg("By default, training uses 32-bit floating-point numbers in GPU (partly) and prediction uses 64-bit floating-point numbers.")
 	} else if (isTRUE(use_double))
 	{
 		if (!dev_fp64)
@@ -659,7 +660,7 @@ hlaPredict_gpu <- function(object, snp,
 	} else {
 		f64_build <- FALSE
 		f64_pred  <- FALSE
-		showmsg("Training and prediction both use 32-bit floating-point numbers in GPU partly.")
+		showmsg("Training and prediction both use 32-bit floating-point numbers in GPU (partly).")
 	}
 
 	## build OpenCL kernels

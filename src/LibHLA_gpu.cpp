@@ -1,7 +1,7 @@
 // ===============================================================
 //
 // HIBAG.gpu R package (GPU-based implementation for the HIBAG package)
-// Copyright (C) 2017-2019    Xiuwen Zheng (zhengx@u.washington.edu)
+// Copyright (C) 2017-2021    Xiuwen Zheng (zhengx@u.washington.edu)
 // All rights reserved.
 //
 // This program is free software: you can redistribute it and/or modify
@@ -18,7 +18,10 @@
 // along with this program.	 If not, see <http://www.gnu.org/licenses/>.
 
 
-#include <stdint.h>
+// Defined in HIBAG/install/LibHLA_ext.h
+#define HIBAG_STRUCTURE_HEAD_ONLY
+#include <LibHLA_ext.h>
+
 #include <string.h>
 #include <cstdlib>
 #include <cmath>
@@ -131,121 +134,18 @@ namespace HLA_LIB
 {
 	using namespace std;
 
-	/// Define unsigned integers
-	typedef uint8_t		UINT8;
+	// Packed bi-allelic SNP haplotype structure: 8 alleles in a byte
+	// struct THaplotype, defined LibHLA_ext.h
 
-	/// The max number of SNP markers in an individual classifier.
-	//	Don't modify this value since the code is optimized for this value!!!
-	const size_t HIBAG_MAXNUM_SNP_IN_CLASSIFIER = 128;
+	// An unordered pair of HLA alleles
+	// struct THLAType, defined LibHLA_ext.h
 
-	/// The max number of UTYPE for packed SNP genotypes.
-	const size_t HIBAG_PACKED_UTYPE_MAXNUM =
-		HIBAG_MAXNUM_SNP_IN_CLASSIFIER / (8*sizeof(UINT8));
+	// Packed bi-allelic SNP genotype structure: 8 SNPs in a byte
+	// struct TGenotype, defined LibHLA_ext.h
 
-
-	// ===================================================================== //
-	// ========						Description						========
-	//
-	// Packed SNP storage strategy is used for faster matching
-	//
-	// HLA allele: start from 0
-	//
-	// THaplotype: packed SNP alleles (little endianness):
-	//	   (s8 s7 s6 s5 s4 s3 s2 s1)
-	//	   the 1st allele: (s1), the 2nd allele: (s2), ...
-	//	   SNP allele: 0 (B allele), 1 (A allele)
-	//
-	// TGenotype: packed SNP genotype (little endianness):
-	//	   array_1 = (s1_8 s1_7 s1_6 s1_5 s1_4 s1_3 s1_2 s1_1),
-	//	   array_2 = (s2_8 s2_7 s2_6 s2_5 s2_4 s2_3 s2_2 s2_1),
-	//	   array_3 = (s3_8 s3_7 s3_6 s3_5 s3_4 s3_3 s3_2 s3_1)
-	//	   the 1st genotype: (s1_1 s2_1 s3_1),
-	//	   the 2nd genotype: (s1_1 s2_1 s3_1), ...
-	//	   SNP genotype: 0 (BB) -- (s1_1=0 s2_1=0 s3_1=1),
-	//					 1 (AB) -- (s1_1=1 s2_1=0 s3_1=1),
-	//					 2 (AA) -- (s1_1=1 s2_1=1 s3_1=1),
-	//					 -1 or other value (missing)
-	//							-- (s1_1=0 s2_1=0 s3_1=0)
-	//
-	// ========														========
-	// ===================================================================== //
-
-	/// Packed SNP haplotype structure: 8 alleles in a byte
-	struct THaplotype
-	{
-		/// packed SNP alleles
-		UINT8 PackedHaplo[HIBAG_PACKED_UTYPE_MAXNUM];
-		/// haplotype frequency
-		double Freq;
-		/// auxiliary variables, sizeof(THaplotype)=32
-		union type_aux
-		{
-			double OldFreq;	 /// old haplotype frequency
-			struct type_aux2 {
-				float Freq_f32;	 /// 32-bit haplotype frequency
-				int HLA_allele;	 /// the associated HLA allele
-			} a2;
-		} aux;
-	};
-
-
-	/// A pair of HLA alleles
-	struct THLAType
-	{
-		int Allele1;  //< the first HLA allele
-		int Allele2;  //< the second HLA allele
-	};
-
-
-	/// Packed bi-allelic SNP genotype structure: 8 SNPs in a byte
-	struct TGenotype
-	{
-		/// packed SNP genotypes, allele 1
-		UINT8 PackedSNP1[HIBAG_PACKED_UTYPE_MAXNUM];
-		/// packed SNP genotypes, allele 2
-		UINT8 PackedSNP2[HIBAG_PACKED_UTYPE_MAXNUM];
-		/// packed SNP genotypes, missing flag
-		UINT8 PackedMissing[HIBAG_PACKED_UTYPE_MAXNUM];
-
-		/// the count in the bootstrapped data
-		int BootstrapCount;
-
-		/// auxiliary correct HLA type
-		THLAType aux_hla_type;
-		/// auxiliary integer to make sizeof(TGenotype)=64
-		int aux_temp;
-	};
-
-
-	/// Pointer to the structure of functions using GPU
-	struct TypeGPUExtProc
-	{
-		/// initialize the internal structure for building a model
-		void (*build_init)(int nHLA, int nSample);
-		/// finalize the structure for building a model
-		void (*build_done)();
-		/// initialize bottstrapping
-		void (*build_set_bootstrap)(const int oob_cnt[]);
-		/// initialize haplotypes and SNPs genotypes
-		void (*build_set_haplo_geno)(const THaplotype haplo[], int n_haplo,
-			const TGenotype geno[], int n_snp);
-		/// calculate the out-of-bag accuracy (the number of correct alleles)
-		int (*build_acc_oob)();
-		/// calculate the in-bag log likelihood
-		double (*build_acc_ib)();
-
-		/// initialize the internal structure for predicting
-		//    nHaplo[2*nClassifier]:
-		//    nHaplo[0] -- total # of haplotypes
-		//    nHaplo[1] -- # of SNPs
-		void (*predict_init)(int nHLA, int nClassifier,
-			const THaplotype *const pHaplo[], const int nHaplo[]);
-		/// finalize the structure for predicting
-		void (*predict_done)();
-		/// average the posterior probabilities among classifiers for predicting
-		void (*predict_avg_prob)(const TGenotype geno[], const double weight[],
-			double out_prob[], double out_match[]);
-	} GPU_Proc;
+	// Pointer to the structure of functions using GPU
+	// TypeGPUExtProc defined in LibHLA_ext.h
+	struct TypeGPUExtProc GPU_Proc;
 
 
 	// used for work-group size (1-dim and 2-dim)
