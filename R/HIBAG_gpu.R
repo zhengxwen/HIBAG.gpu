@@ -364,15 +364,6 @@ __kernel void pred_calc_addprob(const int num_hla_geno, const int nClassifier,
 
 
 
-.LoadPackage <- function()
-{
-	if (!suppressWarnings(require("OpenCL")))
-	{
-		if (!suppressWarnings(require("ROpenCL")))
-			stop("The CRAN/OpenCL or github.com/zhengxwen/ROpenCL package should be installed.")
-	}
-}
-
 
 
 
@@ -608,26 +599,25 @@ hlaPredict_gpu <- function(object, snp,
 
 
 # initialize GPU device
-.gpu_init <- function(device, use_double, force, num, showmsg)
+.gpu_init <- function(device, use_double, force, dev_idx, showmsg)
 {
-	stopifnot(inherits(device, "clDeviceID"))
-
+	# show information
 	info <- oclInfo(device)
-	if (num > 0L)
-		s <- paste0("Using Device #", num, ": ", info$vendor, " ", info$name)
+	if (!is.na(dev_idx) && (dev_idx > 0L))
+		s <- paste0("Using Device #", dev_idx, ": ", info$vendor, " ", info$name)
 	else
 		s <- paste("Using", info$vendor, info$name)
 	showmsg(s)
-	exts <- oclInfo(device)$exts
 
 	# support 64-bit floating-point numbers or not
+	exts <- info$exts
 	dev_fp64 <- any(grepl("cl_khr_fp64", exts))
 	if (dev_fp64)
 	{
 		showmsg("GPU device supports 64-bit floating-point numbers")
-		if (!grepl("cl_khr_int64_base_atomics", exts))
+		if (!any(grepl("cl_khr_int64_base_atomics", exts)))
 		{
-			if (!grepl("NVIDIA", oclInfo(device)$vendor))
+			if (!any(grepl("NVIDIA", oclInfo(device)$vendor)))
 			{
 				showmsg("    but it does not support the extension 'cl_khr_int64_base_atomics'")
 				if (isTRUE(force))
@@ -647,7 +637,8 @@ hlaPredict_gpu <- function(object, snp,
 	{
 		f64_build <- FALSE
 		f64_pred  <- TRUE
-		showmsg("By default, training uses 32-bit floating-point numbers in GPU (partly) and prediction uses 64-bit floating-point numbers.")
+		showmsg(paste("By default, training uses 32-bit floating-point numbers in GPU",
+			" and prediction uses 64-bit floating-point numbers."))
 	} else if (isTRUE(use_double))
 	{
 		if (!dev_fp64)
@@ -660,10 +651,10 @@ hlaPredict_gpu <- function(object, snp,
 	} else {
 		f64_build <- FALSE
 		f64_pred  <- FALSE
-		showmsg("Training and prediction both use 32-bit floating-point numbers in GPU (partly).")
+		showmsg("Training and prediction both use 32-bit floating-point numbers in GPU.")
 	}
 
-	## build OpenCL kernels
+	## build OpenCL kernels ##
 
 	code_src <- c("double", "SZ_HAPLO  16", "DIST_MAX  64")
 	code_dst <- c("float", "SZ_HAPLO  24", "DIST_MAX  9")
@@ -700,6 +691,9 @@ hlaPredict_gpu <- function(object, snp,
 		.packageEnv$code_predict <- paste(
 			code_atomic_add_f32, code_hamming_dist, s, collapse="\n")
 	}
+
+	return()
+
 
 	# build kernels for constructing classifiers
 	k <- .build_kernel(device,
@@ -786,63 +780,90 @@ hlaGPU_Init <- function(device=1L, use_double=NA, force=FALSE, verbose=TRUE)
 # Export stardard R library function(s)
 #######################################################################
 
-.onAttach <- function(lib, pkg)
+# get a list of OpenCL devices
+.get_dev_list <- function(showmsg=message, verbose=TRUE)
 {
-	packageStartupMessage("Available OpenCL platform(s):")
-	.LoadPackage()
-
-	platform <- oclPlatforms()
-	k <- 1L
-	nm_info <- NULL
-	for (i in seq_along(platform))
+	.packageEnv$opencl_dev_list <- list()
+	# enumate
+	i <- 1L
+	dev_lst <- list()
+	for (pm in oclPlatforms())
 	{
-		ii <- oclInfo(platform[[i]])
-		packageStartupMessage(paste0("    ", ii$name, ", ", ii$version))
-		dev <- oclDevices(platform[[i]])
-		for (j in seq_along(dev))
+		dev <- oclDevices(pm)
+		if (length(dev))
 		{
-			ii <- oclInfo(dev[[j]])
-			s <- paste0("        Device #", k, ": ", ii$vendor, " ", ii$name)
-			nm_info <- c(nm_info, ii$name)
-			k <- k + 1L
-			packageStartupMessage(s)
+			if (verbose)
+			{
+				for (d in dev)
+				{
+					m <- oclInfo(d)
+					s <- sprintf("Device #%d: %s, %s", i, m$vendor, m$name)
+					i <- i + 1L
+					showmsg(s)
+				}
+			}
+			dev_lst <- c(dev_lst, dev)
 		}
 	}
+	# set
+	.packageEnv$opencl_dev_list <- dev_lst
+}
 
-	# find NVIDIA and AMD
-	packageStartupMessage("")
-	i1 <- grep("NVIDIA", nm_info, ignore.case=TRUE)
-	i2 <- grep("AMD", nm_info, ignore.case=TRUE)
-	ii <- c(i1, i2)
-	ii <- c(ii, setdiff(1:(k-1), ii))
+
+# return device index if found
+.search_dev <- function(showmsg=message)
+{
+	# find NVIDIA, AMD and Intel Graphics cards
+	info <- vapply(.packageEnv$opencl_dev_list, function(dev)
+		with(oclInfo(dev), paste(vendor, name)), "")
+	i1 <- grep("NVIDIA", info, ignore.case=TRUE)
+	i2 <- grep("AMD", info, ignore.case=TRUE)
+	i3 <- grep("Intel.*Graphics", info, ignore.case=TRUE)
+	ii <- c(i1, i2, i3)
 	if (length(ii) <= 0L) ii <- 1L
-	for (idx_gpu in ii)
-	{
-		# build OpenCL kernels
-		devlist <- NULL
-		for (x in oclPlatforms())
-			devlist <- c(devlist, oclDevices(x))
-		dev <- devlist[[idx_gpu]]
+	ii <- c(ii, setdiff(seq_along(info), ii))
 
+	# build OpenCL kernels
+	for (i in ii)
+	{
+		dev <- .packageEnv$opencl_dev_list[[i]]
 		ok <- tryCatch({
 			# check extension
 			exts <- oclInfo(dev)$exts
-			if (!grepl("cl_khr_global_int32_base_atomics", exts))
+			if (!any(grepl("cl_khr_global_int32_base_atomics", exts)))
 				stop("Need the OpenCL extension cl_khr_global_int32_base_atomics.")
 			# initialize
-			.gpu_init(dev, NA, FALSE, idx_gpu, packageStartupMessage)
-			return(TRUE)
+			.gpu_init(dev, NA, FALSE, i, showmsg)
+			TRUE
 		}, error=function(cond) {
-			packageStartupMessage(cond)
-			return(FALSE)
+			showmsg(cond)
+			FALSE
 		})
-		if (ok) break
+		if (ok) return(i)
 	}
 
-    if (!ok) packageStartupMessage("No device supports!")
+	# not found
+	NA_integer_
+}
 
+.onAttach <- function(libname, pkgname)
+{
+	# get devices
+	packageStartupMessage("Available OpenCL device(s):")
+	.get_dev_list(packageStartupMessage, TRUE)
+
+	# find NVIDIA, AMD and Intel Graphics cards
+	packageStartupMessage("")
+	i <- .search_dev(packageStartupMessage)
+	if (is.na(i))
+		packageStartupMessage("No device supports!")
+
+	TRUE
+}
+
+.onLoad <- function(libname, pkgname)
+{
 	# set procedure pointer
 	.packageEnv$gpu_proc_ptr <- .Call(gpu_init_proc)
-
 	TRUE
 }

@@ -6,8 +6,10 @@ useDynLib(HIBAG.gpu,
 # Export function names
 exportPattern("^hla")
 export(.onAttach)
+export(.onLoad)
 
 # Imports
 import(methods)
 import(HIBAG)
+import(OpenCL)
 importFrom(stats, predict)

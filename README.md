@@ -8,9 +8,9 @@ R package -- a GPU-based extension for the [HIBAG](https://github.com/zhengxwen/
 
 ## Requirements
 
-* [OpenCL](https://cran.r-project.org/web/packages/OpenCL/index.html)/[ROpenCL](https://github.com/zhengxwen/ROpenCL) R package
+* [OpenCL](https://cran.r-project.org/web/packages/OpenCL/index.html)
 
-* [HIBAG](https://github.com/zhengxwen/HIBAG) R package (>= v1.14.0)
+* [HIBAG](https://github.com/zhengxwen/HIBAG) R package (>= v1.27.1)
 
 
 ## Performance
@@ -25,7 +25,7 @@ R package -- a GPU-based extension for the [HIBAG](https://github.com/zhengxwen/
 |:-------------------:|:-------------------:|:--------------------:|:--------------------:|:--------------------:|
 | 46.5 x              | 57.5 x              | 93.7 x               | 209.1 x              | 246.3 x              |
 
-*using HIBAG v1.14.0 and HIBAG.gpu v0.9.1*
+*using HIBAG v1.27.1 and HIBAG.gpu v0.99.0*
 
 *CPU (1 core), the default installation from Bioconductor supporting SIMD SSE2 instructions, using Intel(R) Xeon(R) CPU E5-2630L @2.40GHz*
 

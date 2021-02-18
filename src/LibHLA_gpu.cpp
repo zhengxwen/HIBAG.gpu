@@ -1105,7 +1105,7 @@ SEXP gpu_init_proc()
 	EXP_LOG_MIN_RARE_FREQ[0] = 1;
 	for (int i=0; i < n; i++)
 	{
-		if (!R_finite(EXP_LOG_MIN_RARE_FREQ[i]))
+		if (!R_FINITE(EXP_LOG_MIN_RARE_FREQ[i]))
 			EXP_LOG_MIN_RARE_FREQ[i] = 0;
 	}
 	for (int i=0; i < n; i++)
