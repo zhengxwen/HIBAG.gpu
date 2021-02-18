@@ -17,6 +17,7 @@ Description: It is an extensible component of the HIBAG package for imputing
     of classifier ensembles using bootstrap aggregating and random variable
     selection.
 License: GPL-3 | file LICENSE
+Collate: OpenCL_code.R HIBAG_gpu.R
 SystemRequirements: GNU make
 LazyData: yes
 URL: http://github.com/zhengxwen/HIBAG.gpu, http://github.com/zhengxwen/HIBAG
