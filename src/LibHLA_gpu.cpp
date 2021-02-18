@@ -18,6 +18,17 @@
 // along with this program.	 If not, see <http://www.gnu.org/licenses/>.
 
 
+// Optimization level
+#ifndef HIBAG_NO_COMPILER_OPTIMIZE
+#if defined(__clang__) && !defined(__APPLE__)
+    #pragma clang optimize on
+#endif
+#if defined(__GNUC__) && ((__GNUC__>4) || (__GNUC__==4 && __GNUC_MINOR__>=4))
+    #pragma GCC optimize("O3")
+#endif
+#endif
+
+
 // Defined in HIBAG/install/LibHLA_ext.h
 #define HIBAG_STRUCTURE_HEAD_ONLY
 #include <LibHLA_ext.h>
@@ -1099,6 +1110,7 @@ void predict_avg_prob(const TGenotype geno[], const double weight[],
 /// initialize GPU structure and return a pointer object
 SEXP gpu_init_proc()
 {
+	// initialize EXP_LOG_MIN_RARE_FREQ[]
 	const int n = 2 * HIBAG_MAXNUM_SNP_IN_CLASSIFIER;
 	for (int i=0; i < n; i++)
 		EXP_LOG_MIN_RARE_FREQ[i] = exp(i * log(MIN_RARE_FREQ));
@@ -1109,19 +1121,20 @@ SEXP gpu_init_proc()
 			EXP_LOG_MIN_RARE_FREQ[i] = 0;
 	}
 	for (int i=0; i < n; i++)
-		EXP_LOG_MIN_RARE_FREQ_f32[i] = double(1) * EXP_LOG_MIN_RARE_FREQ[i];
+		EXP_LOG_MIN_RARE_FREQ_f32[i] = EXP_LOG_MIN_RARE_FREQ[i];
 
+	// initialize GPU_Proc
 	GPU_Proc.build_init = build_init;
 	GPU_Proc.build_done = build_done;
 	GPU_Proc.build_set_bootstrap = build_set_bootstrap;
 	GPU_Proc.build_set_haplo_geno = build_set_haplo_geno;
 	GPU_Proc.build_acc_oob = build_acc_oob;
 	GPU_Proc.build_acc_ib = build_acc_ib;
-
 	GPU_Proc.predict_init = predict_init;
 	GPU_Proc.predict_done = predict_done;
 	GPU_Proc.predict_avg_prob = predict_avg_prob;
 
+	// return the pointer object
 	return R_MakeExternalPtr(&GPU_Proc, R_NilValue, R_NilValue);
 }
 
