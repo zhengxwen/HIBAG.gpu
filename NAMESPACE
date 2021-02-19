@@ -1,6 +1,6 @@
 # Load the shared object
 useDynLib(HIBAG.gpu,
-	gpu_init_proc, gpu_set_val, gpu_build_kernel
+	gpu_init_proc, gpu_exp_log_min_rare_freq, gpu_set_val, gpu_build_kernel
 )
 
 # Export function names

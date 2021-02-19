@@ -1107,6 +1107,18 @@ void predict_avg_prob(const TGenotype geno[], const double weight[],
 
 // ===================================================================== //
 
+/// return EXP_LOG_MIN_RARE_FREQ
+SEXP gpu_exp_log_min_rare_freq()
+{
+	const int n = 2 * HIBAG_MAXNUM_SNP_IN_CLASSIFIER + 1;
+	SEXP rv_ans = PROTECT(NEW_NUMERIC(n));
+	for (int i=0; i < n; i++)
+		REAL(rv_ans)[i] = exp(i * log(MIN_RARE_FREQ));
+	UNPROTECT(1);
+	return rv_ans;
+}
+
+
 /// initialize GPU structure and return a pointer object
 SEXP gpu_init_proc()
 {

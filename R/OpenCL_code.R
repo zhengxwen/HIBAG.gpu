@@ -29,6 +29,9 @@
 #
 
 code_atomic_add_f32 <- "
+#define SZ_HAPLO    16
+#define DIST_MAX    9
+
 #pragma OPENCL EXTENSION cl_khr_global_int32_base_atomics : enable
 inline static void atomic_fadd(volatile __global float *addr, float val)
 {
@@ -47,6 +50,9 @@ inline static void atomic_fadd(volatile __global float *addr, float val)
 "
 
 code_atomic_add_f64 <- "
+#define SZ_HAPLO    24
+#define DIST_MAX    64
+
 #pragma OPENCL EXTENSION cl_khr_int64_base_atomics : enable
 inline static void atomic_fadd(volatile __global double *addr, double val)
 {
@@ -63,6 +69,7 @@ inline static void atomic_fadd(volatile __global double *addr, double val)
 	} while (current.u64 != expected.u64);
 }
 "
+
 
 code_hamming_dist <- "
 inline static int hamming_dist(int n, __global unsigned char *g,
@@ -106,23 +113,17 @@ inline static int hamming_dist(int n, __global unsigned char *g,
 }
 "
 
-code_clear_memory <- "
-__kernel void clear_memory(const int n, __global int *p)
-{
-	const int i = get_global_id(0);
-	if (i < n) p[i] = 0;
-}
-"
 
+##########################################################################
 
-code_build_model <- "
+code_build_calc_prob <- "
 __kernel void build_calc_prob(
+	__global numeric *outProb,
 	const int nHLA,
-	__constant double *exp_log_min_rare_freq,
+	__constant numeric *exp_log_min_rare_freq,
 	__global int *pParam,
 	__global unsigned char *pHaplo,
-	__global unsigned char *pGeno,
-	__global double *outProb)
+	__global unsigned char *pGeno)
 {
 	const int i1 = get_global_id(0);
 	const int i2 = get_global_id(1);
@@ -130,11 +131,6 @@ __kernel void build_calc_prob(
 
 	const int n_haplo = pParam[0];  // the number of haplotypes
 	if (i1 >= n_haplo || i2 >= n_haplo) return;
-
-	// macro, single: SZ_HAPLO=16; double: SZ_HAPLO=24
-	#define SZ_HAPLO  16
-	// macro, single: DIST_MAX=9; double: DIST_MAX=64
-	#define DIST_MAX  64
 
 	// constants
 	const int sz_hla = nHLA * (nHLA + 1) >> 1;
@@ -172,7 +168,10 @@ __kernel void build_calc_prob(
 		outProb += sz_hla;
 	}
 }
+"
 
+
+code_build_find_maxprob <- "
 // since LibHLA_gpu.cpp: gpu_local_size_d1 = 64
 #define LOCAL_SIZE    64
 
@@ -214,7 +213,12 @@ __kernel void build_find_maxprob(const int num_hla_geno, __global double *prob,
 		out_idx[i_samp] = max_idx;
 	}
 }
+"
 
+
+code_build_sum_prob <- "
+// since LibHLA_gpu.cpp: gpu_local_size_d1 = 64
+#define LOCAL_SIZE    64
 
 __kernel void build_sum_prob(const int nHLA, const int num_hla_geno,
 	__global int *pParam, __global unsigned char *pGeno, __global double *prob,
@@ -255,7 +259,18 @@ __kernel void build_sum_prob(const int nHLA, const int num_hla_geno,
 "
 
 
-code_predict_prob <- "
+code_clear_memory <- "
+__kernel void clear_memory(const int n, __global int *p)
+{
+	const int i = get_global_id(0);
+	if (i < n) p[i] = 0;
+}
+"
+
+
+##########################################################################
+
+code_pred_calc_prob <- "
 __kernel void pred_calc_prob(
 	const int nHLA,
 	const int nClassifier,
@@ -268,11 +283,6 @@ __kernel void pred_calc_prob(
 	const int i1 = get_global_id(0);
 	const int i2 = get_global_id(1);
 	if (i2 < i1) return;
-
-	// macro, single: SZ_HAPLO=16; double: SZ_HAPLO=24
-	#define SZ_HAPLO  16
-	// macro, single: DIST_MAX=9; double: DIST_MAX=64
-	#define DIST_MAX  64
 
 	// constants
 	const int sz_hla = nHLA * (nHLA + 1) >> 1;
@@ -310,8 +320,10 @@ __kernel void pred_calc_prob(
 		outProb += sz_hla;
 	}
 }
+"
 
 
+code_pred_calc_sumprob <- "
 // since LibHLA_gpu.cpp: gpu_local_size_d1 = 64
 #define LOCAL_SIZE    64
 
@@ -336,7 +348,10 @@ __kernel void pred_calc_sumprob(const int num_hla_geno, __global double *prob,
 		out_sum[i_cfr] = sum;
 	}
 }
+"
 
+
+code_pred_calc_addprob <- "
 __kernel void pred_calc_addprob(const int num_hla_geno, const int nClassifier,
 	__global double *weight, __global double *out_prob)
 {

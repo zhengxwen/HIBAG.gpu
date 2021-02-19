@@ -290,7 +290,7 @@ hlaPredict_gpu <- function(object, snp,
 			}
 		}
 	} else {
-		showmsg("GPU device does not support 64-bit floating-point numbers")
+		showmsg("GPU device does not support 64-bit floating-point numbers.")
 	}
 
 	if (is.na(use_double) & dev_fp64)
@@ -316,61 +316,42 @@ hlaPredict_gpu <- function(object, snp,
 
 	## build OpenCL kernels ##
 
-	code_src <- c("double", "SZ_HAPLO  16", "DIST_MAX  64")
-	code_dst <- c("float", "SZ_HAPLO  24", "DIST_MAX  9")
+	.packageEnv$gpu_context    <- ctx <- oclContext(device)
+	.packageEvn$flag_build_f64 <- f64_build
+	.packageEnv$prec_build   <- prec_build   <- ifelse(f64_build, "double", "single")
+	.packageEnv$prec_predict <- prec_predict <- ifelse(f64_pred, "double", "single")
 
-	if (f64_build)
-	{
-		.packageEnv$prec_build <- "double"
-		.packageEnv$code_build <- paste(
-			"#pragma OPENCL EXTENSION cl_khr_fp64 : enable",
-			code_atomic_add_f64, code_hamming_dist,
-			code_build_model, code_clear_memory, collapse="\n")
-	} else {
-		.packageEnv$prec_build <- "single"
-		s <- code_build_model
-		for (i in seq_along(code_src))
-			s <- gsub(code_src[i], code_dst[i], s, fixed=TRUE)
-		.packageEnv$code_build <- paste(
-			code_atomic_add_f32, code_hamming_dist, s, code_clear_memory,
-			collapse="\n")
-	}
+	## build kernels for constructing classifiers
+	.packageEnv$kernel_build_calc_prob <- oclSimpleKernel(ctx, "build_calc_prob",
+		paste(if (f64_build) code_atomic_add_f64 else code_atomic_add_f32,
+			code_hamming_dist, code_build_calc_prob, collapse="\n"),
+		output.mode=prec_predict)
+	.packageEnv$kernel_build_find_maxprob <- oclSimpleKernel(ctx, "build_find_maxprob",
+		code_build_find_maxprob, output.mode=prec_predict)
+	.packageEnv$kernel_build_sum_prob <- oclSimpleKernel(ctx, "build_sum_prob",
+		code_build_sum_prob, output.mode=prec_predict)
+	.packageEnv$kernel_build_clearmem <- oclSimpleKernel(ctx, "clear_memory",
+		code_build_clearmem, output.mode=prec_predict)
 
-	if (f64_pred)
-	{
-		.packageEnv$prec_predict <- "double"
-		.packageEnv$code_predict <- paste(
-			"#pragma OPENCL EXTENSION cl_khr_fp64 : enable",
-			code_atomic_add_f64,
-			code_hamming_dist, code_predict_prob, collapse="\n")
-	} else {
-		.packageEnv$prec_predict <- "single"
-		s <- code_predict_prob
-		for (i in seq_along(code_src))
-			s <- gsub(code_src[i], code_dst[i], s, fixed=TRUE)
-		.packageEnv$code_predict <- paste(
-			code_atomic_add_f32, code_hamming_dist, s, collapse="\n")
-	}
+	## build kernels for prediction
+	.packageEnv$kernel_pred <- oclSimpleKernel(ctx, "pred_calc_prob",
+		paste(if (f64_pred) code_atomic_add_f64 else code_atomic_add_f32,
+			code_hamming_dist, code_pred_calc_prob, collapse="\n"),
+		output.mode=prec_predict)
+	.packageEnv$kernel_pred_sumprob <- oclSimpleKernel(ctx, "pred_calc_sumprob",
+		code_pred_calc_sumprob, output.mode=prec_predict)
+	.packageEnv$kernel_pred_addprob <- oclSimpleKernel(ctx, "pred_calc_addprob",
+		code_pred_calc_addprob, output.mode=prec_predict)
+
+	## initialize GPU memory buffer
+	fq <- .Call(gpu_exp_log_min_rare_freq)
+	x <- clBuffer(ctx, length(fq), "double"); x[] <- fq
+	.packageEnv$mem_exp_log_min_rare_freq64 <- x
+	x <- clBuffer(ctx, length(fq), "single"); x[] <- fq
+	.packageEnv$mem_exp_log_min_rare_freq32 <- x
 
 	return()
 
-
-	# build kernels for constructing classifiers
-	k <- .build_kernel(device,
-		c("build_calc_prob", "build_find_maxprob", "build_sum_prob", "clear_memory"),
-		.packageEnv$code_build, precision=.packageEnv$prec_build)
-	.packageEnv$kernel_build_calc_prob <- k[[1L]]
-	.packageEnv$kernel_build_find_maxprob <- k[[2L]]
-	.packageEnv$kernel_build_sum_prob <- k[[3L]]
-	.packageEnv$kernel_build_clearmem <- k[[4L]]
-
-	# build kernels for prediction
-	k <- .build_kernel(device,
-		c("pred_calc_prob", "pred_calc_sumprob", "pred_calc_addprob"),
-		.packageEnv$code_predict, precision=.packageEnv$prec_predict)
-	.packageEnv$kernel_pred <- k[[1L]]
-	.packageEnv$kernel_pred_sumprob <- k[[2L]]
-	.packageEnv$kernel_pred_addprob <- k[[3L]] 
 
 	# set float/double flag
 	.Call(gpu_set_val,  0L, c(f64_build, f64_pred))
