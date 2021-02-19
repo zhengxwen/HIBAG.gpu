@@ -115,7 +115,7 @@ hlaAttrBagging_gpu <- function(hla, snp, nclassifier=100,
 	# GPU platform
 	on.exit({
 		HIBAG:::.hlaClearGPU()
-		.gpu_build_free_memory()
+		# .gpu_build_free_memory()
 		gc(reset=TRUE)
 	})
 

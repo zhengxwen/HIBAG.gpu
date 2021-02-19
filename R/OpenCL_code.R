@@ -29,7 +29,7 @@
 #
 
 code_atomic_add_f32 <- "
-#define SZ_HAPLO    16
+#define SZ_HAPLO    24
 #define DIST_MAX    9
 
 #pragma OPENCL EXTENSION cl_khr_global_int32_base_atomics : enable
@@ -50,7 +50,7 @@ inline static void atomic_fadd(volatile __global float *addr, float val)
 "
 
 code_atomic_add_f64 <- "
-#define SZ_HAPLO    24
+#define SZ_HAPLO    16
 #define DIST_MAX    64
 
 #pragma OPENCL EXTENSION cl_khr_int64_base_atomics : enable
@@ -216,10 +216,14 @@ __kernel void build_find_maxprob(__global int *out_idx, const int num_hla_geno,
 
 
 code_build_sum_prob <- "
-#define LOCAL_SIZE    64
-__kernel void build_sum_prob(const int nHLA, const int num_hla_geno,
-	__global int *pParam, __global unsigned char *pGeno, __global numeric *prob,
-	__global numeric *out_prob)
+#define LOCAL_SIZE          64
+#define SIZEOF_TGENOTYPE    48
+#define OFFSET_BOOTSTRAP    32
+#define OFFSET_HLA_A1       36
+#define OFFSET_HLA_A2       40
+__kernel void build_sum_prob(__global numeric *out_prob,
+	const int nHLA, const int num_hla_geno,
+	__global int *pParam, __global unsigned char *pGeno, __global numeric *prob)
 {
 	__local numeric local_sum[LOCAL_SIZE];
 
@@ -243,12 +247,12 @@ __kernel void build_sum_prob(const int nHLA, const int num_hla_geno,
 
 		// SNP genotype
 		pParam += pParam[4];  // offset pParam
-		__global unsigned char *p = pGeno + (pParam[i_samp] << 6);
+		__global unsigned char *p = pGeno + (pParam[i_samp] * SIZEOF_TGENOTYPE);
 
-		out_prob[1] = *(__global int *)(p + 48);  // BootstrapCount
+		out_prob[1] = *(__global int *)(p + OFFSET_BOOTSTRAP);  // BootstrapCount
 
-		int h1 = *(__global int *)(p + 52);  // aux_hla_type.Allele1
-		int h2 = *(__global int *)(p + 56);  // aux_hla_type.Allele2
+		int h1 = *(__global int *)(p + OFFSET_HLA_A1);  // aux_hla_type.Allele1
+		int h2 = *(__global int *)(p + OFFSET_HLA_A2);  // aux_hla_type.Allele2
 		int k = h2 + (h1 * ((nHLA << 1) - h1 - 1) >> 1);
 		out_prob[2] = prob[k];
 	}

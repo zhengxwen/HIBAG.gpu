@@ -498,7 +498,6 @@ void build_init(int nHLA, int nSample)
 	mem_snpgeno = get_mem_env("mem_snpgeno");
 	build_haplo_nmax = Rf_asInteger(get_var_env("build_haplo_nmax"));
 	mem_sample_nmax = Rf_asInteger(get_var_env("build_sample_nmax"));
-
 	mem_build_output = get_mem_env("mem_build_output");
 
 	// arguments for build_calc_prob
@@ -510,19 +509,19 @@ void build_init(int nHLA, int nSample)
 	GPU_SETARG(gpu_kl_build_calc_prob, 4, mem_haplo_list);
 	GPU_SETARG(gpu_kl_build_calc_prob, 5, mem_snpgeno);
 
-	// arguments for gpu_kl_build_find_maxprob
+	// arguments for gpu_kl_build_find_maxprob (out-of-bag)
 	int sz_hla = size_hla;
 	GPU_SETARG(gpu_kl_build_find_maxprob, 0, mem_build_output);
 	GPU_SETARG(gpu_kl_build_find_maxprob, 1, sz_hla);
 	GPU_SETARG(gpu_kl_build_find_maxprob, 2, mem_prob_buffer);
 
-	// arguments for gpu_kl_build_sum_prob
-	GPU_SETARG(gpu_kl_build_sum_prob, 0, nHLA);
-	GPU_SETARG(gpu_kl_build_sum_prob, 1, sz_hla);
-	GPU_SETARG(gpu_kl_build_sum_prob, 2, mem_build_param);
-	GPU_SETARG(gpu_kl_build_sum_prob, 3, mem_snpgeno);
-	GPU_SETARG(gpu_kl_build_sum_prob, 4, mem_prob_buffer);
-	GPU_SETARG(gpu_kl_build_sum_prob, 5, mem_build_output);
+	// arguments for gpu_kl_build_sum_prob (in-bag)
+	GPU_SETARG(gpu_kl_build_sum_prob, 0, mem_build_output);
+	GPU_SETARG(gpu_kl_build_sum_prob, 1, nHLA);
+	GPU_SETARG(gpu_kl_build_sum_prob, 2, sz_hla);
+	GPU_SETARG(gpu_kl_build_sum_prob, 3, mem_build_param);
+	GPU_SETARG(gpu_kl_build_sum_prob, 4, mem_snpgeno);
+	GPU_SETARG(gpu_kl_build_sum_prob, 5, mem_prob_buffer);
 
 	// arguments for gpu_kl_build_clear_mem
 	GPU_SETARG(gpu_kl_clear_mem, 1, mem_prob_buffer);
@@ -592,6 +591,8 @@ void build_set_haplo_geno(const THaplotype haplo[], int n_haplo,
 
 	num_snp = n_snp;
 	GPU_WRITE_MEM(mem_snpgeno, 0, sizeof(TGenotype)*Num_Sample, (void*)geno);
+
+// Rprintf("wdim_n_haplo=%d, n_haplo=%d, num_snp=%d\n", wdim_n_haplo, n_haplo, num_snp);
 }
 
 inline static int compare(const THLAType &H1, const THLAType &H2)
@@ -674,7 +675,6 @@ double build_acc_ib()
 		throw "Too many sample out of the limit of GPU memory, please contact the package author.";
 
 	cl_int err;
-
 	// initialize
 	{
 		HIBAG_TIMING(TM_BUILD_IB_CLEAR)
