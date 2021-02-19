@@ -70,10 +70,6 @@
 
 
 
-#define GPU_CREATE_MEM(x, flag, size, ptr)	  \
-	x = clCreateBuffer(gpu_context, flag, size, ptr, &err); \
-	if (!x) throw err_text("Unable to create buffer " #x, err);
-
 #define GPU_READ_MEM(x, size, ptr)	  \
 	err = clEnqueueReadBuffer(gpu_command_queue, x, CL_TRUE, 0, size, ptr, 0, NULL, NULL); \
 	if (err != CL_SUCCESS) \
@@ -96,13 +92,6 @@
 	err = clFinish(gpu_command_queue); \
 	if (err != CL_SUCCESS) \
 		throw err_text("Failed to run clFinish() with " #kernel, err);
-
-#define GPU_FREE_MEM(x)	   if (x) { \
-		cl_int err = clReleaseMemObject(x); \
-		if (err != CL_SUCCESS) \
-			throw err_text("Failed to free memory buffer " #x, err); \
-		x = NULL; \
-	}
 
 
 #if defined(CL_VERSION_1_2)
@@ -207,7 +196,9 @@ namespace HLA_LIB
 	// the max number of haplotypes can be hold in mem_haplo_list
 	static int mem_build_haplo_nmax = 0;
 
-	static int num_oob, num_ib, num_haplo, num_snp;
+	static int build_num_oob;  ///< the number of out-of-bag samples
+	static int build_num_ib;   ///< the number of in-bag samples
+	static int num_haplo, num_snp;
 	static vector<int> hla_map_index;
 
 
@@ -496,7 +487,7 @@ void build_init(int nHLA, int nSample)
 	gpu_kl_build_calc_prob    = get_kernel_env("kernel_build_calc_prob");
 	gpu_kl_build_find_maxprob = get_kernel_env("kernel_build_find_maxprob");
 	gpu_kl_build_sum_prob     = get_kernel_env("kernel_build_sum_prob");
-	gpu_kl_clear_mem = get_kernel_env("kernel_build_clearmem");
+	gpu_kl_clear_mem          = get_kernel_env("kernel_build_clearmem");
 
 	// GPU memory
 	cl_mem mem_rare_freq = get_mem_env(gpu_f64_build_flag ?
@@ -572,13 +563,13 @@ void build_set_bootstrap(const int oob_cnt[])
 	GPU_MEM_MAP<int> M(mem_build_param, offset_build_param + 2*Num_Sample, false);
 	int *p_oob = M.ptr() + offset_build_param;
 	int *p_ib  = p_oob + Num_Sample;
-	num_oob = num_ib  = 0;
+	build_num_oob = build_num_ib  = 0;
 	for (int i=0; i < Num_Sample; i++)
 	{
 		if (oob_cnt[i] <= 0)
-			p_oob[num_oob++] = i;
+			p_oob[build_num_oob++] = i;
 		else
-			p_ib[num_ib++] = i;
+			p_ib[build_num_ib++] = i;
 	}
 }
 
@@ -614,8 +605,8 @@ inline static int compare(const THLAType &H1, const THLAType &H2)
 
 int build_acc_oob()
 {
-	if (num_oob <= 0) return 0;
-	if (num_oob > mem_sample_nmax)
+	if (build_num_oob <= 0) return 0;
+	if (build_num_oob > mem_sample_nmax)
 		throw "Too many sample out of the limit of GPU memory, please contact the package author.";
 
 	cl_int err;
@@ -623,8 +614,8 @@ int build_acc_oob()
 	// initialize
 	{
 		HIBAG_TIMING(TM_BUILD_OOB_CLEAR)
-		clear_prob_buffer(msize_probbuf_each * num_oob);
-		int param[5] = { num_haplo, num_snp, 0, num_oob, offset_build_param };
+		clear_prob_buffer(msize_probbuf_each * build_num_oob);
+		int param[5] = { num_haplo, num_snp, 0, build_num_oob, offset_build_param };
 		GPU_WRITE_MEM(mem_build_param, 0, sizeof(param), param);
 	}
 
@@ -639,7 +630,7 @@ int build_acc_oob()
 	// find max index
 	{
 		HIBAG_TIMING(TM_BUILD_OOB_MAXIDX)
-		size_t wdims[2] = { (size_t)gpu_local_size_d1, (size_t)num_oob };
+		size_t wdims[2] = { (size_t)gpu_local_size_d1, (size_t)build_num_oob };
 		static const size_t local_size[2] = { gpu_local_size_d1, 1 };
 		GPU_RUN_KERNAL(gpu_kl_build_find_maxprob, 2, wdims, local_size);
 	}
@@ -647,7 +638,7 @@ int build_acc_oob()
 	// sync memory
 	GPU_MEM_MAP<TGenotype> MG(mem_snpgeno, Num_Sample, true);
 	GPU_MEM_MAP<int> MP(mem_build_param, offset_build_param + Num_Sample, true);
-	GPU_MEM_MAP<int> MO(mem_build_output, num_oob, true);
+	GPU_MEM_MAP<int> MO(mem_build_output, build_num_oob, true);
 
 	TGenotype *pGeno = MG.ptr();
 	int *pIdx = MP.ptr() + offset_build_param;
@@ -655,7 +646,7 @@ int build_acc_oob()
 	THLAType hla;
 	int corrent_cnt = 0;
 
-	for (int i=0; i < num_oob; i++)
+	for (int i=0; i < build_num_oob; i++)
 	{
 		int k = pMaxI[i] << 1;
 		if (k >= 0)
@@ -674,8 +665,8 @@ int build_acc_oob()
 
 double build_acc_ib()
 {
-	if (num_ib <= 0) return 0;
-	if (num_ib > mem_sample_nmax)
+	if (build_num_ib <= 0) return 0;
+	if (build_num_ib > mem_sample_nmax)
 		throw "Too many sample out of the limit of GPU memory, please contact the package author.";
 
 	cl_int err;
@@ -683,8 +674,8 @@ double build_acc_ib()
 	// initialize
 	{
 		HIBAG_TIMING(TM_BUILD_IB_CLEAR)
-		clear_prob_buffer(msize_probbuf_each * num_ib);
-		int param[5] = { num_haplo, num_snp, 0, num_ib, offset_build_param+Num_Sample };
+		clear_prob_buffer(msize_probbuf_each * build_num_ib);
+		int param[5] = { num_haplo, num_snp, 0, build_num_ib, offset_build_param+Num_Sample };
 		GPU_WRITE_MEM(mem_build_param, 0, sizeof(param), param);
 	}
 
@@ -699,7 +690,7 @@ double build_acc_ib()
 	// get log likelihood
 	{
 		HIBAG_TIMING(TM_BUILD_IB_LOGLIK)
-		size_t wdims[2] = { (size_t)gpu_local_size_d1, (size_t)num_ib };
+		size_t wdims[2] = { (size_t)gpu_local_size_d1, (size_t)build_num_ib };
 		static const size_t local_size[2] = { gpu_local_size_d1, 1 };
 		GPU_RUN_KERNAL(gpu_kl_build_sum_prob, 2, wdims, local_size);
 	}
@@ -708,9 +699,9 @@ double build_acc_ib()
 	double LogLik = 0;
 	if (gpu_f64_build_flag)
 	{
-		GPU_MEM_MAP<double> M(mem_build_output, num_ib*3, true);
+		GPU_MEM_MAP<double> M(mem_build_output, build_num_ib*3, true);
 		const double *p = M.ptr();
-		for (int i=0; i < num_ib; i++, p+=3)
+		for (int i=0; i < build_num_ib; i++, p+=3)
 		{
 			if (p[0] > 0)
 			{
@@ -720,9 +711,9 @@ double build_acc_ib()
 			}
 		}
 	} else {
-		GPU_MEM_MAP<float> M(mem_build_output, num_ib*3, true);
+		GPU_MEM_MAP<float> M(mem_build_output, build_num_ib*3, true);
 		const float *p = M.ptr();
-		for (int i=0; i < num_ib; i++, p+=3)
+		for (int i=0; i < build_num_ib; i++, p+=3)
 		{
 			if (p[0] > 0)
 			{
@@ -733,6 +724,7 @@ double build_acc_ib()
 		}
 	}
 
+	// output
 	return -2 * LogLik;
 }
 

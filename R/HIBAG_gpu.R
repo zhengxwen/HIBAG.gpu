@@ -59,7 +59,7 @@
 		build_haplo_nmax <- nsamp
 	.packageEnv$build_haplo_nmax <- build_haplo_nmax
 	.packageEnv$mem_haplo_list <- clBuffer(.packageEnv$gpu_context,
-		mem_build_haplo_nmax*sizeof_THaplotype %/% 4L, "integer")
+		build_haplo_nmax*sizeof_THaplotype %/% 4L, "integer")
 
 	size_hla <- nhla * (nhla+1L) %/% 2L
 	build_sample_nmax <- nsamp
@@ -80,6 +80,16 @@
 
 	invisible()
 }
+
+.gpu_build_free_memory <- function()
+{
+	remove(
+		mem_build_param, mem_snpgeno, mem_build_output, mem_haplo_list, mem_prob_buffer,
+		build_haplo_nmax, build_sample_nmax,
+		envir=.packageEnv)
+	invisible()
+}
+
 
 
 ##########################################################################
@@ -103,7 +113,11 @@ hlaAttrBagging_gpu <- function(hla, snp, nclassifier=100,
 	if (verbose.detail) verbose <- TRUE
 
 	# GPU platform
-	on.exit({ HIBAG:::.hlaClearGPU() })
+	on.exit({
+		HIBAG:::.hlaClearGPU()
+		.gpu_build_free_memory()
+		gc(reset=TRUE)
+	})
 
 	# get the common samples
 	samp.id <- intersect(hla$value$sample.id, snp$sample.id)
@@ -227,9 +241,12 @@ hlaAttrBagging_gpu <- function(hla, snp, nclassifier=100,
 
 	###################################################################
 	# training ...
+
+	.gpu_build_init_memory(n.hla, n.samp)
+
 	# add new individual classifers
 	.Call("HIBAG_NewClassifiers", ABmodel, nclassifier, mtry, prune,
-		verbose, verbose.detail, .packageEnv$gpu_proc_ptr, PACKAGE="HIBAG")
+		1L, verbose, verbose.detail, .packageEnv$gpu_proc_ptr, PACKAGE="HIBAG")
 
 	# output
 	mod <- list(n.samp = n.samp, n.snp = n.snp, sample.id = samp.id,
@@ -355,8 +372,8 @@ hlaPredict_gpu <- function(object, snp,
 
 	## build OpenCL kernels ##
 
-	.packageEnv$gpu_context    <- ctx <- oclContext(device)
-	.packageEvn$flag_build_f64 <- f64_build
+	.packageEnv$gpu_context <- ctx <- suppressWarnings(oclContext(device))
+	.packageEnv$flag_build_f64 <- f64_build
 	.packageEnv$prec_build   <- prec_build   <- ifelse(f64_build, "double", "single")
 	.packageEnv$prec_predict <- prec_predict <- ifelse(f64_pred,  "double", "single")
 
@@ -370,17 +387,17 @@ hlaPredict_gpu <- function(object, snp,
 	.packageEnv$kernel_build_sum_prob <- oclSimpleKernel(ctx, "build_sum_prob",
 		code_build_sum_prob, output.mode=prec_predict)
 	.packageEnv$kernel_build_clearmem <- oclSimpleKernel(ctx, "clear_memory",
-		code_build_clearmem, output.mode=prec_predict)
+		code_clear_memory, output.mode=prec_predict)
 
 	## build kernels for prediction
-	.packageEnv$kernel_pred <- oclSimpleKernel(ctx, "pred_calc_prob",
-		paste(if (f64_pred) code_atomic_add_f64 else code_atomic_add_f32,
-			code_hamming_dist, code_pred_calc_prob, collapse="\n"),
-		output.mode=prec_predict)
-	.packageEnv$kernel_pred_sumprob <- oclSimpleKernel(ctx, "pred_calc_sumprob",
-		code_pred_calc_sumprob, output.mode=prec_predict)
-	.packageEnv$kernel_pred_addprob <- oclSimpleKernel(ctx, "pred_calc_addprob",
-		code_pred_calc_addprob, output.mode=prec_predict)
+#	.packageEnv$kernel_pred <- oclSimpleKernel(ctx, "pred_calc_prob",
+#		paste(if (f64_pred) code_atomic_add_f64 else code_atomic_add_f32,
+#			code_hamming_dist, code_pred_calc_prob, collapse="\n"),
+#		output.mode=prec_predict)
+#	.packageEnv$kernel_pred_sumprob <- oclSimpleKernel(ctx, "pred_calc_sumprob",
+#		code_pred_calc_sumprob, output.mode=prec_predict)
+#	.packageEnv$kernel_pred_addprob <- oclSimpleKernel(ctx, "pred_calc_addprob",
+#		code_pred_calc_addprob, output.mode=prec_predict)
 
 	## initialize GPU memory buffer
 	fq <- .Call(gpu_exp_log_min_rare_freq)

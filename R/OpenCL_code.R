@@ -5,7 +5,7 @@
 #	HIBAG.gpu -- GPU-based implementation for the HIBAG package
 #
 # HIBAG R package, HLA Genotype Imputation with Attribute Bagging
-# Copyright (C) 2021    Xiuwen Zheng (zhengx@u.washington.edu)
+# Copyright (C) 2020-2021    Xiuwen Zheng (zhengx@u.washington.edu)
 # All rights reserved.
 #
 # This program is free software: you can redistribute it and/or modify
@@ -153,12 +153,12 @@ __kernel void build_calc_prob(
 
 		if (d <= DIST_MAX)  // since exp_log_min_rare_freq[>DIST_MAX] = 0
 		{
-			const double fq1 = *(__global double*)(p1 + SZ_HAPLO);
+			const numeric fq1 = *(__global numeric*)(p1 + SZ_HAPLO);
 			const int h1 = *(__global int*)(p1 + 28);
-			const double fq2 = *(__global double*)(p2 + SZ_HAPLO);
+			const numeric fq2 = *(__global numeric*)(p2 + SZ_HAPLO);
 			const int h2 = *(__global int*)(p2 + 28);
 			// genotype frequency
-			double ff = (i1 != i2) ? (2 * fq1 * fq2) : (fq1 * fq2);
+			numeric ff = (i1 != i2) ? (2 * fq1 * fq2) : (fq1 * fq2);
 			ff *= exp_log_min_rare_freq[d];  // account for mutation and error rate
 			// update
 			int k = h2 + (h1 * ((nHLA << 1) - h1 - 1) >> 1);
@@ -174,16 +174,16 @@ __kernel void build_calc_prob(
 code_build_find_maxprob <- "
 #define LOCAL_SIZE    64
 __kernel void build_find_maxprob(__global int *out_idx, const int num_hla_geno,
-	__global const double *prob)
+	__global const numeric *prob)
 {
-	__local double local_max[LOCAL_SIZE];
-	__local int    local_idx[LOCAL_SIZE];
+	__local numeric local_max[LOCAL_SIZE];
+	__local int     local_idx[LOCAL_SIZE];
 
 	const int i = get_local_id(0);
 	const int i_samp = get_global_id(1);
 	prob += num_hla_geno * i_samp;
 
-	double max_pb = 0;
+	numeric max_pb = 0;
 	int max_idx = -1;
 	for (int k=i; k < num_hla_geno; k+=LOCAL_SIZE)
 	{
@@ -217,16 +217,16 @@ __kernel void build_find_maxprob(__global int *out_idx, const int num_hla_geno,
 code_build_sum_prob <- "
 #define LOCAL_SIZE    64
 __kernel void build_sum_prob(const int nHLA, const int num_hla_geno,
-	__global int *pParam, __global unsigned char *pGeno, __global double *prob,
-	__global double *out_prob)
+	__global int *pParam, __global unsigned char *pGeno, __global numeric *prob,
+	__global numeric *out_prob)
 {
-	__local double local_sum[LOCAL_SIZE];
+	__local numeric local_sum[LOCAL_SIZE];
 
 	const int i = get_local_id(0);
 	const int i_samp = get_global_id(1);
 	prob += num_hla_geno * i_samp;
 
-	double sum = 0;
+	numeric sum = 0;
 	for (int k=i; k < num_hla_geno; k+=LOCAL_SIZE)
 		sum += prob[k];
 	if (i < LOCAL_SIZE) local_sum[i] = sum;
