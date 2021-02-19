@@ -172,11 +172,9 @@ __kernel void build_calc_prob(
 
 
 code_build_find_maxprob <- "
-// since LibHLA_gpu.cpp: gpu_local_size_d1 = 64
 #define LOCAL_SIZE    64
-
-__kernel void build_find_maxprob(const int num_hla_geno, __global double *prob,
-	__global int *out_idx)
+__kernel void build_find_maxprob(__global int *out_idx, const int num_hla_geno,
+	__global const double *prob)
 {
 	__local double local_max[LOCAL_SIZE];
 	__local int    local_idx[LOCAL_SIZE];
@@ -217,9 +215,7 @@ __kernel void build_find_maxprob(const int num_hla_geno, __global double *prob,
 
 
 code_build_sum_prob <- "
-// since LibHLA_gpu.cpp: gpu_local_size_d1 = 64
 #define LOCAL_SIZE    64
-
 __kernel void build_sum_prob(const int nHLA, const int num_hla_geno,
 	__global int *pParam, __global unsigned char *pGeno, __global double *prob,
 	__global double *out_prob)
@@ -260,6 +256,7 @@ __kernel void build_sum_prob(const int nHLA, const int num_hla_geno,
 
 
 code_clear_memory <- "
+// if version < 1.2 or clEnqueueFillBuffer is not available
 __kernel void clear_memory(const int n, __global int *p)
 {
 	const int i = get_global_id(0);

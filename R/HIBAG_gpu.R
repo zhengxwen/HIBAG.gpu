@@ -31,6 +31,56 @@
 .plural <- function(num) ifelse(num > 1L, "s", "")
 
 
+.gpu_build_init_memory <- function(nhla, nsamp)
+{
+	# internal
+	offset_build_param <- 5L
+	sizeof_TGenotype <- 48L
+	sizeof_THaplotype <- 32L
+	
+	# allocate
+	.packageEnv$mem_build_param <- clBuffer(.packageEnv$gpu_context,
+		offset_build_param + 2L*nsamp, "integer")
+
+	.packageEnv$mem_snpgeno <- clBuffer(.packageEnv$gpu_context,
+		nsamp*sizeof_TGenotype %/% 4L, "integer")
+
+	.packageEnv$mem_build_output <- clBuffer(.packageEnv$gpu_context,
+		nsamp*3L, .packageEnv$prec_build)
+
+	# determine max # of haplo
+	if (nsamp <= 1000L)
+		build_haplo_nmax <- nsamp * 5L
+	else if (nsamp <= 5000L)
+		build_haplo_nmax <- nsamp * 3L
+	else if (nsamp <= 10000L)
+		build_haplo_nmax <- round(nsamp * 1.5)
+	else
+		build_haplo_nmax <- nsamp
+	.packageEnv$build_haplo_nmax <- build_haplo_nmax
+	.packageEnv$mem_haplo_list <- clBuffer(.packageEnv$gpu_context,
+		mem_build_haplo_nmax*sizeof_THaplotype %/% 4L, "integer")
+
+	size_hla <- nhla * (nhla+1L) %/% 2L
+	build_sample_nmax <- nsamp
+	while (build_sample_nmax > 0L)
+	{
+		ntry <- build_sample_nmax * size_hla
+		ok <- tryCatch({
+			buffer <- clBuffer(.packageEnv$gpu_context, ntry, .packageEnv$prec_build)
+			TRUE
+		}, error=function(e) FALSE)
+		if (ok) break
+		build_sample_nmax <- build_sample_nmax - 1000L
+		if (build_sample_nmax <= 0L)
+			stop(sprintf("Fail to allocate %s[%d] in GPU", .packageEnv$prec_build, ntry))
+	}
+	.packageEnv$build_sample_nmax <- build_sample_nmax
+	.packageEnv$mem_prob_buffer <- buffer
+
+	invisible()
+}
+
 
 ##########################################################################
 #
@@ -247,17 +297,6 @@ hlaPredict_gpu <- function(object, snp,
 # GPU utilities
 #
 
-# build opencl kernel from source code
-.build_kernel <- function(device, name, code, precision=c("single", "double"))
-{
-	stopifnot(inherits(device, "clDeviceID"))
-	stopifnot(is.character(name))
-	stopifnot(is.character(code))
-	precision <- match.arg(precision)
-	.Call(gpu_build_kernel, device, name, code, precision)
-}
-
-
 # initialize GPU device
 .gpu_init <- function(device, use_double, force, dev_idx, showmsg)
 {
@@ -319,7 +358,7 @@ hlaPredict_gpu <- function(object, snp,
 	.packageEnv$gpu_context    <- ctx <- oclContext(device)
 	.packageEvn$flag_build_f64 <- f64_build
 	.packageEnv$prec_build   <- prec_build   <- ifelse(f64_build, "double", "single")
-	.packageEnv$prec_predict <- prec_predict <- ifelse(f64_pred, "double", "single")
+	.packageEnv$prec_predict <- prec_predict <- ifelse(f64_pred,  "double", "single")
 
 	## build kernels for constructing classifiers
 	.packageEnv$kernel_build_calc_prob <- oclSimpleKernel(ctx, "build_calc_prob",
@@ -349,20 +388,6 @@ hlaPredict_gpu <- function(object, snp,
 	.packageEnv$mem_exp_log_min_rare_freq64 <- x
 	x <- clBuffer(ctx, length(fq), "single"); x[] <- fq
 	.packageEnv$mem_exp_log_min_rare_freq32 <- x
-
-	return()
-
-
-	# set float/double flag
-	.Call(gpu_set_val,  0L, c(f64_build, f64_pred))
-	# set OpenCL kernels
-	.Call(gpu_set_val,  1L, .packageEnv$kernel_build_calc_prob)
-	.Call(gpu_set_val,  2L, .packageEnv$kernel_build_find_maxprob)
-	.Call(gpu_set_val,  3L, .packageEnv$kernel_build_sum_prob)
-	.Call(gpu_set_val,  4L, .packageEnv$kernel_build_clearmem)
-	.Call(gpu_set_val, 11L, .packageEnv$kernel_pred)
-	.Call(gpu_set_val, 12L, .packageEnv$kernel_pred_sumprob)
-	.Call(gpu_set_val, 13L, .packageEnv$kernel_pred_addprob)
 
 	invisible()
 }
@@ -505,6 +530,6 @@ hlaGPU_Init <- function(device=1L, use_double=NA, force=FALSE, verbose=TRUE)
 .onLoad <- function(libname, pkgname)
 {
 	# set procedure pointer
-	.packageEnv$gpu_proc_ptr <- .Call(gpu_init_proc)
+	.packageEnv$gpu_proc_ptr <- .Call(gpu_init_proc, .packageEnv)
 	TRUE
 }

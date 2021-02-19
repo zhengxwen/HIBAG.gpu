@@ -115,13 +115,6 @@
 		x = NULL; \
 	}
 
-#define GPU_FREE_COM(x)	   if (x) { \
-		cl_int err = clReleaseCommandQueue(x); \
-		if (err != CL_SUCCESS) \
-			throw err_text("Failed to release command queue " #x, err); \
-		x = NULL; \
-	}
-
 
 #if defined(CL_VERSION_1_2)
 	#define GPU_ZERO_FILL(x, size)    { \
@@ -158,10 +151,8 @@ namespace HLA_LIB
 	// TypeGPUExtProc defined in LibHLA_ext.h
 	struct TypeGPUExtProc GPU_Proc;
 
-
-	// used for work-group size (1-dim and 2-dim)
-	const size_t gpu_local_size_d1 = 64;
-	const size_t gpu_local_size_d2 = 8;
+	// HIBAG.gpu:::.packageEnv
+	SEXP packageEnv = NULL;
 
 	// the number of unique HLA alleles
 	static int Num_HLA;
@@ -170,19 +161,27 @@ namespace HLA_LIB
 	// the number of samples
 	static int Num_Sample;
 
+
+	// flags for usage of double or single precision
+	static bool gpu_f64_build_flag = false;
+	static bool gpu_f64_pred_flag  = false;
+
 	// OpenCL device variables
 	static cl_context gpu_context = NULL;
 	static cl_command_queue gpu_commands = NULL;
 
 	// OpenCL kernel functions
-	static cl_kernel gpu_kernel	 = NULL;
-	static cl_kernel gpu_kernel2 = NULL;
-	static cl_kernel gpu_kernel3 = NULL;
-	static cl_kernel gpu_kernel_clear = NULL;
+	static cl_kernel gpu_kl_build_calc_prob	 = NULL;
+	static cl_kernel gpu_kl_build_find_maxprob = NULL;
+	static cl_kernel gpu_kl_build_sum_prob = NULL;
+	static cl_kernel gpu_kl_clear_mem = NULL;
 
-	// flags for usage of double or single precision
-	static bool gpu_f64_build_flag = false;
-	static bool gpu_f64_pred_flag = false;
+
+
+	// used for work-group size (1-dim and 2-dim)
+	const size_t gpu_local_size_d1 = 64;
+	const size_t gpu_local_size_d2 = 8;
+
 
 	// haplotypes of all classifiers
 	static cl_mem mem_exp_log_min_rare_freq = NULL;
@@ -215,7 +214,7 @@ namespace HLA_LIB
 	static cl_mem mem_build_output = NULL;
 
 	// the max number of samples can be hold in mem_prob_buffer
-	static int mem_nmax_sample = 0;
+	static int mem_sample_nmax = 0;
 	// the max number of haplotypes can be hold in mem_haplo_list
 	static int mem_build_haplo_nmax = 0;
 
@@ -279,19 +278,55 @@ template<size_t I> struct TTiming
 extern "C"
 {
 
-/// Frequency Calculation
-#define FREQ_MUTANT(p, cnt)	   ((p) * EXP_LOG_MIN_RARE_FREQ[cnt]);
+/// get the external R object
+inline static SEXP get_var_env(const char *varnm)
+{
+	SEXP rv_ans = Rf_findVarInFrame(packageEnv, Rf_install(varnm));
+	if (rv_ans == R_NilValue)
+		Rf_error("No '%s' in .packageEnv.", varnm);
+	return rv_ans;
+}
 
-/// the minimum rare frequency to store haplotypes
-static const double MIN_RARE_FREQ = 1e-5;
+inline static cl_context get_context_env(const char *varnm)
+{
+	SEXP ctx = get_var_env(varnm);
+	if (!Rf_inherits(ctx, "clContext") || TYPEOF(ctx) != EXTPTRSXP)
+		Rf_error("'.packageEnv$%s' is not an OpenCL context.", varnm);
+	return (cl_context)R_ExternalPtrAddr(ctx);
+}
 
-/// exp(cnt * log(MIN_RARE_FREQ)), cnt is the hamming distance
-static double EXP_LOG_MIN_RARE_FREQ[HIBAG_MAXNUM_SNP_IN_CLASSIFIER*2];
-static float  EXP_LOG_MIN_RARE_FREQ_f32[HIBAG_MAXNUM_SNP_IN_CLASSIFIER*2];
+inline static cl_command_queue getCommandQueue(const char *varnm)
+{
+	SEXP ctx = get_var_env(varnm);
+	if (!Rf_inherits(ctx, "clContext") || TYPEOF(ctx) != EXTPTRSXP)
+		Rf_error("'.packageEnv$%s' is not an OpenCL context.", varnm);
+	SEXP queue = Rf_getAttrib(ctx, Rf_install("queue"));
+	if (!Rf_inherits(queue, "clCommandQueue") || TYPEOF(queue) != EXTPTRSXP)
+		Rf_error("Expected OpenCL command queue");
+	return (cl_command_queue)R_ExternalPtrAddr(queue);
+}
+
+/// get the OpenCL kernel
+inline static cl_kernel get_kernel_env(const char *varnm)
+{
+	SEXP k = get_var_env(varnm);
+	if (!Rf_inherits(k, "clKernel") || TYPEOF(k) != EXTPTRSXP)
+		Rf_error("'.packageEnv$%s' is not an OpenCL kernel.", varnm);
+	return (cl_kernel)R_ExternalPtrAddr(k);
+}
+
+/// get the OpenCL kernel
+inline static cl_mem get_mem_env(const char *varnm)
+{
+	SEXP m = get_var_env(varnm);
+	if (!Rf_inherits(m, "clBuffer") || TYPEOF(m) != EXTPTRSXP)
+		Rf_error("'.packageEnv$%s' is not an OpenCL buffer.", varnm);
+    return (cl_mem)R_ExternalPtrAddr(m);
+}
 
 
 
-// OpenCL error code
+// return OpenCL error code
 static const char *err_code(int err)
 {
 	#define ERR_RET(s)    case s: return #s;
@@ -364,114 +399,6 @@ static cl_device_id getDeviceID(SEXP device)
 	return ((cl_device_id*)R_ExternalPtrAddr(device))[0];
 }
 
-// get the OpenCL kernel pointer from an R object
-static cl_kernel get_kernel(SEXP k)
-{
-	if (!Rf_inherits(k, "clKernel") || TYPEOF(k) != EXTPTRSXP)
-		throw "Invalid OpenCL kernel.";
-	return (cl_kernel)R_ExternalPtrAddr(k);
-}
-
-
-static void clFreeContext(SEXP ctx)
-{
-	clReleaseContext((cl_context)R_ExternalPtrAddr(ctx));
-}
-
-static SEXP mkContext(cl_context ctx)
-{
-	SEXP ptr;
-	ptr = PROTECT(R_MakeExternalPtr(ctx, R_NilValue, R_NilValue));
-	R_RegisterCFinalizerEx(ptr, clFreeContext, TRUE);
-	Rf_setAttrib(ptr, R_ClassSymbol, mkString("clContext"));
-	UNPROTECT(1);
-	return ptr;
-}
-
-static void clFreeKernel(SEXP k)
-{
-	clReleaseKernel((cl_kernel)R_ExternalPtrAddr(k));
-}
-
-static SEXP mkKernel(cl_kernel k)
-{
-	SEXP ptr;
-	ptr = PROTECT(R_MakeExternalPtr(k, R_NilValue, R_NilValue));
-	R_RegisterCFinalizerEx(ptr, clFreeKernel, TRUE);
-	Rf_setAttrib(ptr, R_ClassSymbol, mkString("clKernel"));
-	UNPROTECT(1);
-	return ptr;
-}
-
-
-SEXP gpu_build_kernel(SEXP device, SEXP k_name, SEXP code, SEXP prec)
-{
-	cl_context ctx;
-	int err;
-	SEXP sctx;
-	cl_device_id device_id = getDeviceID(device);
-	cl_program program;
-
-	if (TYPEOF(k_name) != STRSXP || LENGTH(k_name) < 1)
-		Rf_error("invalid kernel name(s)");
-	if (TYPEOF(code) != STRSXP || LENGTH(code) < 1)
-		Rf_error("invalid kernel code");
-	if (TYPEOF(prec) != STRSXP || LENGTH(prec) != 1)
-		Rf_error("invalid precision specification");
-	ctx = clCreateContext(0, 1, &device_id, NULL, NULL, &err);
-	if (!ctx)
-		Rf_error("clCreateContext() failed (error: %d, %s).", err, err_code(err));
-	sctx = PROTECT(mkContext(ctx));
-	{
-		int sn = LENGTH(code), i;
-		const char **cptr;
-		cptr = (const char **) malloc(sizeof(char*) * sn);
-		for (i = 0; i < sn; i++)
-			cptr[i] = CHAR(STRING_ELT(code, i));
-		program = clCreateProgramWithSource(ctx, sn, cptr, NULL, &err);
-		free(cptr);
-		if (!program)
-			Rf_error("clCreateProgramWithSource() failed (error: %d, %s).", err, err_code(err));
-	}
-	
-	err = clBuildProgram(program, 0, NULL, NULL, NULL, NULL);
-	if (err != CL_SUCCESS)
-	{
-		size_t len;
-		char buffer[2048];
-		clGetProgramBuildInfo(program, device_id, CL_PROGRAM_BUILD_LOG,
-			sizeof(buffer), buffer, &len);
-		clReleaseProgram(program);
-		Rf_error("clGetProgramBuildInfo() failed (error: %d, %s): %s",
-			err, err_code(err), buffer);
-	}
-
-	cl_kernel kernel[length(k_name)];
-	for (int i=0; i < length(k_name); i++)
-	{
-		kernel[i] = clCreateKernel(program, CHAR(STRING_ELT(k_name, i)), &err);
-		if (!kernel[i])
-			Rf_error("clCreateKernel() failed (error: %d, %s).", err, err_code(err));
-	}
-
-	clReleaseProgram(program);
-
-	SEXP rv_ans = PROTECT(NEW_LIST(length(k_name)));
-	for (int i=0; i < length(k_name); i++)
-	{
-		SEXP sk = PROTECT(mkKernel(kernel[i]));
-		Rf_setAttrib(sk, Rf_install("device"), device);
-		Rf_setAttrib(sk, Rf_install("precision"), prec);
-		Rf_setAttrib(sk, Rf_install("context"), sctx);
-		Rf_setAttrib(sk, Rf_install("name"), mkString(CHAR(STRING_ELT(k_name, i))));
-		SET_ELEMENT(rv_ans, i, sk);
-		UNPROTECT(1);
-	}
-	UNPROTECT(2);
-	return rv_ans;
-}
-
-
 
 
 // get the sum of double array
@@ -510,76 +437,15 @@ static void fmul_f64(double *p, size_t n, double scalar)
 
 // ===================================================================== //
 
-/// set the internal variables
-SEXP gpu_set_val(SEXP idx, SEXP val)
-{
-	switch (Rf_asInteger(idx))
-	{
-		case 0:
-			gpu_f64_build_flag = LOGICAL(val)[0] == TRUE;
-			gpu_f64_pred_flag  = LOGICAL(val)[1] == TRUE;
-			break;
-		case 1:
-			kernel_build_prob = val; break;
-		case 2:
-			kernel_build_find_maxprob = val; break;
-		case 3:
-			kernel_build_sum_prob = val; break;
-		case 4:
-			kernel_build_clear = val; break;
-		case 11:
-			kernel_predict = val; break;
-		case 12:
-			kernel_predict_sumprob = val; break;
-		case 13:
-			kernel_predict_addprob = val; break;
-	}
-	return R_NilValue;
-}
-
-
-// ===================================================================== //
-
-static inline void init_command(SEXP kernel)
-{
-	gpu_context = NULL;
-	cl_int err = clGetKernelInfo(gpu_kernel, CL_KERNEL_CONTEXT,
-		sizeof(gpu_context), &gpu_context, NULL);
-	if (err != CL_SUCCESS || !gpu_context)
-		throw err_text("Cannot obtain kernel context via clGetKernelInfo()", err);
-
-	// get device id from kernel R object
-	cl_device_id device_id = getDeviceID(getAttrib(kernel, Rf_install("device")));
-	// build a command
-	gpu_commands = clCreateCommandQueue(gpu_context, device_id, 0, &err);
-	if (!gpu_commands)
-		throw err_text("Failed to create a command queue", err);
-}
-
-static inline void init_exp_log_memory(bool f64_flag)
-{
-	cl_int err;
-	if (f64_flag)
-	{
-		GPU_CREATE_MEM(mem_exp_log_min_rare_freq,
-			CL_MEM_READ_ONLY | CL_MEM_USE_HOST_PTR,
-			sizeof(EXP_LOG_MIN_RARE_FREQ), EXP_LOG_MIN_RARE_FREQ);
-	} else {
-		GPU_CREATE_MEM(mem_exp_log_min_rare_freq,
-			CL_MEM_READ_ONLY | CL_MEM_USE_HOST_PTR,
-			sizeof(EXP_LOG_MIN_RARE_FREQ_f32), EXP_LOG_MIN_RARE_FREQ_f32);
-	}
-}
-
 static inline void clear_prob_buffer(size_t size)
 {
 	cl_int err;
 	int n = size >> 2;
-	GPU_SETARG(gpu_kernel_clear, 0, n);
+	GPU_SETARG(gpu_kl_clear_mem, 0, n);
 	size_t wdim = n / gpu_local_size_d1;
 	if (n % gpu_local_size_d1) wdim++;
 	wdim *= gpu_local_size_d1;
-	GPU_RUN_KERNAL(gpu_kernel_clear, 1, &wdim, &gpu_local_size_d1);
+	GPU_RUN_KERNAL(gpu_kl_clear_mem, 1, &wdim, &gpu_local_size_d1);
 }
 
 
@@ -594,95 +460,70 @@ void build_init(int nHLA, int nSample)
 #endif
 
 	cl_int err;
-	gpu_kernel	= get_kernel(kernel_build_prob);
-	gpu_kernel2 = get_kernel(kernel_build_find_maxprob);
-	gpu_kernel3 = get_kernel(kernel_build_sum_prob);
-	gpu_kernel_clear = get_kernel(kernel_build_clear);
-	init_command(kernel_build_prob);
 
-	// assign
+	// initialize
 	Num_HLA = nHLA;
 	Num_Sample = nSample;
 	const size_t size_hla = nHLA * (nHLA+1) >> 1;
-
-	// initialize hla_map_index
 	hla_map_index.resize(size_hla*2);
 	int *p = &hla_map_index[0];
 	for (int h1=0; h1 < nHLA; h1++)
-		for (int h2=h1; h2 < nHLA; h2++)
-			{ *p++ = h1; *p++ = h2; }
+		for (int h2=h1; h2 < nHLA; h2++, p+=2) { p[0] = h1; p[1] = h2; }
 
+	// 64-bit floating-point number or not?
+	gpu_f64_build_flag = Rf_asLogical(get_var_env("flag_build_f64")) == TRUE;
 
-	// ====  allocate OpenCL buffers  ====
+	// device variables
+	gpu_context = get_context_env("gpu_context");
+	gpu_commands = getCommandQueue("gpu_context");
 
-	// build_calc_prob -- exp_log_min_rare_freq
-	init_exp_log_memory(gpu_f64_build_flag);
+	// kernels
+	gpu_kl_build_calc_prob    = get_kernel_env("kernel_build_calc_prob");
+	gpu_kl_build_find_maxprob = get_kernel_env("kernel_build_find_maxprob");
+	gpu_kl_build_sum_prob     = get_kernel_env("kernel_build_sum_prob");
+	gpu_kl_clear_mem = get_kernel_env("kernel_build_clearmem");
 
-	// build_calc_prob -- pParam
-	GPU_CREATE_MEM(mem_build_param, CL_MEM_READ_ONLY,
-		sizeof(int) * (offset_build_param + 2*nSample), NULL);
+	// GPU memory
+	cl_mem mem_rare_freq = get_mem_env(gpu_f64_build_flag ?
+		"mem_exp_log_min_rare_freq64" : "mem_exp_log_min_rare_freq32");
+	mem_build_param = get_mem_env("mem_build_param");
+	mem_snpgeno = get_mem_env("mem_snpgeno");
+	mem_build_output = get_mem_env("mem_build_output");
+	mem_build_haplo_nmax = Rf_asInteger(get_var_env("build_haplo_nmax"));
+	mem_haplo_list = get_mem_env("mem_haplo_list");
+	mem_sample_nmax = Rf_asInteger(get_var_env("build_sample_nmax"));
+	mem_prob_buffer = get_mem_env("mem_prob_buffer");
 
-	// build_calc_prob -- pHaplo
-	mem_build_haplo_nmax = (nSample<1000 ? 1000 : nSample) * 8;
-	const size_t msize_haplo = sizeof(THaplotype)*mem_build_haplo_nmax;
-	GPU_CREATE_MEM(mem_haplo_list, CL_MEM_READ_ONLY, msize_haplo, NULL);
+	// arguments for build_calc_prob
+	GPU_SETARG(gpu_kl_build_calc_prob, 0, mem_prob_buffer);
+	GPU_SETARG(gpu_kl_build_calc_prob, 1, nHLA);
+	GPU_SETARG(gpu_kl_build_calc_prob, 2, mem_rare_freq);
+	GPU_SETARG(gpu_kl_build_calc_prob, 3, mem_build_param);
+	GPU_SETARG(gpu_kl_build_calc_prob, 4, mem_haplo_list);
+	GPU_SETARG(gpu_kl_build_calc_prob, 5, mem_snpgeno);
 
-	// build_calc_prob -- pGeno
-	GPU_CREATE_MEM(mem_snpgeno, CL_MEM_READ_ONLY, sizeof(TGenotype)*nSample, NULL);
-
-	// build_find_maxprob -- out_idx
-	GPU_CREATE_MEM(mem_build_output, CL_MEM_READ_WRITE, sizeof(double)*nSample*3, NULL);
-
-	// build_calc_prob -- outProb
-	msize_probbuf_each = size_hla * (gpu_f64_build_flag ? sizeof(double) : sizeof(float));
-	for (mem_nmax_sample = nSample; mem_nmax_sample > 0; )
-	{
-		msize_probbuf_total = msize_probbuf_each * mem_nmax_sample;
-		mem_prob_buffer = clCreateBuffer(gpu_context, CL_MEM_READ_WRITE,
-			msize_probbuf_total, NULL, &err);
-		if (mem_prob_buffer) break;
-		mem_nmax_sample -= 256;
-	}
-	if (!mem_prob_buffer)
-		throw err_text("Unable to create buffer mem_prob_buffer", err);
-
-	// arguments for gpu_kernel: build_calc_prob
-	GPU_SETARG(gpu_kernel, 0, nHLA);
-	GPU_SETARG(gpu_kernel, 1, mem_exp_log_min_rare_freq);
-	GPU_SETARG(gpu_kernel, 2, mem_build_param);
-	GPU_SETARG(gpu_kernel, 3, mem_haplo_list);
-	GPU_SETARG(gpu_kernel, 4, mem_snpgeno);
-	GPU_SETARG(gpu_kernel, 5, mem_prob_buffer);
-
-	// arguments for gpu_kernel2: build_find_maxprob
+	// arguments for gpu_kl_build_find_maxprob
 	int sz_hla = size_hla;
-	GPU_SETARG(gpu_kernel2, 0, sz_hla);
-	GPU_SETARG(gpu_kernel2, 1, mem_prob_buffer);
-	GPU_SETARG(gpu_kernel2, 2, mem_build_output);
+	GPU_SETARG(gpu_kl_build_find_maxprob, 0, mem_build_output);
+	GPU_SETARG(gpu_kl_build_find_maxprob, 1, sz_hla);
+	GPU_SETARG(gpu_kl_build_find_maxprob, 2, mem_prob_buffer);
 
-	// arguments for gpu_kernel3: build_sum_prob
-	GPU_SETARG(gpu_kernel3, 0, nHLA);
-	GPU_SETARG(gpu_kernel3, 1, sz_hla);
-	GPU_SETARG(gpu_kernel3, 2, mem_build_param);
-	GPU_SETARG(gpu_kernel3, 3, mem_snpgeno);
-	GPU_SETARG(gpu_kernel3, 4, mem_prob_buffer);
-	GPU_SETARG(gpu_kernel3, 5, mem_build_output);
+	// arguments for gpu_kl_build_sum_prob
+	GPU_SETARG(gpu_kl_build_sum_prob, 0, nHLA);
+	GPU_SETARG(gpu_kl_build_sum_prob, 1, sz_hla);
+	GPU_SETARG(gpu_kl_build_sum_prob, 2, mem_build_param);
+	GPU_SETARG(gpu_kl_build_sum_prob, 3, mem_snpgeno);
+	GPU_SETARG(gpu_kl_build_sum_prob, 4, mem_prob_buffer);
+	GPU_SETARG(gpu_kl_build_sum_prob, 5, mem_build_output);
 
-	// arguments for gpu_kernel_clear: clear_memory
-	GPU_SETARG(gpu_kernel_clear, 1, mem_prob_buffer);
+	// arguments for gpu_kl_build_clear_mem
+	GPU_SETARG(gpu_kl_clear_mem, 1, mem_prob_buffer);
 }
 
 
 void build_done()
 {
 	hla_map_index.clear();
-	GPU_FREE_MEM(mem_exp_log_min_rare_freq);
-	GPU_FREE_MEM(mem_build_param);
-	GPU_FREE_MEM(mem_haplo_list);
-	GPU_FREE_MEM(mem_snpgeno);
-	GPU_FREE_MEM(mem_build_output);
-	GPU_FREE_MEM(mem_prob_buffer);
-	GPU_FREE_COM(gpu_commands);
 
 #ifdef HIBAG_ENABLE_TIMING
 	timing_array[TM_BUILD_TOTAL] = clock() - timing_array[TM_BUILD_TOTAL];
@@ -764,7 +605,7 @@ inline static int compare(const THLAType &H1, const THLAType &H2)
 int build_acc_oob()
 {
 	if (num_oob <= 0) return 0;
-	if (num_oob > mem_nmax_sample)
+	if (num_oob > mem_sample_nmax)
 		throw "Too many sample out of the limit of GPU memory, please contact the package author.";
 
 	cl_int err;
@@ -782,7 +623,7 @@ int build_acc_oob()
 		HIBAG_TIMING(TM_BUILD_OOB_PROB)
 		size_t wdims[2] = { (size_t)wdim_n_haplo, (size_t)wdim_n_haplo };
 		static const size_t local_size[2] = { gpu_local_size_d2, gpu_local_size_d2 };
-		GPU_RUN_KERNAL(gpu_kernel, 2, wdims, local_size);
+		GPU_RUN_KERNAL(gpu_kl_build_calc_prob, 2, wdims, local_size);
 	}
 
 	// find max index
@@ -790,7 +631,7 @@ int build_acc_oob()
 		HIBAG_TIMING(TM_BUILD_OOB_MAXIDX)
 		size_t wdims[2] = { (size_t)gpu_local_size_d1, (size_t)num_oob };
 		static const size_t local_size[2] = { gpu_local_size_d1, 1 };
-		GPU_RUN_KERNAL(gpu_kernel2, 2, wdims, local_size);
+		GPU_RUN_KERNAL(gpu_kl_build_find_maxprob, 2, wdims, local_size);
 	}
 
 	// result
@@ -830,7 +671,7 @@ int build_acc_oob()
 double build_acc_ib()
 {
 	if (num_ib <= 0) return 0;
-	if (num_ib > mem_nmax_sample)
+	if (num_ib > mem_sample_nmax)
 		throw "Too many sample out of the limit of GPU memory, please contact the package author.";
 
 	cl_int err;
@@ -848,7 +689,7 @@ double build_acc_ib()
 		HIBAG_TIMING(TM_BUILD_IB_PROB)
 		size_t wdims[2] = { (size_t)wdim_n_haplo, (size_t)wdim_n_haplo };
 		static const size_t local_size[2] = { gpu_local_size_d2, gpu_local_size_d2 };
-		GPU_RUN_KERNAL(gpu_kernel, 2, wdims, local_size);
+		GPU_RUN_KERNAL(gpu_kl_build_calc_prob, 2, wdims, local_size);
 	}
 
 	// result
@@ -859,7 +700,7 @@ double build_acc_ib()
 		HIBAG_TIMING(TM_BUILD_IB_LOGLIK)
 		size_t wdims[2] = { (size_t)gpu_local_size_d1, (size_t)num_ib };
 		static const size_t local_size[2] = { gpu_local_size_d1, 1 };
-		GPU_RUN_KERNAL(gpu_kernel3, 2, wdims, local_size);
+		GPU_RUN_KERNAL(gpu_kl_build_sum_prob, 2, wdims, local_size);
 	}
 
 	// sum of log likelihood
@@ -900,11 +741,15 @@ double build_acc_ib()
 
 // ===================================================================== //
 
+/*
 /// initialize the internal structure for predicting
 void predict_init(int nHLA, int nClassifier, const THaplotype *const pHaplo[],
 	const int nHaplo[])
 {
 	cl_int err;
+//	cl_kernel
+// get_var_env("")
+
 	gpu_kernel	= get_kernel(kernel_predict);
 	gpu_kernel2 = get_kernel(kernel_predict_sumprob);
 	gpu_kernel3 = get_kernel(kernel_predict_addprob);
@@ -1102,7 +947,7 @@ void predict_avg_prob(const TGenotype geno[], const double weight[],
 		return;
 	}
 }
-
+*/
 
 
 // ===================================================================== //
@@ -1110,6 +955,8 @@ void predict_avg_prob(const TGenotype geno[], const double weight[],
 /// return EXP_LOG_MIN_RARE_FREQ
 SEXP gpu_exp_log_min_rare_freq()
 {
+	/// the minimum rare frequency to store haplotypes (defined in HIBAG)
+	const double MIN_RARE_FREQ = 1e-5;
 	const int n = 2 * HIBAG_MAXNUM_SNP_IN_CLASSIFIER + 1;
 	SEXP rv_ans = PROTECT(NEW_NUMERIC(n));
 	for (int i=0; i < n; i++)
@@ -1120,21 +967,22 @@ SEXP gpu_exp_log_min_rare_freq()
 
 
 /// initialize GPU structure and return a pointer object
-SEXP gpu_init_proc()
+SEXP gpu_init_proc(SEXP env)
 {
-	// initialize EXP_LOG_MIN_RARE_FREQ[]
-	const int n = 2 * HIBAG_MAXNUM_SNP_IN_CLASSIFIER;
-	for (int i=0; i < n; i++)
-		EXP_LOG_MIN_RARE_FREQ[i] = exp(i * log(MIN_RARE_FREQ));
-	EXP_LOG_MIN_RARE_FREQ[0] = 1;
-	for (int i=0; i < n; i++)
+	// check
+	if (sizeof(THaplotype) != 32)
 	{
-		if (!R_FINITE(EXP_LOG_MIN_RARE_FREQ[i]))
-			EXP_LOG_MIN_RARE_FREQ[i] = 0;
+		Rf_error("sizeof(THaplotype) should be 32, but receive %d.",
+			(int)sizeof(THaplotype));
 	}
-	for (int i=0; i < n; i++)
-		EXP_LOG_MIN_RARE_FREQ_f32[i] = EXP_LOG_MIN_RARE_FREQ[i];
+	if (sizeof(TGenotype) != 48)
+	{
+		Rf_error("sizeof(TGenotype) should be 48, but receive %d.",
+			(int)sizeof(TGenotype));
+	}
 
+	// initialize package-wide variables
+	packageEnv = env;
 	// initialize GPU_Proc
 	GPU_Proc.build_init = build_init;
 	GPU_Proc.build_done = build_done;
@@ -1142,10 +990,11 @@ SEXP gpu_init_proc()
 	GPU_Proc.build_set_haplo_geno = build_set_haplo_geno;
 	GPU_Proc.build_acc_oob = build_acc_oob;
 	GPU_Proc.build_acc_ib = build_acc_ib;
+/*
 	GPU_Proc.predict_init = predict_init;
 	GPU_Proc.predict_done = predict_done;
 	GPU_Proc.predict_avg_prob = predict_avg_prob;
-
+*/
 	// return the pointer object
 	return R_MakeExternalPtr(&GPU_Proc, R_NilValue, R_NilValue);
 }
