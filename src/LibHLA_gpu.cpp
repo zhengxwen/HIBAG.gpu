@@ -134,10 +134,10 @@ namespace HLA_LIB
 
 	// the number of unique HLA alleles
 	static int Num_HLA;
-	// the number of individual classifiers
-	static int Num_Classifier;
 	// the number of samples
 	static int Num_Sample;
+	// the number of individual classifiers
+	static int Num_Classifier;
 
 
 	// flags for usage of double or single precision
@@ -154,25 +154,39 @@ namespace HLA_LIB
 	static cl_kernel gpu_kl_build_sum_prob = NULL;
 	static cl_kernel gpu_kl_clear_mem = NULL;
 
+	// OpenCL memory objects
 
+	// the buffer of probabilities
+	// double[nHLA*(nHLA+1)/2][# of samples] -- prob. for classifiers or samples
+	static cl_mem mem_prob_buffer = NULL;
+	// sizeof(double[nHLA*(nHLA+1)/2])
+	static size_t msize_prob_buffer = 0;
+	// static size_t msize_probbuf_total = 0;
 
-	// used for work-group size (1-dim and 2-dim)
-	const size_t gpu_local_size_d1 = 64;
-	const size_t gpu_local_size_d2 = 8;
+	// parameters
+	static cl_mem mem_build_param = NULL;
+	// parameter offset
+	static const int offset_build_param = 5;
 
-
-	// haplotypes of all classifiers
-	static cl_mem mem_exp_log_min_rare_freq = NULL;
 	// haplotype list
 	static cl_mem mem_haplo_list = NULL;
 	// SNP genotypes
 	static cl_mem mem_snpgeno = NULL;
 
-	// the buffer of numeric values
-	// double[nHLA*(nHLA+1)/2][] -- prob. for each classifier
-	static cl_mem mem_prob_buffer = NULL;
-	static size_t msize_probbuf_each = 0;
-	static size_t msize_probbuf_total = 0;
+
+
+	// max. index or sum of prob.
+	static cl_mem mem_build_output = NULL;
+
+	// the max number of samples can be hold in mem_prob_buffer
+	static int mem_sample_nmax = 0;
+	// the max number of haplotypes can be hold in mem_haplo_list
+	static int build_haplo_nmax = 0;
+
+	// used for work-group size (1-dim and 2-dim)
+	const size_t gpu_local_size_d1 = 64;
+	const size_t gpu_local_size_d2 = 8;
+
 
 
 	// ===================================================================== //
@@ -182,19 +196,6 @@ namespace HLA_LIB
 	static SEXP kernel_build_find_maxprob = NULL;
 	static SEXP kernel_build_sum_prob = NULL;
 	static SEXP kernel_build_clear = NULL;
-
-	// parameters
-	static cl_mem mem_build_param = NULL;
-	// parameter offset
-	static const int offset_build_param = 5;
-
-	// max. index or sum of prob.
-	static cl_mem mem_build_output = NULL;
-
-	// the max number of samples can be hold in mem_prob_buffer
-	static int mem_sample_nmax = 0;
-	// the max number of haplotypes can be hold in mem_haplo_list
-	static int mem_build_haplo_nmax = 0;
 
 	static int build_num_oob;  ///< the number of out-of-bag samples
 	static int build_num_ib;   ///< the number of in-bag samples
@@ -304,10 +305,8 @@ namespace HLA_LIB
 		{
 			if (mem_ptr)
 			{
-				cl_int err = clEnqueueUnmapMemObject(gpu_command_queue, gpu_mem,
-					(void*)mem_ptr, 0, NULL, NULL);
-				if (err != CL_SUCCESS)
-					throw err_text("Failed to unmap memory buffer", err);
+				clEnqueueUnmapMemObject(gpu_command_queue, gpu_mem, (void*)mem_ptr,
+					0, NULL, NULL);
 				mem_ptr = NULL;
 			}
 		}
@@ -492,13 +491,15 @@ void build_init(int nHLA, int nSample)
 	// GPU memory
 	cl_mem mem_rare_freq = get_mem_env(gpu_f64_build_flag ?
 		"mem_exp_log_min_rare_freq64" : "mem_exp_log_min_rare_freq32");
-	mem_build_param = get_mem_env("mem_build_param");
-	mem_snpgeno = get_mem_env("mem_snpgeno");
-	mem_build_output = get_mem_env("mem_build_output");
-	mem_build_haplo_nmax = Rf_asInteger(get_var_env("build_haplo_nmax"));
-	mem_haplo_list = get_mem_env("mem_haplo_list");
-	mem_sample_nmax = Rf_asInteger(get_var_env("build_sample_nmax"));
 	mem_prob_buffer = get_mem_env("mem_prob_buffer");
+	msize_prob_buffer = nHLA*(nHLA+1)/2 * (gpu_f64_build_flag ? 64 : 32);
+	mem_build_param = get_mem_env("mem_build_param");
+	mem_haplo_list = get_mem_env("mem_haplo_list");
+	mem_snpgeno = get_mem_env("mem_snpgeno");
+	build_haplo_nmax = Rf_asInteger(get_var_env("build_haplo_nmax"));
+	mem_sample_nmax = Rf_asInteger(get_var_env("build_sample_nmax"));
+
+	mem_build_output = get_mem_env("mem_build_output");
 
 	// arguments for build_calc_prob
 	cl_int err;
@@ -530,6 +531,10 @@ void build_init(int nHLA, int nSample)
 
 void build_done()
 {
+	gpu_kl_build_calc_prob = gpu_kl_build_find_maxprob = gpu_kl_build_sum_prob =
+		gpu_kl_clear_mem = NULL;
+	mem_build_param = mem_snpgeno = mem_build_output = mem_haplo_list =
+		mem_prob_buffer = NULL;
 	hla_map_index.clear();
 
 #ifdef HIBAG_ENABLE_TIMING
@@ -576,7 +581,7 @@ void build_set_bootstrap(const int oob_cnt[])
 void build_set_haplo_geno(const THaplotype haplo[], int n_haplo,
 	const TGenotype geno[], int n_snp)
 {
-	if (n_haplo > mem_build_haplo_nmax)
+	if (n_haplo > build_haplo_nmax)
 		throw "Too many haplotypes out of the limit, please contact the package author.";
 
 	cl_int err;
@@ -610,11 +615,10 @@ int build_acc_oob()
 		throw "Too many sample out of the limit of GPU memory, please contact the package author.";
 
 	cl_int err;
-
 	// initialize
 	{
 		HIBAG_TIMING(TM_BUILD_OOB_CLEAR)
-		clear_prob_buffer(msize_probbuf_each * build_num_oob);
+		clear_prob_buffer(msize_prob_buffer * build_num_oob);
 		int param[5] = { num_haplo, num_snp, 0, build_num_oob, offset_build_param };
 		GPU_WRITE_MEM(mem_build_param, 0, sizeof(param), param);
 	}
@@ -674,7 +678,7 @@ double build_acc_ib()
 	// initialize
 	{
 		HIBAG_TIMING(TM_BUILD_IB_CLEAR)
-		clear_prob_buffer(msize_probbuf_each * build_num_ib);
+		clear_prob_buffer(msize_prob_buffer * build_num_ib);
 		int param[5] = { num_haplo, num_snp, 0, build_num_ib, offset_build_param+Num_Sample };
 		GPU_WRITE_MEM(mem_build_param, 0, sizeof(param), param);
 	}

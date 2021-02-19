@@ -79,15 +79,15 @@ inline static int hamming_dist(int n, __global unsigned char *g,
 	__global uint *h2 = (__global uint *)h_2;
 	__global uint *s1 = (__global uint *)(g + 0);
 	__global uint *s2 = (__global uint *)(g + 16);
-	__global uint *sM = (__global uint *)(g + 32);
 	int ans = 0;
 
 	// for-loop
 	for (; n > 0; n-=32)
 	{
-		uint H1 = *h1++, H2 = *h2++;
-		uint S1 = *s1++, S2 = *s2++, M = *sM++;
-		uint MASK = ((H1 ^ S2) | (H2 ^ S1)) & M;
+		uint H1 = *h1++, H2 = *h2++;  // two haplotypes
+		uint S1 = *s1++, S2 = *s2++;  // genotypes
+		uint M = S2 & ~S1;            // missing value, 1 is missing
+		uint MASK = ((H1 ^ S2) | (H2 ^ S1)) & ~M;
 
 		// popcount for '(H1 ^ S1) & MASK'
 		uint v1 = (H1 ^ S1) & MASK;
@@ -117,6 +117,7 @@ inline static int hamming_dist(int n, __global unsigned char *g,
 ##########################################################################
 
 code_build_calc_prob <- "
+#define SIZEOF_TGENOTYPE    48
 __kernel void build_calc_prob(
 	__global numeric *outProb,
 	const int nHLA,
@@ -147,7 +148,7 @@ __kernel void build_calc_prob(
 		// the second haplotype
 		__global unsigned char *p2 = pHaplo + (i2 << 5);
 		// SNP genotype
-		__global unsigned char *p_geno = pGeno + (pParam[st_samp+ii] << 6);
+		__global unsigned char *p_geno = pGeno + (pParam[st_samp+ii] * SIZEOF_TGENOTYPE);
 		// hamming distance
 		int d = hamming_dist(n_snp, p_geno, p1, p2);
 
