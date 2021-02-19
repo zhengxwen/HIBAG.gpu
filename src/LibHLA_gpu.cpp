@@ -74,24 +74,13 @@
 	x = clCreateBuffer(gpu_context, flag, size, ptr, &err); \
 	if (!x) throw err_text("Unable to create buffer " #x, err);
 
-#define GPU_MAP_MEM(x, ptr, size)	 \
-	ptr = clEnqueueMapBuffer(gpu_commands, x, CL_TRUE, \
-		CL_MAP_READ | CL_MAP_WRITE, 0, size, 0, NULL, NULL, &err); \
-	if (!ptr) throw err_text("Unable to map buffer to host memory " #x, err);
-
-#define GPU_UNMAP_MEM(x, ptr)	 \
-	err = clEnqueueUnmapMemObject(gpu_commands, x, ptr, 0, NULL, NULL); \
-	if (err != CL_SUCCESS) \
-		throw err_text("Failed to unmap memory buffer " #x, err); \
-	ptr = NULL;
-
 #define GPU_READ_MEM(x, size, ptr)	  \
-	err = clEnqueueReadBuffer(gpu_commands, x, CL_TRUE, 0, size, ptr, 0, NULL, NULL); \
+	err = clEnqueueReadBuffer(gpu_command_queue, x, CL_TRUE, 0, size, ptr, 0, NULL, NULL); \
 	if (err != CL_SUCCESS) \
 		throw err_text("Failed to read memory buffer " #x, err);
 
 #define GPU_WRITE_MEM(x, offset, size, ptr)	   \
-	err = clEnqueueWriteBuffer(gpu_commands, x, CL_TRUE, offset, size, ptr, 0, NULL, NULL); \
+	err = clEnqueueWriteBuffer(gpu_command_queue, x, CL_TRUE, offset, size, ptr, 0, NULL, NULL); \
 	if (err != CL_SUCCESS) \
 		throw err_text("Failed to write memory buffer " #x, err);
 
@@ -101,10 +90,10 @@
 		throw err_text("Failed to set kernel (" #kernel ") argument (" #i ")", err);
 
 #define GPU_RUN_KERNAL(kernel, ndim, wdims, lsize)	  \
-	err = clEnqueueNDRangeKernel(gpu_commands, kernel, ndim, NULL, wdims, lsize, 0, NULL, NULL); \
+	err = clEnqueueNDRangeKernel(gpu_command_queue, kernel, ndim, NULL, wdims, lsize, 0, NULL, NULL); \
 	if (err != CL_SUCCESS) \
 		throw err_text("Failed to run clEnqueueNDRangeKernel() with " #kernel, err); \
-	err = clFinish(gpu_commands); \
+	err = clFinish(gpu_command_queue); \
 	if (err != CL_SUCCESS) \
 		throw err_text("Failed to run clFinish() with " #kernel, err);
 
@@ -119,7 +108,7 @@
 #if defined(CL_VERSION_1_2)
 	#define GPU_ZERO_FILL(x, size)    { \
 		size_t zero = 1; \
-		err = clEnqueueFillBuffer(gpu_commands, x, &zero, 1, 0, size, 0, NULL, NULL); \
+		err = clEnqueueFillBuffer(gpu_command_queue, x, &zero, 1, 0, size, 0, NULL, NULL); \
 		if (err != CL_SUCCESS) \
 			throw err_text("clEnqueueFillBuffer() with " #x " failed", err); \
 	}
@@ -168,7 +157,7 @@ namespace HLA_LIB
 
 	// OpenCL device variables
 	static cl_context gpu_context = NULL;
-	static cl_command_queue gpu_commands = NULL;
+	static cl_command_queue gpu_command_queue = NULL;
 
 	// OpenCL kernel functions
 	static cl_kernel gpu_kl_build_calc_prob	 = NULL;
@@ -237,6 +226,107 @@ namespace HLA_LIB
 
 	static int wdim_n_haplo = 0;
 	static int wdim_pred_addprob = 0;
+
+
+	// ===================================================================== //
+
+	// return OpenCL error code
+	static const char *err_code(int err)
+	{
+		#define ERR_RET(s)    case s: return #s;
+		switch (err)
+		{
+			ERR_RET(CL_BUILD_PROGRAM_FAILURE)
+			ERR_RET(CL_COMPILER_NOT_AVAILABLE)
+			ERR_RET(CL_DEVICE_NOT_AVAILABLE)
+			ERR_RET(CL_DEVICE_NOT_FOUND)
+			ERR_RET(CL_IMAGE_FORMAT_MISMATCH)
+			ERR_RET(CL_IMAGE_FORMAT_NOT_SUPPORTED)
+			ERR_RET(CL_INVALID_ARG_INDEX)
+			ERR_RET(CL_INVALID_ARG_SIZE)
+			ERR_RET(CL_INVALID_ARG_VALUE)
+			ERR_RET(CL_INVALID_BINARY)
+			ERR_RET(CL_INVALID_BUFFER_SIZE)
+			ERR_RET(CL_INVALID_BUILD_OPTIONS)
+			ERR_RET(CL_INVALID_COMMAND_QUEUE)
+			ERR_RET(CL_INVALID_CONTEXT)
+			ERR_RET(CL_INVALID_DEVICE)
+			ERR_RET(CL_INVALID_DEVICE_TYPE)
+			ERR_RET(CL_INVALID_EVENT)
+			ERR_RET(CL_INVALID_EVENT_WAIT_LIST)
+			ERR_RET(CL_INVALID_GL_OBJECT)
+			ERR_RET(CL_INVALID_GLOBAL_OFFSET)
+			ERR_RET(CL_INVALID_HOST_PTR)
+			ERR_RET(CL_INVALID_IMAGE_FORMAT_DESCRIPTOR)
+			ERR_RET(CL_INVALID_IMAGE_SIZE)
+			ERR_RET(CL_INVALID_KERNEL_NAME)
+			ERR_RET(CL_INVALID_KERNEL)
+			ERR_RET(CL_INVALID_KERNEL_ARGS)
+			ERR_RET(CL_INVALID_KERNEL_DEFINITION)
+			ERR_RET(CL_INVALID_MEM_OBJECT)
+			ERR_RET(CL_INVALID_OPERATION)
+			ERR_RET(CL_INVALID_PLATFORM)
+			ERR_RET(CL_INVALID_PROGRAM)
+			ERR_RET(CL_INVALID_PROGRAM_EXECUTABLE)
+			ERR_RET(CL_INVALID_QUEUE_PROPERTIES)
+			ERR_RET(CL_INVALID_SAMPLER)
+			ERR_RET(CL_INVALID_VALUE)
+			ERR_RET(CL_INVALID_WORK_DIMENSION)
+			ERR_RET(CL_INVALID_WORK_GROUP_SIZE)
+			ERR_RET(CL_INVALID_WORK_ITEM_SIZE)
+			ERR_RET(CL_MAP_FAILURE)
+			ERR_RET(CL_MEM_OBJECT_ALLOCATION_FAILURE)
+			ERR_RET(CL_MEM_COPY_OVERLAP)
+			ERR_RET(CL_OUT_OF_HOST_MEMORY)
+			ERR_RET(CL_OUT_OF_RESOURCES)
+			ERR_RET(CL_PROFILING_INFO_NOT_AVAILABLE)
+			ERR_RET(CL_SUCCESS)
+		}
+		return "Unknown";
+		#undef ERR_RET
+	}
+
+	// OpenCL error message
+	static const char *err_text(const char *txt, int err)
+	{
+		static char buf[1024];
+		sprintf(buf, "%s (error: %d, %s).", txt, err, err_code(err));
+		return buf;
+	}
+
+
+	template<typename TYPE> struct GPU_MEM_MAP
+	{
+	public:
+		GPU_MEM_MAP(cl_mem mem, size_t size, bool readonly)
+		{
+			cl_int err;
+			gpu_mem = mem;
+			void *p = clEnqueueMapBuffer(gpu_command_queue, gpu_mem, CL_TRUE,
+				CL_MAP_READ | (readonly ? 0 : CL_MAP_WRITE),
+				0, size * sizeof(TYPE), 0, NULL, NULL, &err);
+			mem_ptr = (TYPE*)p;
+			if (!p)
+				throw err_text("Unable to map buffer to host memory", err);
+		}
+		~GPU_MEM_MAP()
+		{
+			if (mem_ptr)
+			{
+				cl_int err = clEnqueueUnmapMemObject(gpu_command_queue, gpu_mem,
+					(void*)mem_ptr, 0, NULL, NULL);
+				if (err != CL_SUCCESS)
+					throw err_text("Failed to unmap memory buffer", err);
+				mem_ptr = NULL;
+			}
+		}
+		inline TYPE *ptr() { return mem_ptr; }
+		inline const TYPE *ptr() const { return mem_ptr; }
+	private:
+		cl_mem gpu_mem;
+		TYPE *mem_ptr;
+	};
+
 }
 
 
@@ -295,7 +385,7 @@ inline static cl_context get_context_env(const char *varnm)
 	return (cl_context)R_ExternalPtrAddr(ctx);
 }
 
-inline static cl_command_queue getCommandQueue(const char *varnm)
+inline static cl_command_queue get_command_queue_env(const char *varnm)
 {
 	SEXP ctx = get_var_env(varnm);
 	if (!Rf_inherits(ctx, "clContext") || TYPEOF(ctx) != EXTPTRSXP)
@@ -325,79 +415,6 @@ inline static cl_mem get_mem_env(const char *varnm)
 }
 
 
-
-// return OpenCL error code
-static const char *err_code(int err)
-{
-	#define ERR_RET(s)    case s: return #s;
-	switch (err)
-	{
-		ERR_RET(CL_BUILD_PROGRAM_FAILURE)
-		ERR_RET(CL_COMPILER_NOT_AVAILABLE)
-		ERR_RET(CL_DEVICE_NOT_AVAILABLE)
-		ERR_RET(CL_DEVICE_NOT_FOUND)
-		ERR_RET(CL_IMAGE_FORMAT_MISMATCH)
-		ERR_RET(CL_IMAGE_FORMAT_NOT_SUPPORTED)
-		ERR_RET(CL_INVALID_ARG_INDEX)
-		ERR_RET(CL_INVALID_ARG_SIZE)
-		ERR_RET(CL_INVALID_ARG_VALUE)
-		ERR_RET(CL_INVALID_BINARY)
-		ERR_RET(CL_INVALID_BUFFER_SIZE)
-		ERR_RET(CL_INVALID_BUILD_OPTIONS)
-		ERR_RET(CL_INVALID_COMMAND_QUEUE)
-		ERR_RET(CL_INVALID_CONTEXT)
-		ERR_RET(CL_INVALID_DEVICE)
-		ERR_RET(CL_INVALID_DEVICE_TYPE)
-		ERR_RET(CL_INVALID_EVENT)
-		ERR_RET(CL_INVALID_EVENT_WAIT_LIST)
-		ERR_RET(CL_INVALID_GL_OBJECT)
-		ERR_RET(CL_INVALID_GLOBAL_OFFSET)
-		ERR_RET(CL_INVALID_HOST_PTR)
-		ERR_RET(CL_INVALID_IMAGE_FORMAT_DESCRIPTOR)
-		ERR_RET(CL_INVALID_IMAGE_SIZE)
-		ERR_RET(CL_INVALID_KERNEL_NAME)
-		ERR_RET(CL_INVALID_KERNEL)
-		ERR_RET(CL_INVALID_KERNEL_ARGS)
-		ERR_RET(CL_INVALID_KERNEL_DEFINITION)
-		ERR_RET(CL_INVALID_MEM_OBJECT)
-		ERR_RET(CL_INVALID_OPERATION)
-		ERR_RET(CL_INVALID_PLATFORM)
-		ERR_RET(CL_INVALID_PROGRAM)
-		ERR_RET(CL_INVALID_PROGRAM_EXECUTABLE)
-		ERR_RET(CL_INVALID_QUEUE_PROPERTIES)
-		ERR_RET(CL_INVALID_SAMPLER)
-		ERR_RET(CL_INVALID_VALUE)
-		ERR_RET(CL_INVALID_WORK_DIMENSION)
-		ERR_RET(CL_INVALID_WORK_GROUP_SIZE)
-		ERR_RET(CL_INVALID_WORK_ITEM_SIZE)
-		ERR_RET(CL_MAP_FAILURE)
-		ERR_RET(CL_MEM_OBJECT_ALLOCATION_FAILURE)
-		ERR_RET(CL_MEM_COPY_OVERLAP)
-		ERR_RET(CL_OUT_OF_HOST_MEMORY)
-		ERR_RET(CL_OUT_OF_RESOURCES)
-		ERR_RET(CL_PROFILING_INFO_NOT_AVAILABLE)
-		ERR_RET(CL_SUCCESS)
-	}
-	return "UNKNOWN";
-	#undef ERR_RET
-}
-
-// OpenCL error message
-static const char *err_text(const char *txt, int err)
-{
-	static char buf[1024];
-	sprintf(buf, "%s (error: %d, %s).", txt, err, err_code(err));
-	return buf;
-}
-
-
-// get the OpenCL device ID
-static cl_device_id getDeviceID(SEXP device)
-{
-	if (!Rf_inherits(device, "clDeviceID") || TYPEOF(device) != EXTPTRSXP)
-		Rf_error("invalid device");
-	return ((cl_device_id*)R_ExternalPtrAddr(device))[0];
-}
 
 
 
@@ -459,8 +476,6 @@ void build_init(int nHLA, int nSample)
 	timing_array[TM_BUILD_TOTAL] = clock();
 #endif
 
-	cl_int err;
-
 	// initialize
 	Num_HLA = nHLA;
 	Num_Sample = nSample;
@@ -475,7 +490,7 @@ void build_init(int nHLA, int nSample)
 
 	// device variables
 	gpu_context = get_context_env("gpu_context");
-	gpu_commands = getCommandQueue("gpu_context");
+	gpu_command_queue = get_command_queue_env("gpu_context");
 
 	// kernels
 	gpu_kl_build_calc_prob    = get_kernel_env("kernel_build_calc_prob");
@@ -495,6 +510,7 @@ void build_init(int nHLA, int nSample)
 	mem_prob_buffer = get_mem_env("mem_prob_buffer");
 
 	// arguments for build_calc_prob
+	cl_int err;
 	GPU_SETARG(gpu_kl_build_calc_prob, 0, mem_prob_buffer);
 	GPU_SETARG(gpu_kl_build_calc_prob, 1, nHLA);
 	GPU_SETARG(gpu_kl_build_calc_prob, 2, mem_rare_freq);
@@ -553,12 +569,8 @@ void build_done()
 
 void build_set_bootstrap(const int oob_cnt[])
 {
-	cl_int err;
-	void *ptr_buf;
-	GPU_MAP_MEM(mem_build_param, ptr_buf,
-		sizeof(int)*(offset_build_param + 2*Num_Sample));
-
-	int *p_oob = (int*)ptr_buf + offset_build_param;
+	GPU_MEM_MAP<int> M(mem_build_param, offset_build_param + 2*Num_Sample, false);
+	int *p_oob = M.ptr() + offset_build_param;
 	int *p_ib  = p_oob + Num_Sample;
 	num_oob = num_ib  = 0;
 	for (int i=0; i < Num_Sample; i++)
@@ -568,8 +580,6 @@ void build_set_bootstrap(const int oob_cnt[])
 		else
 			p_ib[num_ib++] = i;
 	}
-
-	GPU_UNMAP_MEM(mem_build_param, ptr_buf);
 }
 
 void build_set_haplo_geno(const THaplotype haplo[], int n_haplo,
@@ -634,18 +644,16 @@ int build_acc_oob()
 		GPU_RUN_KERNAL(gpu_kl_build_find_maxprob, 2, wdims, local_size);
 	}
 
-	// result
-	int corrent_cnt = 0;
+	// sync memory
+	GPU_MEM_MAP<TGenotype> MG(mem_snpgeno, Num_Sample, true);
+	GPU_MEM_MAP<int> MP(mem_build_param, offset_build_param + Num_Sample, true);
+	GPU_MEM_MAP<int> MO(mem_build_output, num_oob, true);
 
-	void *ptr_geno, *ptr_index, *ptr_out;
-	GPU_MAP_MEM(mem_snpgeno, ptr_geno, sizeof(TGenotype)*Num_Sample);
-	GPU_MAP_MEM(mem_build_param, ptr_index, sizeof(int)*(offset_build_param + Num_Sample));
-	GPU_MAP_MEM(mem_build_output, ptr_out, sizeof(int)*num_oob);
-
-	TGenotype *pGeno = (TGenotype *)ptr_geno;
-	int *pIdx = (int *)ptr_index + offset_build_param;
-	int *pMaxI = (int *)ptr_out;
+	TGenotype *pGeno = MG.ptr();
+	int *pIdx = MP.ptr() + offset_build_param;
+	int *pMaxI = MO.ptr();
 	THLAType hla;
+	int corrent_cnt = 0;
 
 	for (int i=0; i < num_oob; i++)
 	{
@@ -659,10 +667,6 @@ int build_acc_oob()
 		}
 		corrent_cnt += compare(hla, pGeno[pIdx[i]].aux_hla_type);
 	}
-
-	GPU_UNMAP_MEM(mem_build_output, ptr_out);
-	GPU_UNMAP_MEM(mem_build_param, ptr_index);
-	GPU_UNMAP_MEM(mem_snpgeno, ptr_geno);
 
 	return corrent_cnt;
 }
@@ -692,9 +696,6 @@ double build_acc_ib()
 		GPU_RUN_KERNAL(gpu_kl_build_calc_prob, 2, wdims, local_size);
 	}
 
-	// result
-	double LogLik = 0;
-
 	// get log likelihood
 	{
 		HIBAG_TIMING(TM_BUILD_IB_LOGLIK)
@@ -704,12 +705,11 @@ double build_acc_ib()
 	}
 
 	// sum of log likelihood
-	void *ptr_out;
-	GPU_MAP_MEM(mem_build_output, ptr_out, sizeof(double)*num_ib*3);
-
+	double LogLik = 0;
 	if (gpu_f64_build_flag)
 	{
-		double *p = (double *)ptr_out;
+		GPU_MEM_MAP<double> M(mem_build_output, num_ib*3, true);
+		const double *p = M.ptr();
 		for (int i=0; i < num_ib; i++, p+=3)
 		{
 			if (p[0] > 0)
@@ -720,7 +720,8 @@ double build_acc_ib()
 			}
 		}
 	} else {
-		float *p = (float *)ptr_out;
+		GPU_MEM_MAP<float> M(mem_build_output, num_ib*3, true);
+		const float *p = M.ptr();
 		for (int i=0; i < num_ib; i++, p+=3)
 		{
 			if (p[0] > 0)
@@ -731,8 +732,6 @@ double build_acc_ib()
 			}
 		}
 	}
-
-	GPU_UNMAP_MEM(mem_build_output, ptr_out);
 
 	return -2 * LogLik;
 }
@@ -842,7 +841,7 @@ void predict_done()
 	GPU_FREE_MEM(mem_pred_haplo_num);
 	GPU_FREE_MEM(mem_snpgeno);
 	GPU_FREE_MEM(mem_prob_buffer);
-	GPU_FREE_COM(gpu_commands);
+	GPU_FREE_COM(gpu_command_queue);
 }
 
 

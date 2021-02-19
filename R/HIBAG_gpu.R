@@ -512,6 +512,7 @@ hlaGPU_Init <- function(device=1L, use_double=NA, force=FALSE, verbose=TRUE)
 	NA_integer_
 }
 
+
 .onAttach <- function(libname, pkgname)
 {
 	# get devices
