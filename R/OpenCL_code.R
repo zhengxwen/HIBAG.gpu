@@ -29,8 +29,8 @@
 #
 
 code_atomic_add_f32 <- "
-#define SZ_HAPLO    24
 #define DIST_MAX    9
+#define OFFSET_HAPLO_FREQ    24
 
 #pragma OPENCL EXTENSION cl_khr_global_int32_base_atomics : enable
 inline static void atomic_fadd(volatile __global float *addr, float val)
@@ -50,8 +50,8 @@ inline static void atomic_fadd(volatile __global float *addr, float val)
 "
 
 code_atomic_add_f64 <- "
-#define SZ_HAPLO    16
 #define DIST_MAX    64
+#define OFFSET_HAPLO_FREQ    16
 
 #pragma OPENCL EXTENSION cl_khr_int64_base_atomics : enable
 inline static void atomic_fadd(volatile __global double *addr, double val)
@@ -117,7 +117,8 @@ inline static int hamming_dist(int n, __global unsigned char *g,
 ##########################################################################
 
 code_build_calc_prob <- "
-#define SIZEOF_TGENOTYPE    48
+#define SIZEOF_TGENOTYPE       48
+#define OFFSET_ALLELE_INDEX    28
 __kernel void build_calc_prob(
 	__global numeric *outProb,
 	const int nHLA,
@@ -154,10 +155,10 @@ __kernel void build_calc_prob(
 
 		if (d <= DIST_MAX)  // since exp_log_min_rare_freq[>DIST_MAX] = 0
 		{
-			const numeric fq1 = *(__global numeric*)(p1 + SZ_HAPLO);
-			const int h1 = *(__global int*)(p1 + 28);
-			const numeric fq2 = *(__global numeric*)(p2 + SZ_HAPLO);
-			const int h2 = *(__global int*)(p2 + 28);
+			const numeric fq1 = *(__global numeric*)(p1 + OFFSET_HAPLO_FREQ);
+			const int h1 = *(__global int*)(p1 + OFFSET_ALLELE_INDEX);
+			const numeric fq2 = *(__global numeric*)(p2 + OFFSET_HAPLO_FREQ);
+			const int h2 = *(__global int*)(p2 + OFFSET_ALLELE_INDEX);
 			// genotype frequency
 			numeric ff = (i1 != i2) ? (2 * fq1 * fq2) : (fq1 * fq2);
 			ff *= exp_log_min_rare_freq[d];  // account for mutation and error rate
@@ -304,9 +305,9 @@ __kernel void pred_calc_prob(
 
 			if (d <= DIST_MAX)  // since exp_log_min_rare_freq[>DIST_MAX] = 0
 			{
-				const double fq1 = *(__global double*)(p1 + SZ_HAPLO);
+				const double fq1 = *(__global double*)(p1 + OFFSET_HAPLO_FREQ);
 				const int h1 = *(__global int*)(p1 + 28);
-				const double fq2 = *(__global double*)(p2 + SZ_HAPLO);
+				const double fq2 = *(__global double*)(p2 + OFFSET_HAPLO_FREQ);
 				const int h2 = *(__global int*)(p2 + 28);
 				// genotype frequency
 				double ff = (i1 != i2) ? (2 * fq1 * fq2) : (fq1 * fq2);

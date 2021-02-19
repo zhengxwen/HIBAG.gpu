@@ -976,6 +976,12 @@ SEXP gpu_init_proc(SEXP env)
 			(int)sizeof(TGenotype));
 	}
 
+// #define OFFSET_BOOTSTRAP    32
+// #define OFFSET_HLA_A1       36
+// #define OFFSET_HLA_A2       40
+// #define OFFSET_HAPLO_FREQ    24
+// #define OFFSET_ALLELE_INDEX    28
+
 	// initialize package-wide variables
 	packageEnv = env;
 	// initialize GPU_Proc
