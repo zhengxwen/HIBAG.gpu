@@ -970,17 +970,42 @@ SEXP gpu_init_proc(SEXP env)
 		Rf_error("sizeof(THaplotype) should be 32, but receive %d.",
 			(int)sizeof(THaplotype));
 	}
+	if (offsetof(THaplotype, Freq) != 16)
+	{
+		Rf_error("offsetof(THaplotype, Freq) should be 16, but receive %d.",
+			(int)offsetof(THaplotype, Freq));
+	}
+	if (offsetof(THaplotype, aux.a2.Freq_f32) != 24)
+	{
+		Rf_error("offsetof(THaplotype, aux.a2.Freq_f32) should be 24, but receive %d.",
+			(int)offsetof(THaplotype, aux.a2.Freq_f32));
+	}
+	if (offsetof(THaplotype, aux.a2.HLA_allele) != 28)
+	{
+		Rf_error("offsetof(THaplotype, aux.a2.Freq_f32) should be 24, but receive %d.",
+			(int)offsetof(THaplotype, aux.a2.HLA_allele));
+	}
+
 	if (sizeof(TGenotype) != 48)
 	{
 		Rf_error("sizeof(TGenotype) should be 48, but receive %d.",
 			(int)sizeof(TGenotype));
 	}
-
-// #define OFFSET_BOOTSTRAP    32
-// #define OFFSET_HLA_A1       36
-// #define OFFSET_HLA_A2       40
-// #define OFFSET_HAPLO_FREQ    24
-// #define OFFSET_ALLELE_INDEX    28
+	if (offsetof(TGenotype, BootstrapCount) != 32)
+	{
+		Rf_error("offsetof(TGenotype, BootstrapCount) should be 32, but receive %d.",
+			(int)offsetof(TGenotype, BootstrapCount));
+	}
+	if (offsetof(TGenotype, aux_hla_type.Allele1) != 36)
+	{
+		Rf_error("offsetof(TGenotype, aux_hla_type.Allele1) should be 36, but receive %d.",
+			(int)offsetof(TGenotype, aux_hla_type.Allele1));
+	}
+	if (offsetof(TGenotype, aux_hla_type.Allele2) != 40)
+	{
+		Rf_error("offsetof(TGenotype, aux_hla_type.Allele2) should be 40, but receive %d.",
+			(int)offsetof(TGenotype, aux_hla_type.Allele2));
+	}
 
 	// initialize package-wide variables
 	packageEnv = env;
