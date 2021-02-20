@@ -173,6 +173,7 @@ __kernel void build_calc_prob(
 
 code_build_find_maxprob <- "
 #define LOCAL_SIZE    64
+
 __kernel void build_find_maxprob(__global int *out_idx, const int num_hla_geno,
 	__global const numeric *prob)
 {
@@ -221,9 +222,11 @@ code_build_sum_prob <- "
 #define OFFSET_HLA_A1       36
 #define OFFSET_HLA_A2       40
 #define OFFSET_PARAM        3
+
 __kernel void build_sum_prob(__global numeric *out_prob,
 	const int nHLA, const int num_hla_geno,
-	__global int *pParam, __global unsigned char *pGeno, __global numeric *prob)
+	__global const int *pParam, __global const unsigned char *pGeno,
+	__global const numeric *prob)
 {
 	__local numeric local_sum[LOCAL_SIZE];
 
@@ -239,13 +242,13 @@ __kernel void build_sum_prob(__global numeric *out_prob,
 	barrier(CLK_LOCAL_MEM_FENCE);
 	if (i == 0)
 	{
+		out_prob += (i_samp << 1) + i_samp;
+
 		sum = 0;
 		for (int j=0; j < LOCAL_SIZE; j++) sum += local_sum[j];
-
-		out_prob += (i_samp << 1) + i_samp;
 		out_prob[0] = sum;
 
-		// SNP genotype
+		// TGenotype
 		pParam += pParam[OFFSET_PARAM];  // offset pParam
 		__global unsigned char *p = pGeno + (pParam[i_samp] * SIZEOF_TGENOTYPE);
 

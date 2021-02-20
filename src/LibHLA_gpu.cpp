@@ -506,9 +506,9 @@ void build_init(int nHLA, int nSample)
 
 	// arguments for build_calc_prob
 	cl_int err;
+	int sz_hla = size_hla;
 	GPU_SETARG(gpu_kl_build_calc_prob, 0, mem_prob_buffer);
 	GPU_SETARG(gpu_kl_build_calc_prob, 1, nHLA);
-	int sz_hla = size_hla;
 	GPU_SETARG(gpu_kl_build_calc_prob, 2, sz_hla);
 	GPU_SETARG(gpu_kl_build_calc_prob, 3, mem_rare_freq);
 	GPU_SETARG(gpu_kl_build_calc_prob, 4, mem_build_param);
@@ -535,9 +535,14 @@ void build_init(int nHLA, int nSample)
 
 void build_done()
 {
-	gpu_kl_build_calc_prob = gpu_kl_build_find_maxprob = gpu_kl_build_sum_prob =
+	gpu_kl_build_calc_prob =
+		gpu_kl_build_find_maxprob =
+		gpu_kl_build_sum_prob =
 		gpu_kl_clear_mem = NULL;
-	mem_build_param = mem_snpgeno = mem_build_output = mem_haplo_list =
+	mem_build_param =
+		mem_snpgeno =
+		mem_build_output =
+		mem_haplo_list =
 		mem_prob_buffer = NULL;
 	hla_map_index.clear();
 
@@ -698,7 +703,7 @@ double build_acc_ib()
 		GPU_RUN_KERNAL(gpu_kl_build_calc_prob, 3, wdims, local_size);
 	}
 
-	// get log likelihood
+	// get sum of prob for each sample
 	{
 		HIBAG_TIMING(TM_BUILD_IB_LOGLIK)
 		size_t wdims[2] = { (size_t)gpu_local_size_d1, (size_t)build_num_ib };
