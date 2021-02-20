@@ -30,6 +30,8 @@
 
 .plural <- function(num) ifelse(num > 1L, "s", "")
 
+.yesno <- function(flag) ifelse(flag, "YES", "NO")
+
 
 .gpu_build_init_memory <- function(nhla, nsamp)
 {
@@ -325,8 +327,16 @@ hlaPredict_gpu <- function(object, snp,
 		s <- paste("Using", info$vendor, info$name)
 	showmsg(s)
 
-	# support 64-bit floating-point numbers or not
+	# OpenCL extension
 	exts <- info$exts
+	test_ext_lst <- c("cl_khr_fp64", "cl_khr_global_int32_base_atomics",
+		"cl_khr_int64_base_atomics", "cl_khr_global_int64_base_atomics")
+	for (h in test_ext_lst)
+		showmsg(paste0("    EXTENSION ", h, ": ", .yesno(any(grepl(h, exts)))))
+
+
+
+	# support 64-bit floating-point numbers or not
 	dev_fp64 <- any(grepl("cl_khr_fp64", exts))
 	if (dev_fp64)
 	{
@@ -372,6 +382,7 @@ hlaPredict_gpu <- function(object, snp,
 
 	## build OpenCL kernels ##
 
+	.packageEnv$gpu_device <- device
 	.packageEnv$gpu_context <- ctx <- suppressWarnings(oclContext(device))
 	.packageEnv$flag_build_f64 <- f64_build
 	.packageEnv$prec_build   <- prec_build   <- ifelse(f64_build, "double", "single")
@@ -533,6 +544,7 @@ hlaGPU_Init <- function(device=1L, use_double=NA, force=FALSE, verbose=TRUE)
 .onAttach <- function(libname, pkgname)
 {
 	# get devices
+	packageStartupMessage("")
 	packageStartupMessage("Available OpenCL device(s):")
 	.get_dev_list(packageStartupMessage, TRUE)
 

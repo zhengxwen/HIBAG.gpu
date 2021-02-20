@@ -29,7 +29,7 @@
 #
 
 code_atomic_add_f32 <- "
-#define DIST_MAX    9
+#define HAMM_DIST_MAX    9
 #define OFFSET_HAPLO_FREQ    24
 
 #pragma OPENCL EXTENSION cl_khr_global_int32_base_atomics : enable
@@ -50,7 +50,7 @@ inline static void atomic_fadd(volatile __global float *addr, float val)
 "
 
 code_atomic_add_f64 <- "
-#define DIST_MAX    64
+#define HAMM_DIST_MAX    64
 #define OFFSET_HAPLO_FREQ    16
 
 #pragma OPENCL EXTENSION cl_khr_int64_base_atomics : enable
@@ -153,7 +153,7 @@ __kernel void build_calc_prob(
 		// hamming distance
 		int d = hamming_dist(n_snp, p_geno, p1, p2);
 
-		if (d <= DIST_MAX)  // since exp_log_min_rare_freq[>DIST_MAX] = 0
+		if (d <= HAMM_DIST_MAX)  // since exp_log_min_rare_freq[>HAMM_DIST_MAX] = 0
 		{
 			const numeric fq1 = *(__global numeric*)(p1 + OFFSET_HAPLO_FREQ);
 			const int h1 = *(__global int*)(p1 + OFFSET_ALLELE_INDEX);
@@ -303,7 +303,7 @@ __kernel void pred_calc_prob(
 			// hamming distance
 			int d = hamming_dist(nHaplo[1], pGeno, p1, p2);
 
-			if (d <= DIST_MAX)  // since exp_log_min_rare_freq[>DIST_MAX] = 0
+			if (d <= HAMM_DIST_MAX)  // since exp_log_min_rare_freq[>HAMM_DIST_MAX] = 0
 			{
 				const double fq1 = *(__global double*)(p1 + OFFSET_HAPLO_FREQ);
 				const int h1 = *(__global int*)(p1 + 28);

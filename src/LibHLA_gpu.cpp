@@ -164,6 +164,8 @@ namespace HLA_LIB
 	// static size_t msize_probbuf_total = 0;
 
 	// parameters
+	// mem_build_param, int[] = [
+	//    # of haplotypes, # of SNPs, starting sample index, # of samples, offset, ... ]
 	static cl_mem mem_build_param = NULL;
 	// parameter offset
 	static const int offset_build_param = 5;
@@ -199,7 +201,10 @@ namespace HLA_LIB
 
 	static int build_num_oob;  ///< the number of out-of-bag samples
 	static int build_num_ib;   ///< the number of in-bag samples
-	static int num_haplo, num_snp;
+	static int run_num_haplo;  ///< the total number of haplotypes
+	static int run_num_snp;    ///< the number of SNPs
+	static int wdim_num_haplo; ///< global_work_size for the number of haplotypes
+
 	static vector<int> hla_map_index;
 
 
@@ -216,7 +221,6 @@ namespace HLA_LIB
 	// classifier weight
 	static cl_mem mem_pred_weight = NULL;
 
-	static int wdim_n_haplo = 0;
 	static int wdim_pred_addprob = 0;
 
 
@@ -584,15 +588,13 @@ void build_set_haplo_geno(const THaplotype haplo[], int n_haplo,
 		throw "Too many haplotypes out of the limit, please contact the package author.";
 
 	cl_int err;
-	wdim_n_haplo = num_haplo = n_haplo;
-	if (wdim_n_haplo % gpu_local_size_d2)
-		wdim_n_haplo = (wdim_n_haplo/gpu_local_size_d2 + 1)*gpu_local_size_d2;
+	wdim_num_haplo = run_num_haplo = n_haplo;
+	if (wdim_num_haplo % gpu_local_size_d2)
+		wdim_num_haplo = (wdim_num_haplo/gpu_local_size_d2 + 1)*gpu_local_size_d2;
 	GPU_WRITE_MEM(mem_haplo_list, 0, sizeof(THaplotype)*n_haplo, (void*)haplo);
 
-	num_snp = n_snp;
+	run_num_snp = n_snp;
 	GPU_WRITE_MEM(mem_snpgeno, 0, sizeof(TGenotype)*Num_Sample, (void*)geno);
-
-// Rprintf("wdim_n_haplo=%d, n_haplo=%d, num_snp=%d\n", wdim_n_haplo, n_haplo, num_snp);
 }
 
 inline static int compare(const THLAType &H1, const THLAType &H2)
@@ -620,14 +622,14 @@ int build_acc_oob()
 	{
 		HIBAG_TIMING(TM_BUILD_OOB_CLEAR)
 		clear_prob_buffer(msize_prob_buffer * build_num_oob);
-		int param[5] = { num_haplo, num_snp, 0, build_num_oob, offset_build_param };
+		int param[5] = { run_num_haplo, run_num_snp, 0, build_num_oob, offset_build_param };
 		GPU_WRITE_MEM(mem_build_param, 0, sizeof(param), param);
 	}
 
 	// run OpenCL (calculating probabilities)
 	{
 		HIBAG_TIMING(TM_BUILD_OOB_PROB)
-		size_t wdims[2] = { (size_t)wdim_n_haplo, (size_t)wdim_n_haplo };
+		size_t wdims[2] = { (size_t)wdim_num_haplo, (size_t)wdim_num_haplo };
 		static const size_t local_size[2] = { gpu_local_size_d2, gpu_local_size_d2 };
 		GPU_RUN_KERNAL(gpu_kl_build_calc_prob, 2, wdims, local_size);
 	}
@@ -679,14 +681,14 @@ double build_acc_ib()
 	{
 		HIBAG_TIMING(TM_BUILD_IB_CLEAR)
 		clear_prob_buffer(msize_prob_buffer * build_num_ib);
-		int param[5] = { num_haplo, num_snp, 0, build_num_ib, offset_build_param+Num_Sample };
+		int param[5] = { run_num_haplo, run_num_snp, 0, build_num_ib, offset_build_param+Num_Sample };
 		GPU_WRITE_MEM(mem_build_param, 0, sizeof(param), param);
 	}
 
 	// run OpenCL (calculating probabilities)
 	{
 		HIBAG_TIMING(TM_BUILD_IB_PROB)
-		size_t wdims[2] = { (size_t)wdim_n_haplo, (size_t)wdim_n_haplo };
+		size_t wdims[2] = { (size_t)wdim_num_haplo, (size_t)wdim_num_haplo };
 		static const size_t local_size[2] = { gpu_local_size_d2, gpu_local_size_d2 };
 		GPU_RUN_KERNAL(gpu_kl_build_calc_prob, 2, wdims, local_size);
 	}
@@ -763,9 +765,9 @@ void predict_init(int nHLA, int nClassifier, const THaplotype *const pHaplo[],
 		sum_n_haplo += m;
 		if (m > max_n_haplo) max_n_haplo = m;
 	}
-	wdim_n_haplo = max_n_haplo;
-	if (wdim_n_haplo % gpu_local_size_d2)
-		wdim_n_haplo = (wdim_n_haplo/gpu_local_size_d2 + 1)*gpu_local_size_d2;
+	wdim_num_haplo = max_n_haplo;
+	if (wdim_num_haplo % gpu_local_size_d2)
+		wdim_num_haplo = (wdim_num_haplo/gpu_local_size_d2 + 1)*gpu_local_size_d2;
 
 	// ====  allocate OpenCL buffers  ====
 
@@ -856,7 +858,7 @@ void predict_avg_prob(const TGenotype geno[], const double weight[],
 	GPU_ZERO_FILL(mem_prob_buffer, msize_probbuf_total);
 
 	// pred_calc_prob
-	size_t wdims_k1[2] = { (size_t)wdim_n_haplo, (size_t)wdim_n_haplo };
+	size_t wdims_k1[2] = { (size_t)wdim_num_haplo, (size_t)wdim_num_haplo };
 	static const size_t local_size_k1[2] = { gpu_local_size_d2, gpu_local_size_d2 };
 	GPU_RUN_KERNAL(gpu_kernel, 2, wdims_k1, local_size_k1);
 
