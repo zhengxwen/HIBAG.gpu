@@ -175,8 +175,6 @@ namespace HLA_LIB
 	static size_t msize_prob_buffer = 0;
 	// static size_t msize_probbuf_total = 0;
 
-
-
 	// max. index or sum of prob.
 	static cl_mem mem_build_output = NULL;
 
@@ -185,9 +183,11 @@ namespace HLA_LIB
 	// the max number of haplotypes can be hold in mem_haplo_list
 	static int build_haplo_nmax = 0;
 
+
 	// used for work-group size (1-dim and 2-dim)
-	const size_t gpu_local_size_d1 = 64;
-	const size_t gpu_local_size_d2 = 8;
+	const  size_t gpu_const_local_size = 64;
+	static size_t gpu_local_size_d1 = 64;  // will be determined automatically
+	static size_t gpu_local_size_d2 = 8;   // will be determined automatically
 
 
 
@@ -499,6 +499,8 @@ void build_init(int nHLA, int nSample)
 	gpu_f64_build_flag = Rf_asLogical(get_var_env("flag_build_f64")) == TRUE;
 
 	// device variables
+	cl_int err;
+	cl_device_id dev = get_device_env("gpu_device");
 	gpu_context = get_context_env("gpu_context");
 	gpu_command_queue = get_command_queue_env("gpu_context");
 
@@ -507,6 +509,26 @@ void build_init(int nHLA, int nSample)
 	gpu_kl_build_find_maxprob = get_kernel_env("kernel_build_find_maxprob");
 	gpu_kl_build_sum_prob     = get_kernel_env("kernel_build_sum_prob");
 	gpu_kl_clear_mem          = get_kernel_env("kernel_clear_mem");
+
+	size_t mem_byte = 0;
+	err = clGetKernelWorkGroupInfo(gpu_kl_clear_mem, dev, CL_KERNEL_WORK_GROUP_SIZE,
+		sizeof(mem_byte), &mem_byte, NULL);
+	if (err==CL_SUCCESS && mem_byte>64)
+	{
+		gpu_local_size_d1 = mem_byte;
+		if (mem_byte >= 1024)
+			gpu_local_size_d2 = 32;
+		else if (mem_byte >= 256)
+			gpu_local_size_d2 = 16;
+		else
+			gpu_local_size_d2 = 8;
+	} else {
+		gpu_local_size_d1 = 64;
+		gpu_local_size_d2 = 8;
+	}
+
+	Rprintf("gpu_local_size_d1: %d, gpu_local_size_d2: %d\n",
+		(int)gpu_local_size_d1, (int)gpu_local_size_d2);
 
 	// GPU memory
 	cl_mem mem_rare_freq = get_mem_env(gpu_f64_build_flag ?
@@ -521,7 +543,6 @@ void build_init(int nHLA, int nSample)
 	mem_build_output = get_mem_env("mem_build_output");
 
 	// arguments for build_calc_prob
-	cl_int err;
 	int sz_hla = size_hla;
 	GPU_SETARG(gpu_kl_build_calc_prob, 0, mem_prob_buffer);
 	GPU_SETARG(gpu_kl_build_calc_prob, 1, nHLA);
@@ -661,8 +682,8 @@ int build_acc_oob()
 	// find max index
 	{
 		HIBAG_TIMING(TM_BUILD_OOB_MAXIDX)
-		size_t wdims[2] = { (size_t)gpu_local_size_d1, (size_t)build_num_oob };
-		static const size_t local_size[2] = { gpu_local_size_d1, 1 };
+		size_t wdims[2] = { gpu_const_local_size, (size_t)build_num_oob };
+		static const size_t local_size[2] = { gpu_const_local_size, 1 };
 		GPU_RUN_KERNAL(gpu_kl_build_find_maxprob, 2, wdims, local_size);
 	}
 
@@ -722,8 +743,8 @@ double build_acc_ib()
 	// get sum of prob for each sample
 	{
 		HIBAG_TIMING(TM_BUILD_IB_LOGLIK)
-		size_t wdims[2] = { (size_t)gpu_local_size_d1, (size_t)build_num_ib };
-		static const size_t local_size[2] = { gpu_local_size_d1, 1 };
+		size_t wdims[2] = { gpu_const_local_size, (size_t)build_num_ib };
+		static const size_t local_size[2] = { gpu_const_local_size, 1 };
 		GPU_RUN_KERNAL(gpu_kl_build_sum_prob, 2, wdims, local_size);
 	}
 

@@ -172,13 +172,13 @@ __kernel void build_calc_prob(
 
 
 code_build_find_maxprob <- "
-#define LOCAL_SIZE    64
+#define CONST_LOCAL_SIZE    64
 
 __kernel void build_find_maxprob(__global int *out_idx, const int num_hla_geno,
 	__global const numeric *prob)
 {
-	__local numeric local_max[LOCAL_SIZE];
-	__local int     local_idx[LOCAL_SIZE];
+	__local numeric local_max[CONST_LOCAL_SIZE];
+	__local int     local_idx[CONST_LOCAL_SIZE];
 
 	const int i = get_local_id(0);
 	const int i_samp = get_global_id(1);
@@ -186,12 +186,12 @@ __kernel void build_find_maxprob(__global int *out_idx, const int num_hla_geno,
 
 	numeric max_pb = 0;
 	int max_idx = -1;
-	for (int k=i; k < num_hla_geno; k+=LOCAL_SIZE)
+	for (int k=i; k < num_hla_geno; k+=CONST_LOCAL_SIZE)
 	{
 		if (max_pb < prob[k])
 			{ max_pb = prob[k]; max_idx = k; }
 	}
-	if (i < LOCAL_SIZE)
+	if (i < CONST_LOCAL_SIZE)
 	{
 		local_max[i] = max_pb;
 		local_idx[i] = max_idx;
@@ -201,7 +201,7 @@ __kernel void build_find_maxprob(__global int *out_idx, const int num_hla_geno,
 	if (i == 0)
 	{
 		max_pb = 0; max_idx = -1;
-		for (int j=0; j < LOCAL_SIZE; j++)
+		for (int j=0; j < CONST_LOCAL_SIZE; j++)
 		{
 			if (max_pb < local_max[j])
 			{
@@ -216,7 +216,7 @@ __kernel void build_find_maxprob(__global int *out_idx, const int num_hla_geno,
 
 
 code_build_sum_prob <- "
-#define LOCAL_SIZE          64
+#define CONST_LOCAL_SIZE    64
 #define SIZEOF_TGENOTYPE    48
 #define OFFSET_BOOTSTRAP    32
 #define OFFSET_HLA_A1       36
@@ -228,22 +228,22 @@ __kernel void build_sum_prob(__global numeric *out_prob,
 	__global const int *pParam, __global const unsigned char *pGeno,
 	__global const numeric *prob)
 {
-	__local numeric local_sum[LOCAL_SIZE];
+	__local numeric local_sum[CONST_LOCAL_SIZE];
 
 	const int i = get_local_id(0);
 	const int i_samp = get_global_id(1);
 	prob += num_hla_geno * i_samp;
 
 	numeric sum = 0;
-	for (int k=i; k < num_hla_geno; k+=LOCAL_SIZE)
+	for (int k=i; k < num_hla_geno; k+=CONST_LOCAL_SIZE)
 		sum += prob[k];
-	if (i < LOCAL_SIZE) local_sum[i] = sum;
+	if (i < CONST_LOCAL_SIZE) local_sum[i] = sum;
 
 	barrier(CLK_LOCAL_MEM_FENCE);
 	if (i == 0)
 	{
 		sum = 0;
-		for (int j=0; j < LOCAL_SIZE; j++) sum += local_sum[j];
+		for (int j=0; j < CONST_LOCAL_SIZE; j++) sum += local_sum[j];
 		if (sum > 0)
 		{
 			// TGenotype
@@ -331,26 +331,26 @@ __kernel void pred_calc_prob(
 
 code_pred_calc_sumprob <- "
 // since LibHLA_gpu.cpp: gpu_local_size_d1 = 64
-#define LOCAL_SIZE    64
+#define CONST_LOCAL_SIZE    64
 
 __kernel void pred_calc_sumprob(const int num_hla_geno, __global double *prob,
 	__global double *out_sum)
 {
-	__local double local_sum[LOCAL_SIZE];
+	__local double local_sum[CONST_LOCAL_SIZE];
 	const int i = get_local_id(0);
 	const int i_cfr = get_global_id(1);
 	prob += num_hla_geno * i_cfr;
 
 	double sum = 0;
-	for (int k=i; k < num_hla_geno; k+=LOCAL_SIZE)
+	for (int k=i; k < num_hla_geno; k+=CONST_LOCAL_SIZE)
 		sum += prob[k];
-	if (i < LOCAL_SIZE) local_sum[i] = sum;
+	if (i < CONST_LOCAL_SIZE) local_sum[i] = sum;
 
 	barrier(CLK_LOCAL_MEM_FENCE);
 	if (i == 0)
 	{
 		sum = 0;
-		for (int i=0; i < LOCAL_SIZE; i++) sum += local_sum[i];
+		for (int i=0; i < CONST_LOCAL_SIZE; i++) sum += local_sum[i];
 		out_sum[i_cfr] = sum;
 	}
 }
