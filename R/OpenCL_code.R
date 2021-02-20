@@ -29,7 +29,7 @@
 #
 
 code_atomic_add_f32 <- "
-#define HAMM_DIST_MAX    9
+#define HAMM_DIST_MAX        9
 #define OFFSET_HAPLO_FREQ    24
 
 #pragma OPENCL EXTENSION cl_khr_global_int32_base_atomics : enable
@@ -50,7 +50,7 @@ inline static void atomic_fadd(volatile __global float *addr, float val)
 "
 
 code_atomic_add_f64 <- "
-#define HAMM_DIST_MAX    64
+#define HAMM_DIST_MAX        64
 #define OFFSET_HAPLO_FREQ    16
 
 #pragma OPENCL EXTENSION cl_khr_int64_base_atomics : enable
@@ -72,13 +72,14 @@ inline static void atomic_fadd(volatile __global double *addr, double val)
 
 
 code_hamming_dist <- "
-inline static int hamming_dist(int n, __global unsigned char *g,
-	__global unsigned char *h_1, __global unsigned char *h_2)
+#define OFFSET_SECOND_HAPLO    16
+inline static int hamming_dist(int n, __global const unsigned char *g,
+	__global const unsigned char *h_1, __global const unsigned char *h_2)
 {
-	__global uint *h1 = (__global uint *)h_1;
-	__global uint *h2 = (__global uint *)h_2;
-	__global uint *s1 = (__global uint *)(g + 0);
-	__global uint *s2 = (__global uint *)(g + 16);
+	__global const uint *h1 = (__global const uint *)h_1;
+	__global const uint *h2 = (__global const uint *)h_2;
+	__global const uint *s1 = (__global const uint *)g;
+	__global const uint *s2 = (__global const uint *)(g + OFFSET_SECOND_HAPLO);
 	int ans = 0;
 
 	// for-loop
@@ -86,8 +87,8 @@ inline static int hamming_dist(int n, __global unsigned char *g,
 	{
 		uint H1 = *h1++, H2 = *h2++;  // two haplotypes
 		uint S1 = *s1++, S2 = *s2++;  // genotypes
-		uint M = S2 & ~S1;            // missing value, 1 is missing
-		uint MASK = ((H1 ^ S2) | (H2 ^ S1)) & ~M;
+		uint M  = S1 | ~S2;           // missing value, 0 is missing
+		uint MASK = ((H1 ^ S2) | (H2 ^ S1)) & M;
 
 		// popcount for '(H1 ^ S1) & MASK'
 		uint v1 = (H1 ^ S1) & MASK;
