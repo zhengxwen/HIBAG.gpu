@@ -250,7 +250,7 @@ __kernel void build_sum_prob(__global numeric *out_prob,
 
 		// TGenotype
 		pParam += pParam[OFFSET_PARAM];  // offset pParam
-		__global unsigned char *p = pGeno + (pParam[i_samp] * SIZEOF_TGENOTYPE);
+		__global const unsigned char *p = pGeno + (pParam[i_samp] * SIZEOF_TGENOTYPE);
 
 		// BootstrapCount
 		out_prob[1] = *(__global int *)(p + OFFSET_BOOTSTRAP);
