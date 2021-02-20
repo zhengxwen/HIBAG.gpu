@@ -500,34 +500,14 @@ hlaGPU_Init <- function(device=1L, use_double=NA, force=FALSE, verbose=TRUE)
 	stopifnot(is.logical(force), length(force)==1L)
 	stopifnot(is.logical(verbose), length(verbose)==1L)
 
-	.LoadPackage()
 	if (is.numeric(device))
 	{
+		if (is.null(.packageEnv$opencl_dev_list))
+			.get_dev_list(verbose=FALSE)
 		num <- device
-		stopifnot(length(num)==1L, !is.na(num), num>=0L)
-		devlist <- NULL
-		nm_info <- NULL
-		for (x in oclPlatforms())
-		{
-			d <- oclDevices(x)
-			devlist <- c(devlist, d)
-			nm_info <- c(nm_info, sapply(d, function(dv) oclInfo(dv)$name))
-		}
-		if (num == 0L)
-		{
-			# find NVIDIA and AMD
-			i1 <- grep("NVIDIA", nm_info, ignore.case=TRUE)
-			i2 <- grep("AMD", nm_info, ignore.case=TRUE)
-			if (length(i1) > 0L)
-				num <- i1[1L]
-			else if (length(i2) > 0L)
-				num <- i2[1L]
-			else
-				num <- 1L
-		}
-		if (num > length(devlist))
+		if (num < 1L || num > length(.packageEnv$opencl_dev_list))
 			stop("No existing device #", num, ".")
-		device <- devlist[[num]]
+		device <- .packageEnv$opencl_dev_list[[num]]
 	} else {
 		num <- 0L
 	}

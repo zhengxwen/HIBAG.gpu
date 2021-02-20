@@ -700,7 +700,7 @@ int build_acc_oob()
 
 	for (int i=0; i < build_num_oob; i++)
 	{
-		int k = pMaxI[i] << 1;
+		size_t k = pMaxI[i] << 1;
 		if (k >= 0)
 		{
 			hla.Allele1 = hla_map_index[k];
