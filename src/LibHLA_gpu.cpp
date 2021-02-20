@@ -371,6 +371,14 @@ inline static SEXP get_var_env(const char *varnm)
 	return rv_ans;
 }
 
+inline static cl_device_id get_device_env(const char *varnm)
+{
+	SEXP dev = get_var_env(varnm);
+	if (!Rf_inherits(dev, "clDeviceID") || TYPEOF(dev) != EXTPTRSXP)
+		Rf_error("'.packageEnv$%s' is not an OpenCL device.", varnm);
+    return (cl_device_id)R_ExternalPtrAddr(dev);
+}
+
 inline static cl_context get_context_env(const char *varnm)
 {
 	SEXP ctx = get_var_env(varnm);
@@ -498,7 +506,7 @@ void build_init(int nHLA, int nSample)
 	gpu_kl_build_calc_prob    = get_kernel_env("kernel_build_calc_prob");
 	gpu_kl_build_find_maxprob = get_kernel_env("kernel_build_find_maxprob");
 	gpu_kl_build_sum_prob     = get_kernel_env("kernel_build_sum_prob");
-	gpu_kl_clear_mem          = get_kernel_env("kernel_build_clearmem");
+	gpu_kl_clear_mem          = get_kernel_env("kernel_clear_mem");
 
 	// GPU memory
 	cl_mem mem_rare_freq = get_mem_env(gpu_f64_build_flag ?
@@ -945,6 +953,53 @@ void predict_avg_prob(const TGenotype geno[], const double weight[],
 
 
 // ===================================================================== //
+
+
+static int get_kernel_param(cl_device_id dev, cl_kernel kernel,
+	cl_kernel_work_group_info param)
+{
+	size_t n = 0;
+	cl_int err = clGetKernelWorkGroupInfo(kernel, dev, param, sizeof(n), &n, NULL);
+	if (err != CL_SUCCESS) return NA_INTEGER;
+	return n;
+}
+
+SEXP gpu_param()
+{
+	cl_int err;
+	cl_device_id dev = get_device_env("gpu_device");
+	cl_kernel k = get_kernel_env("kernel_clear_mem");
+
+	double gl_mem_sz = R_NaN;
+	{
+		cl_ulong v;
+		err = clGetDeviceInfo(dev, CL_DEVICE_GLOBAL_MEM_SIZE, sizeof(v), &v, NULL);
+		if (err == CL_SUCCESS) gl_mem_sz = v;
+	}
+	double gl_mem_alloc_sz = R_NaN;
+	{
+		cl_ulong v;
+		err = clGetDeviceInfo(dev, CL_DEVICE_MAX_MEM_ALLOC_SIZE, sizeof(v), &v, NULL);
+		if (err == CL_SUCCESS) gl_mem_alloc_sz = v;
+	}
+	int n_unit = NA_INTEGER;
+	{
+		cl_uint v;
+		err = clGetDeviceInfo(dev, CL_DEVICE_MAX_COMPUTE_UNITS, sizeof(v), &v, NULL);
+		if (err == CL_SUCCESS) n_unit = v;
+	}
+
+	int ws = get_kernel_param(dev, k, CL_KERNEL_WORK_GROUP_SIZE);
+	int mt = get_kernel_param(dev, k, CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE);
+	SEXP rv_ans = PROTECT(NEW_LIST(5));
+	SET_ELEMENT(rv_ans, 0, Rf_ScalarReal(gl_mem_sz));
+	SET_ELEMENT(rv_ans, 1, Rf_ScalarReal(gl_mem_alloc_sz));
+	SET_ELEMENT(rv_ans, 2, Rf_ScalarInteger(n_unit));
+	SET_ELEMENT(rv_ans, 3, Rf_ScalarInteger(ws));
+	SET_ELEMENT(rv_ans, 4, Rf_ScalarInteger(mt));
+	UNPROTECT(1);
+	return rv_ans;
+}
 
 /// return EXP_LOG_MIN_RARE_FREQ
 SEXP gpu_exp_log_min_rare_freq()

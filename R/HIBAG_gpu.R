@@ -291,6 +291,66 @@ hlaAttrBagging_gpu <- function(hla, snp, nclassifier=100,
 # Predict HLA types from unphased SNP data
 #
 
+.gpu_predict_init_memory <- function(nhla, nsamp)
+{
+	# internal
+	offset_build_param <- 4L
+	sizeof_TGenotype  <- 48L
+	sizeof_THaplotype <- 32L
+	
+	# allocate
+	.packageEnv$mem_build_param <- clBuffer(.packageEnv$gpu_context,
+		offset_build_param + 2L*nsamp, "integer")
+
+	.packageEnv$mem_snpgeno <- clBuffer(.packageEnv$gpu_context,
+		nsamp*sizeof_TGenotype %/% 4L, "integer")
+
+	.packageEnv$mem_build_output <- clBuffer(.packageEnv$gpu_context,
+		nsamp, .packageEnv$prec_build)
+
+	# determine max # of haplo
+	if (nsamp <= 1000L)
+		build_haplo_nmax <- nsamp * 5L
+	else if (nsamp <= 5000L)
+		build_haplo_nmax <- nsamp * 3L
+	else if (nsamp <= 10000L)
+		build_haplo_nmax <- round(nsamp * 1.5)
+	else
+		build_haplo_nmax <- nsamp
+	.packageEnv$build_haplo_nmax <- build_haplo_nmax
+	.packageEnv$mem_haplo_list <- clBuffer(.packageEnv$gpu_context,
+		build_haplo_nmax*sizeof_THaplotype %/% 4L, "integer")
+
+	size_hla <- nhla * (nhla+1L) %/% 2L
+	build_sample_nmax <- nsamp
+	while (build_sample_nmax > 0L)
+	{
+		ntry <- build_sample_nmax * size_hla
+		ok <- tryCatch({
+			buffer <- clBuffer(.packageEnv$gpu_context, ntry, .packageEnv$prec_build)
+			TRUE
+		}, error=function(e) FALSE)
+		if (ok) break
+		build_sample_nmax <- build_sample_nmax - 1000L
+		if (build_sample_nmax <= 0L)
+			stop(sprintf("Fail to allocate %s[%d] in GPU", .packageEnv$prec_build, ntry))
+	}
+	.packageEnv$build_sample_nmax <- build_sample_nmax
+	.packageEnv$mem_prob_buffer <- buffer
+
+	invisible()
+}
+
+.gpu_predict_free_memory <- function()
+{
+	remove(
+		mem_build_param, mem_snpgeno, mem_build_output, mem_haplo_list, mem_prob_buffer,
+		build_haplo_nmax, build_sample_nmax,
+		envir=.packageEnv)
+	invisible()
+}
+
+
 hlaPredict_gpu <- function(object, snp,
 	type=c("response", "prob", "response+prob"), vote=c("prob", "majority"),
 	allele.check=TRUE, match.type=c("Position", "RefSNP+Position", "RefSNP"),
@@ -327,6 +387,9 @@ hlaPredict_gpu <- function(object, snp,
 		s <- paste("Using", info$vendor, info$name)
 	showmsg(s)
 
+	if (!is.null(info$driver.ver))
+		showmsg(paste("    Driver Version:", info$driver.ver))
+
 	# OpenCL extension
 	exts <- info$exts
 	test_ext_lst <- c("cl_khr_fp64", "cl_khr_global_int32_base_atomics",
@@ -334,6 +397,17 @@ hlaPredict_gpu <- function(object, snp,
 	for (h in test_ext_lst)
 		showmsg(paste0("    EXTENSION ", h, ": ", .yesno(any(grepl(h, exts)))))
 
+	# need a kernel function
+	.packageEnv$gpu_device <- device
+	.packageEnv$gpu_context <- ctx <- suppressWarnings(oclContext(device))
+	.packageEnv$kernel_clear_mem <- oclSimpleKernel(ctx, "clear_memory",
+		code_clear_memory, output.mode="integer")
+	pm <- .Call(gpu_param)
+	showmsg(paste0("    CL_DEVICE_GLOBAL_MEM_SIZE: ", pm[[1L]]))
+	showmsg(paste0("    CL_DEVICE_MAX_MEM_ALLOC_SIZE: ", pm[[2L]]))
+	showmsg(paste0("    CL_DEVICE_MAX_COMPUTE_UNITS: ", pm[[3L]]))
+	showmsg(paste0("    CL_KERNEL_WORK_GROUP_SIZE: ", pm[[4L]]))
+	showmsg(paste0("    CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE: ", pm[[5L]]))
 
 
 	# support 64-bit floating-point numbers or not
@@ -382,8 +456,6 @@ hlaPredict_gpu <- function(object, snp,
 
 	## build OpenCL kernels ##
 
-	.packageEnv$gpu_device <- device
-	.packageEnv$gpu_context <- ctx <- suppressWarnings(oclContext(device))
 	.packageEnv$flag_build_f64 <- f64_build
 	.packageEnv$prec_build   <- prec_build   <- ifelse(f64_build, "double", "single")
 	.packageEnv$prec_predict <- prec_predict <- ifelse(f64_pred,  "double", "single")
@@ -397,8 +469,6 @@ hlaPredict_gpu <- function(object, snp,
 		code_build_find_maxprob, output.mode=prec_predict)
 	.packageEnv$kernel_build_sum_prob <- oclSimpleKernel(ctx, "build_sum_prob",
 		code_build_sum_prob, output.mode=prec_predict)
-	.packageEnv$kernel_build_clearmem <- oclSimpleKernel(ctx, "clear_memory",
-		code_clear_memory, output.mode=prec_predict)
 
 	## build kernels for prediction
 #	.packageEnv$kernel_pred <- oclSimpleKernel(ctx, "pred_calc_prob",
