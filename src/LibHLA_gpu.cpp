@@ -156,24 +156,24 @@ namespace HLA_LIB
 
 	// OpenCL memory objects
 
+	// parameters, int[] =
+	//   [ # of haplotypes, # of SNPs, starting sample index, # of samples, offset, ... ]
+	static cl_mem mem_build_param = NULL;
+	// parameter offset
+	static const int offset_build_param = 5;
+
+	// SNP genotypes, TGenotype[]
+	static cl_mem mem_snpgeno = NULL;
+
+	// haplotype list, THaplotype[]
+	static cl_mem mem_haplo_list = NULL;
+
 	// the buffer of probabilities
 	// double[nHLA*(nHLA+1)/2][# of samples] -- prob. for classifiers or samples
 	static cl_mem mem_prob_buffer = NULL;
 	// sizeof(double[nHLA*(nHLA+1)/2])
 	static size_t msize_prob_buffer = 0;
 	// static size_t msize_probbuf_total = 0;
-
-	// parameters
-	// mem_build_param, int[] = [
-	//    # of haplotypes, # of SNPs, starting sample index, # of samples, offset, ... ]
-	static cl_mem mem_build_param = NULL;
-	// parameter offset
-	static const int offset_build_param = 5;
-
-	// haplotype list
-	static cl_mem mem_haplo_list = NULL;
-	// SNP genotypes
-	static cl_mem mem_snpgeno = NULL;
 
 
 
