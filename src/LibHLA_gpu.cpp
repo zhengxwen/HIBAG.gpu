@@ -157,10 +157,10 @@ namespace HLA_LIB
 	// OpenCL memory objects
 
 	// parameters, int[] =
-	//   [ # of haplotypes, # of SNPs, starting sample index, # of samples, offset, ... ]
+	//   [ # of haplotypes, # of SNPs, starting sample index, offset, ... ]
 	static cl_mem mem_build_param = NULL;
 	// parameter offset
-	static const int offset_build_param = 5;
+	static const int offset_build_param = 4;
 
 	// SNP genotypes, TGenotype[]
 	static cl_mem mem_snpgeno = NULL;
@@ -622,16 +622,18 @@ int build_acc_oob()
 	{
 		HIBAG_TIMING(TM_BUILD_OOB_CLEAR)
 		clear_prob_buffer(msize_prob_buffer * build_num_oob);
-		int param[5] = { run_num_haplo, run_num_snp, 0, build_num_oob, offset_build_param };
+		int param[4] = { run_num_haplo, run_num_snp, 0, offset_build_param };
 		GPU_WRITE_MEM(mem_build_param, 0, sizeof(param), param);
 	}
 
 	// run OpenCL (calculating probabilities)
 	{
 		HIBAG_TIMING(TM_BUILD_OOB_PROB)
-		size_t wdims[2] = { (size_t)wdim_num_haplo, (size_t)wdim_num_haplo };
-		static const size_t local_size[2] = { gpu_local_size_d2, gpu_local_size_d2 };
-		GPU_RUN_KERNAL(gpu_kl_build_calc_prob, 2, wdims, local_size);
+		size_t wdims[3] =
+			{ (size_t)wdim_num_haplo, (size_t)wdim_num_haplo, (size_t)build_num_oob };
+		static const size_t local_size[3] =
+			{ gpu_local_size_d2, gpu_local_size_d2, 1 };
+		GPU_RUN_KERNAL(gpu_kl_build_calc_prob, 3, wdims, local_size);
 	}
 
 	// find max index
@@ -681,16 +683,18 @@ double build_acc_ib()
 	{
 		HIBAG_TIMING(TM_BUILD_IB_CLEAR)
 		clear_prob_buffer(msize_prob_buffer * build_num_ib);
-		int param[5] = { run_num_haplo, run_num_snp, 0, build_num_ib, offset_build_param+Num_Sample };
+		int param[4] = { run_num_haplo, run_num_snp, 0, offset_build_param+Num_Sample };
 		GPU_WRITE_MEM(mem_build_param, 0, sizeof(param), param);
 	}
 
 	// run OpenCL (calculating probabilities)
 	{
 		HIBAG_TIMING(TM_BUILD_IB_PROB)
-		size_t wdims[2] = { (size_t)wdim_num_haplo, (size_t)wdim_num_haplo };
-		static const size_t local_size[2] = { gpu_local_size_d2, gpu_local_size_d2 };
-		GPU_RUN_KERNAL(gpu_kl_build_calc_prob, 2, wdims, local_size);
+		size_t wdims[3] =
+			{ (size_t)wdim_num_haplo, (size_t)wdim_num_haplo, (size_t)build_num_ib };
+		static const size_t local_size[3] =
+			{ gpu_local_size_d2, gpu_local_size_d2, 1 };
+		GPU_RUN_KERNAL(gpu_kl_build_calc_prob, 3, wdims, local_size);
 	}
 
 	// get log likelihood
