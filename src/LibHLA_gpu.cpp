@@ -456,6 +456,7 @@ static inline void clear_prob_buffer(size_t size)
 	err = clEnqueueFillBuffer(gpu_command_queue, mem_prob_buffer,
 		&zero, sizeof(zero), 0, size, 0, NULL, NULL);
 	if (err != CL_SUCCESS)
+		throw err_text("clEnqueueFillBuffer() with mem_prob_buffer failed", err);
 #else
 	size_t n = size / 4;
 	GPU_SETARG(gpu_kl_clear_mem, 0, n);
@@ -835,15 +836,10 @@ void predict_init(int nHLA, int nClassifier, const THaplotype *const pHaplo[],
 /// finalize the structure for predicting
 void predict_done()
 {
-	GPU_FREE_MEM(mem_exp_log_min_rare_freq);
-	GPU_FREE_MEM(mem_haplo_list);
-	GPU_FREE_MEM(mem_pred_haplo_num);
-	GPU_FREE_MEM(mem_snpgeno);
-	GPU_FREE_MEM(mem_prob_buffer);
-	GPU_FREE_COM(gpu_command_queue);
+	mem_haplo_list = mem_pred_haplo_num = mem_snpgeno = mem_prob_buffer = NULL;
 }
 
-
+/*
 /// average the posterior probabilities among classifiers for predicting
 void predict_avg_prob(const TGenotype geno[], const double weight[],
 	double out_prob[], double out_match[])

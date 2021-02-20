@@ -269,7 +269,7 @@ hlaAttrBagging_gpu <- function(hla, snp, nclassifier=100,
 	# calculate matching statistic
 	if (verbose)
 		cat("Calculating matching proportion:\n")
-	pd <- hlaPredict_gpu(mod, snp, verbose=FALSE)
+	pd <- hlaPredict(mod, snp, verbose=FALSE)
 	mod$matching <- pd$value$matching
 	if (verbose)
 	{
@@ -322,7 +322,7 @@ hlaPredict_gpu <- function(object, snp,
 	# show information
 	info <- oclInfo(device)
 	if (!is.na(dev_idx) && (dev_idx > 0L))
-		s <- paste0("Using Device #", dev_idx, ": ", info$vendor, " ", info$name)
+		s <- paste0("Using Device #", dev_idx, ": ", info$vendor, ", ", info$name)
 	else
 		s <- paste("Using", info$vendor, info$name)
 	showmsg(s)

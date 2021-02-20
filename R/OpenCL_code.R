@@ -305,8 +305,8 @@ __kernel void pred_calc_prob(
 			__global unsigned char *p2 = pHaplo + (i2 << 5);
 			// hamming distance
 			int d = hamming_dist(nHaplo[1], pGeno, p1, p2);
-
-			if (d <= HAMM_DIST_MAX)  // since exp_log_min_rare_freq[>HAMM_DIST_MAX] = 0
+			// since exp_log_min_rare_freq[>HAMM_DIST_MAX] = 0
+			if (d <= HAMM_DIST_MAX)
 			{
 				const double fq1 = *(__global double*)(p1 + OFFSET_HAPLO_FREQ);
 				const int h1 = *(__global int*)(p1 + 28);
