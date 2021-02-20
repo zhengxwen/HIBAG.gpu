@@ -508,13 +508,14 @@ void build_init(int nHLA, int nSample)
 	cl_int err;
 	GPU_SETARG(gpu_kl_build_calc_prob, 0, mem_prob_buffer);
 	GPU_SETARG(gpu_kl_build_calc_prob, 1, nHLA);
-	GPU_SETARG(gpu_kl_build_calc_prob, 2, mem_rare_freq);
-	GPU_SETARG(gpu_kl_build_calc_prob, 3, mem_build_param);
-	GPU_SETARG(gpu_kl_build_calc_prob, 4, mem_haplo_list);
-	GPU_SETARG(gpu_kl_build_calc_prob, 5, mem_snpgeno);
+	int sz_hla = size_hla;
+	GPU_SETARG(gpu_kl_build_calc_prob, 2, sz_hla);
+	GPU_SETARG(gpu_kl_build_calc_prob, 3, mem_rare_freq);
+	GPU_SETARG(gpu_kl_build_calc_prob, 4, mem_build_param);
+	GPU_SETARG(gpu_kl_build_calc_prob, 5, mem_haplo_list);
+	GPU_SETARG(gpu_kl_build_calc_prob, 6, mem_snpgeno);
 
 	// arguments for gpu_kl_build_find_maxprob (out-of-bag)
-	int sz_hla = size_hla;
 	GPU_SETARG(gpu_kl_build_find_maxprob, 0, mem_build_output);
 	GPU_SETARG(gpu_kl_build_find_maxprob, 1, sz_hla);
 	GPU_SETARG(gpu_kl_build_find_maxprob, 2, mem_prob_buffer);

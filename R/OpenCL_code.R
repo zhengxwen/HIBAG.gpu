@@ -73,6 +73,7 @@ inline static void atomic_fadd(volatile __global double *addr, double val)
 
 code_hamming_dist <- "
 #define OFFSET_SECOND_HAPLO    16
+
 inline static int hamming_dist(int n, __global const unsigned char *g,
 	__global const unsigned char *h_1, __global const unsigned char *h_2)
 {
@@ -118,16 +119,18 @@ inline static int hamming_dist(int n, __global const unsigned char *g,
 ##########################################################################
 
 code_build_calc_prob <- "
+#define SIZEOF_THAPLO_SHIFT    5
 #define SIZEOF_TGENOTYPE       48
 #define OFFSET_ALLELE_INDEX    28
 #define OFFSET_PARAM           3
+
 __kernel void build_calc_prob(
 	__global numeric *outProb,
-	const int nHLA,
+	const int nHLA, const int sz_hla,
 	__constant numeric *exp_log_min_rare_freq,
-	__global int *pParam,
-	__global unsigned char *pHaplo,
-	__global unsigned char *pGeno)
+	__global const int *pParam,
+	__global const unsigned char *pHaplo,
+	__global const unsigned char *pGeno)
 {
 	const int i1 = get_global_id(0);
 	const int i2 = get_global_id(1);
@@ -142,28 +145,27 @@ __kernel void build_calc_prob(
 	pParam += pParam[3];  // offset pParam
 
 	// the first haplotype
-	__global unsigned char *p1 = pHaplo + (i1 << 5);
+	__global const unsigned char *p1 = pHaplo + (i1 << SIZEOF_THAPLO_SHIFT);
 	// the second haplotype
-	__global unsigned char *p2 = pHaplo + (i2 << 5);
+	__global const unsigned char *p2 = pHaplo + (i2 << SIZEOF_THAPLO_SHIFT);
 	// SNP genotype
-	__global unsigned char *p_geno = pGeno + (pParam[st_samp+ii] * SIZEOF_TGENOTYPE);
+	__global const unsigned char *pg = pGeno + (pParam[st_samp+ii] * SIZEOF_TGENOTYPE);
 	// hamming distance
-	int d = hamming_dist(n_snp, p_geno, p1, p2);
+	int d = hamming_dist(n_snp, pg, p1, p2);
 	// since exp_log_min_rare_freq[>HAMM_DIST_MAX] = 0
 	if (d <= HAMM_DIST_MAX)
 	{
-		const numeric fq1 = *(__global numeric*)(p1 + OFFSET_HAPLO_FREQ);
-		const int h1 = *(__global int*)(p1 + OFFSET_ALLELE_INDEX);
-		const numeric fq2 = *(__global numeric*)(p2 + OFFSET_HAPLO_FREQ);
-		const int h2 = *(__global int*)(p2 + OFFSET_ALLELE_INDEX);
+		numeric fq1 = *(__global const numeric*)(p1 + OFFSET_HAPLO_FREQ);
+		int h1 = *(__global const int*)(p1 + OFFSET_ALLELE_INDEX);
+		numeric fq2 = *(__global const numeric*)(p2 + OFFSET_HAPLO_FREQ);
+		int h2 = *(__global const int*)(p2 + OFFSET_ALLELE_INDEX);
 		// genotype frequency
 		numeric ff = fq1 * fq2;
 		if (i1 != i2) ff += ff;
 		ff *= exp_log_min_rare_freq[d];  // account for mutation and error rate
 		// update
 		int k = h2 + (h1 * ((nHLA << 1) - h1 - 1) >> 1);
-		outProb += (nHLA * (nHLA + 1) >> 1) * ii;
-		atomic_fadd(&outProb[k], ff);
+		atomic_fadd(&outProb[sz_hla*ii + k], ff);
 	}
 }
 "
