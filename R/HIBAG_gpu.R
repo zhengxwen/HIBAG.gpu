@@ -48,7 +48,7 @@
 		nsamp*sizeof_TGenotype %/% 4L, "integer")
 
 	.packageEnv$mem_build_output <- clBuffer(.packageEnv$gpu_context,
-		nsamp*3L, .packageEnv$prec_build)
+		nsamp, .packageEnv$prec_build)
 
 	# determine max # of haplo
 	if (nsamp <= 1000L)

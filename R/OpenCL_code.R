@@ -242,23 +242,23 @@ __kernel void build_sum_prob(__global numeric *out_prob,
 	barrier(CLK_LOCAL_MEM_FENCE);
 	if (i == 0)
 	{
-		out_prob += (i_samp << 1) + i_samp;
-
 		sum = 0;
 		for (int j=0; j < LOCAL_SIZE; j++) sum += local_sum[j];
-		out_prob[0] = sum;
-
-		// TGenotype
-		pParam += pParam[OFFSET_PARAM];  // offset pParam
-		__global const unsigned char *p = pGeno + (pParam[i_samp] * SIZEOF_TGENOTYPE);
-
-		// BootstrapCount
-		out_prob[1] = *(__global int *)(p + OFFSET_BOOTSTRAP);
-
-		int h1 = *(__global int *)(p + OFFSET_HLA_A1);  // aux_hla_type.Allele1
-		int h2 = *(__global int *)(p + OFFSET_HLA_A2);  // aux_hla_type.Allele2
-		int k = h2 + (h1 * ((nHLA << 1) - h1 - 1) >> 1);
-		out_prob[2] = prob[k];
+		if (sum > 0)
+		{
+			// TGenotype
+			pParam += pParam[OFFSET_PARAM];  // offset pParam
+			__global const unsigned char *p = pGeno + (pParam[i_samp] * SIZEOF_TGENOTYPE);
+			// bootstrap count
+			int b = *(__global const int *)(p + OFFSET_BOOTSTRAP);
+			// probability of a HLA genotype
+			int h1 = *(__global int *)(p + OFFSET_HLA_A1);  // aux_hla_type.Allele1
+			int h2 = *(__global int *)(p + OFFSET_HLA_A2);  // aux_hla_type.Allele2
+			int k = h2 + (h1 * ((nHLA << 1) - h1 - 1) >> 1);
+			// log likelihood
+			sum = b * log(prob[k] / sum);
+		}
+		out_prob[i_samp] = sum;
 	}
 }
 "

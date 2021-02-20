@@ -715,29 +715,13 @@ double build_acc_ib()
 	double LogLik = 0;
 	if (gpu_f64_build_flag)
 	{
-		GPU_MEM_MAP<double> M(mem_build_output, build_num_ib*3, true);
+		GPU_MEM_MAP<double> M(mem_build_output, build_num_ib, true);
 		const double *p = M.ptr();
-		for (int i=0; i < build_num_ib; i++, p+=3)
-		{
-			if (p[0] > 0)
-			{
-				double v = p[2];
-				if (v <= 0) v = 1e-128;
-				LogLik += p[1] * log(v / p[0]);
-			}
-		}
+		for (int i=0; i < build_num_ib; i++) LogLik += p[i];
 	} else {
-		GPU_MEM_MAP<float> M(mem_build_output, build_num_ib*3, true);
+		GPU_MEM_MAP<float> M(mem_build_output, build_num_ib, true);
 		const float *p = M.ptr();
-		for (int i=0; i < build_num_ib; i++, p+=3)
-		{
-			if (p[0] > 0)
-			{
-				double v = p[2];
-				if (v <= 0) v = 1e-64;
-				LogLik += p[1] * log(v / p[0]);
-			}
-		}
+		for (int i=0; i < build_num_ib; i++) LogLik += p[i];
 	}
 
 	// output
