@@ -126,7 +126,7 @@ code_build_calc_prob <- "
 
 __kernel void build_calc_prob(
 	__global numeric *outProb,
-	const int nHLA, const int sz_hla,
+	const int nHLA, const int num_hla_geno,
 	__constant numeric *exp_log_min_rare_freq,
 	__global const int *pParam,
 	__global const unsigned char *pHaplo,
@@ -142,7 +142,7 @@ __kernel void build_calc_prob(
 	// constants
 	const int n_snp  = pParam[1];
 	const int st_samp = pParam[2];
-	pParam += pParam[3];  // offset pParam
+	pParam += pParam[OFFSET_PARAM];  // offset pParam
 
 	// the first haplotype
 	__global const unsigned char *p1 = pHaplo + (i1 << SIZEOF_THAPLO_SHIFT);
@@ -165,7 +165,7 @@ __kernel void build_calc_prob(
 		ff *= exp_log_min_rare_freq[d];  // account for mutation and error rate
 		// update
 		int k = h2 + (h1 * ((nHLA << 1) - h1 - 1) >> 1);
-		atomic_fadd(&outProb[sz_hla*ii + k], ff);
+		atomic_fadd(&outProb[num_hla_geno*ii + k], ff);
 	}
 }
 "
