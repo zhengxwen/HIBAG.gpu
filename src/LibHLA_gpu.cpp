@@ -451,12 +451,19 @@ static void fmul_f64(double *p, size_t n, double scalar)
 static inline void clear_prob_buffer(size_t size)
 {
 	cl_int err;
-	int n = size >> 2;
+#if defined(CL_VERSION_1_2) && 0
+	int zero = 0;
+	err = clEnqueueFillBuffer(gpu_command_queue, mem_prob_buffer,
+		&zero, sizeof(zero), 0, size, 0, NULL, NULL);
+	if (err != CL_SUCCESS)
+#else
+	size_t n = size / 4;
 	GPU_SETARG(gpu_kl_clear_mem, 0, n);
 	size_t wdim = n / gpu_local_size_d1;
 	if (n % gpu_local_size_d1) wdim++;
 	wdim *= gpu_local_size_d1;
 	GPU_RUN_KERNAL(gpu_kl_clear_mem, 1, &wdim, &gpu_local_size_d1);
+#endif
 }
 
 
