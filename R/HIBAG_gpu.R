@@ -244,6 +244,7 @@ hlaAttrBagging_gpu <- function(hla, snp, nclassifier=100,
 	###################################################################
 	# training ...
 
+	.Call(gpu_set_local_size, verbose)
 	.gpu_build_init_memory(n.hla, n.samp)
 
 	# add new individual classifers
@@ -311,6 +312,7 @@ hlaPredict_gpu <- function(object, snp,
 		cat("Using ", .packageEnv$prec_predict,
 			"-precision floating-point numbers in GPU computing\n", sep="")
 	}
+	.Call(gpu_set_local_size, verbose)
 
 	# GPU proc pointer
 	cl <- FALSE
@@ -353,7 +355,8 @@ hlaPredict_gpu <- function(object, snp,
 	.packageEnv$gpu_context <- ctx <- suppressWarnings(oclContext(device))
 	.packageEnv$kernel_clear_mem <- oclSimpleKernel(ctx, "clear_memory",
 		code_clear_memory, output.mode="integer")
-	pm <- .Call(gpu_param)
+
+	pm <- .Call(gpu_get_param)
 	showmsg(paste0("    CL_DEVICE_GLOBAL_MEM_SIZE: ", pm[[1L]]))
 	showmsg(paste0("    CL_DEVICE_MAX_MEM_ALLOC_SIZE: ", pm[[2L]]))
 	showmsg(paste0("    CL_DEVICE_MAX_COMPUTE_UNITS: ", pm[[3L]]))

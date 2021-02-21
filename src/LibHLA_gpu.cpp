@@ -25,7 +25,12 @@
 #endif
 #if defined(__GNUC__) && ((__GNUC__>4) || (__GNUC__==4 && __GNUC_MINOR__>=4))
     #pragma GCC optimize("O3")
+    #define MATH_OFAST    __attribute__((optimize("Ofast")))
 #endif
+#endif
+
+#ifndef MATH_OFAST
+#   define MATH_OFAST
 #endif
 
 
@@ -48,17 +53,6 @@
 #define USE_RINTERNALS 1
 #include <Rinternals.h>
 #include <Rdefines.h>
-
-
-// Streaming SIMD Extensions, SSE, SSE2, SSE4_2 (POPCNT)
-
-#ifdef __SSE__
-#	include <xmmintrin.h>  // SSE
-#endif
-
-#ifdef __SSE2__
-#	include <emmintrin.h>  // SSE2
-#endif
 
 
 // disable timing
@@ -102,24 +96,6 @@
 	err = clFinish(gpu_command_queue); \
 	if (err != CL_SUCCESS) \
 		throw err_text("Failed to run clFinish() with " #kernel, err);
-
-
-#if defined(CL_VERSION_1_2)
-	#define GPU_ZERO_FILL(x, size)    { \
-		size_t zero = 1; \
-		err = clEnqueueFillBuffer(gpu_command_queue, x, &zero, 1, 0, size, 0, NULL, NULL); \
-		if (err != CL_SUCCESS) \
-			throw err_text("clEnqueueFillBuffer() with " #x " failed", err); \
-	}
-#else
-	#define GPU_ZERO_FILL(x, size)    { \
-		void *ptr; \
-		GPU_MAP_MEM(x, ptr, size); \
-		memset(ptr, 0, size); \
-		GPU_UNMAP_MEM(x, ptr); \
-	}
-#endif
-
 
 
 namespace HLA_LIB
@@ -297,6 +273,7 @@ namespace HLA_LIB
 	}
 
 
+	// Map and unmap GPU memory buffer
 	template<typename TYPE> struct GPU_MEM_MAP
 	{
 	public:
@@ -328,8 +305,6 @@ namespace HLA_LIB
 	};
 
 }
-
-
 
 using namespace std;
 using namespace HLA_LIB;
@@ -377,6 +352,7 @@ inline static SEXP get_var_env(const char *varnm)
 	return rv_ans;
 }
 
+/// get the OpenCL device
 inline static cl_device_id get_device_env(const char *varnm)
 {
 	SEXP dev = get_var_env(varnm);
@@ -385,6 +361,7 @@ inline static cl_device_id get_device_env(const char *varnm)
     return (cl_device_id)R_ExternalPtrAddr(dev);
 }
 
+/// get the OpenCL context
 inline static cl_context get_context_env(const char *varnm)
 {
 	SEXP ctx = get_var_env(varnm);
@@ -393,6 +370,7 @@ inline static cl_context get_context_env(const char *varnm)
 	return (cl_context)R_ExternalPtrAddr(ctx);
 }
 
+/// get the OpenCL command queue
 inline static cl_command_queue get_command_queue_env(const char *varnm)
 {
 	SEXP ctx = get_var_env(varnm);
@@ -422,46 +400,35 @@ inline static cl_mem get_mem_env(const char *varnm)
     return (cl_mem)R_ExternalPtrAddr(m);
 }
 
-
-
-
-
-// get the sum of double array
-static double get_sum_f64(const double *p, size_t n)
+static int get_kernel_param(cl_device_id dev, cl_kernel kernel,
+	cl_kernel_work_group_info param)
 {
-#ifdef __SSE2__
-	__m128d a, s = _mm_setzero_pd();
-	for (; n >= 2; n-=2, p+=2)
-		s = _mm_add_pd(s, _mm_loadu_pd(p));
-	a = _mm_shuffle_pd(s, s, 0x01);
-	s = _mm_add_pd(s, a);
-	double sum = _mm_cvtsd_f64(s);
-#else
+	size_t n = 0;
+	cl_int err = clGetKernelWorkGroupInfo(kernel, dev, param, sizeof(n), &n, NULL);
+	if (err != CL_SUCCESS) return NA_INTEGER;
+	return n;
+}
+
+
+/// get the sum of double array
+inline static MATH_OFAST double get_sum_f64(const double p[], size_t n)
+{
 	double sum = 0;
-#endif
-	for (; n > 0; n--) sum += *p++;
+	for (size_t i=0; i < n; i++) sum += p[i];
 	return sum;
 }
 
-// mul operation
-static void fmul_f64(double *p, size_t n, double scalar)
+/// mul operation
+inline static MATH_OFAST void fmul_f64(double p[], size_t n, double scalar)
 {
-#ifdef __SSE2__
-	__m128d a = _mm_set_pd(scalar, scalar);
-	for (; n >= 2; n-=2, p+=2)
-	{
-		__m128d v = _mm_mul_pd(_mm_loadu_pd(p), a);
-		_mm_storeu_pd(p, v);
-	}
-#endif
-	for (; n > 0; n--) (*p++) *= scalar;
+	for (size_t i=0; i < n; i++) p[i] *= scalar;
 }
-
 
 
 
 // ===================================================================== //
 
+/// clear the memory buffer 'mem_prob_buffer'
 static inline void clear_prob_buffer(size_t size)
 {
 	cl_int err;
@@ -483,29 +450,6 @@ static inline void clear_prob_buffer(size_t size)
 
 
 // ===================================================================== //
-
-static void set_auto_local_size(cl_device_id dev, cl_kernel kernel)
-{
-	size_t mem_byte = 0;
-	cl_int err = clGetKernelWorkGroupInfo(kernel, dev, CL_KERNEL_WORK_GROUP_SIZE,
-		sizeof(mem_byte), &mem_byte, NULL);
-	if (err==CL_SUCCESS && mem_byte>64)
-	{
-		gpu_local_size_d1 = mem_byte;
-		if (mem_byte >= 1024)
-			gpu_local_size_d2 = 32;
-		else if (mem_byte >= 256)
-			gpu_local_size_d2 = 16;
-		else
-			gpu_local_size_d2 = 8;
-	} else {
-		gpu_local_size_d1 = 64;
-		gpu_local_size_d2 = 8;
-	}
-	Rprintf("GPU, local work size (d1): %d, local work size (d2): %d\n",
-		(int)gpu_local_size_d1, (int)gpu_local_size_d2);
-}
-
 
 // initialize the internal structure for building a model
 void build_init(int nHLA, int nSample)
@@ -529,7 +473,6 @@ void build_init(int nHLA, int nSample)
 
 	// device variables
 	cl_int err;
-	cl_device_id dev = get_device_env("gpu_device");
 	gpu_context = get_context_env("gpu_context");
 	gpu_command_queue = get_command_queue_env("gpu_context");
 
@@ -538,7 +481,6 @@ void build_init(int nHLA, int nSample)
 	gpu_kl_build_find_maxprob = get_kernel_env("kernel_build_find_maxprob");
 	gpu_kl_build_sum_prob     = get_kernel_env("kernel_build_sum_prob");
 	gpu_kl_clear_mem          = get_kernel_env("kernel_clear_mem");
-	set_auto_local_size(dev, gpu_kl_build_calc_prob);
 
 	// GPU memory
 	cl_mem mem_rare_freq = get_mem_env(gpu_f64_build_flag ?
@@ -789,7 +731,6 @@ void predict_init(int nHLA, int nClassifier, const THaplotype *const pHaplo[],
 
 	// device variables
 	cl_int err;
-	cl_device_id dev = get_device_env("gpu_device");
 	gpu_context = get_context_env("gpu_context");
 	gpu_command_queue = get_command_queue_env("gpu_context");
 
@@ -798,7 +739,6 @@ void predict_init(int nHLA, int nClassifier, const THaplotype *const pHaplo[],
 	gpu_kl_pred_sumprob = get_kernel_env("kernel_pred_sumprob");
 	gpu_kl_pred_addprob = get_kernel_env("kernel_pred_addprob");
 	gpu_kl_clear_mem    = get_kernel_env("kernel_clear_mem");
-	set_auto_local_size(dev, gpu_kl_pred_calc);
 
 	// assign
 	Num_HLA = nHLA;
@@ -1006,17 +946,40 @@ void predict_avg_prob(const TGenotype geno[], const double weight[],
 
 // ===================================================================== //
 
-
-static int get_kernel_param(cl_device_id dev, cl_kernel kernel,
-	cl_kernel_work_group_info param)
+SEXP gpu_set_local_size(SEXP verbose)
 {
-	size_t n = 0;
-	cl_int err = clGetKernelWorkGroupInfo(kernel, dev, param, sizeof(n), &n, NULL);
-	if (err != CL_SUCCESS) return NA_INTEGER;
-	return n;
+	cl_device_id dev = get_device_env("gpu_device");
+	cl_kernel kernel = get_kernel_env("kernel_clear_mem");
+
+	size_t mem_byte = 0;
+	cl_int err = clGetKernelWorkGroupInfo(kernel, dev, CL_KERNEL_WORK_GROUP_SIZE,
+		sizeof(mem_byte), &mem_byte, NULL);
+	if (err==CL_SUCCESS && mem_byte>64)
+	{
+		gpu_local_size_d1 = mem_byte;
+		if (mem_byte >= 1024)
+			gpu_local_size_d2 = 32;
+		else if (mem_byte >= 256)
+			gpu_local_size_d2 = 16;
+		else
+			gpu_local_size_d2 = 8;
+	} else {
+		gpu_local_size_d1 = 64;
+		gpu_local_size_d2 = 8;
+	}
+
+	if (Rf_asLogical(verbose) == TRUE)
+	{
+		Rprintf("    local work size: %d (D1), %dx%d (D2)\n",
+			(int)gpu_local_size_d1, (int)gpu_local_size_d2, (int)gpu_local_size_d2);
+	}
+
+	return R_NilValue;
 }
 
-SEXP gpu_param()
+
+/// get GPU internal parameters
+SEXP gpu_get_param()
 {
 	cl_int err;
 	cl_device_id dev = get_device_env("gpu_device");
