@@ -354,7 +354,7 @@ inline static cl_device_id get_device_env(const char *varnm)
 	SEXP dev = get_var_env(varnm);
 	if (!Rf_inherits(dev, "clDeviceID") || TYPEOF(dev) != EXTPTRSXP)
 		Rf_error("'.packageEnv$%s' is not an OpenCL device.", varnm);
-    return (cl_device_id)R_ExternalPtrAddr(dev);
+	return (cl_device_id)R_ExternalPtrAddr(dev);
 }
 
 /// get the OpenCL context
@@ -393,7 +393,7 @@ inline static cl_mem get_mem_env(const char *varnm)
 	SEXP m = get_var_env(varnm);
 	if (!Rf_inherits(m, "clBuffer") || TYPEOF(m) != EXTPTRSXP)
 		Rf_error("'.packageEnv$%s' is not an OpenCL buffer.", varnm);
-    return (cl_mem)R_ExternalPtrAddr(m);
+	return (cl_mem)R_ExternalPtrAddr(m);
 }
 
 static int get_kernel_param(cl_device_id dev, cl_kernel kernel,
@@ -942,6 +942,23 @@ void predict_avg_prob(const TGenotype geno[], const double weight[],
 
 // ===================================================================== //
 
+/// release the memory buffer object
+SEXP gpu_free_memory(SEXP buffer)
+{
+	if (!Rf_inherits(buffer, "clBuffer") || TYPEOF(buffer) != EXTPTRSXP)
+		Rf_error("Not an OpenCL buffer.");
+	cl_mem mem = (cl_mem)R_ExternalPtrAddr(buffer);
+	if (mem)
+	{
+		clReleaseMemObject(mem);
+		R_ClearExternalPtr(buffer);
+		// Rprintf("Release OpenCL memory buffer (%p)\n", (void*)mem);
+	}
+	return R_NilValue;
+}
+
+
+/// automatically set the work local size for the kernel
 SEXP gpu_set_local_size(SEXP verbose)
 {
 	cl_device_id dev = get_device_env("gpu_device");

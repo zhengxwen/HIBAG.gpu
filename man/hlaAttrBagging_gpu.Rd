@@ -113,7 +113,8 @@ model <- hlaAttrBagging_gpu(hlatab$training, train.geno, nclassifier=4,
 summary(model)
 
 # validation
-pred <- predict(model, test.geno)
+# call hlaPredict or hlaPredict_gpu
+pred <- hlaPredict(model, test.geno)
 summary(pred)
 
 # compare

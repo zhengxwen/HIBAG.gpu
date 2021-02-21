@@ -86,6 +86,13 @@
 .gpu_build_free_memory <- function()
 {
 	HIBAG:::.hlaClearGPU()
+	with(.packageEnv, {
+		.Call(gpu_free_memory, mem_build_param)
+		.Call(gpu_free_memory, mem_snpgeno)
+		.Call(gpu_free_memory, mem_build_output)
+		.Call(gpu_free_memory, mem_haplo_list)
+		.Call(gpu_free_memory, mem_prob_buffer)
+	})
 	remove(
 		mem_build_param, mem_snpgeno, mem_build_output, mem_haplo_list, mem_prob_buffer,
 		build_haplo_nmax, build_sample_nmax,
@@ -116,10 +123,7 @@ hlaAttrBagging_gpu <- function(hla, snp, nclassifier=100,
 	if (verbose.detail) verbose <- TRUE
 
 	# GPU platform
-	on.exit({
-		.gpu_build_free_memory()
-		gc(reset=TRUE)
-	})
+	on.exit({ .gpu_build_free_memory() })
 
 	# get the common samples
 	samp.id <- intersect(hla$value$sample.id, snp$sample.id)
@@ -265,16 +269,14 @@ hlaAttrBagging_gpu <- function(hla, snp, nclassifier=100,
 
 	class(mod) <- "hlaAttrBagClass"
 
+	# clear memory
+	on.exit()
+	.gpu_build_free_memory()
 
 	###################################################################
 	# calculate matching statistic
 	if (verbose)
 		cat("Calculating matching proportion:\n")
-
-	# clear memory
-	on.exit()
-	.gpu_build_free_memory()
-	gc(reset=TRUE)
 
 	pd <- hlaPredict_gpu(mod, snp, verbose=FALSE)
 	mod$matching <- pd$value$matching
