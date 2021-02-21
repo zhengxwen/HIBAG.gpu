@@ -269,7 +269,7 @@ hlaAttrBagging_gpu <- function(hla, snp, nclassifier=100,
 	# calculate matching statistic
 	if (verbose)
 		cat("Calculating matching proportion:\n")
-	pd <- hlaPredict(mod, snp, verbose=FALSE)
+	pd <- hlaPredict_gpu(mod, snp, verbose=FALSE)
 	mod$matching <- pd$value$matching
 	if (verbose)
 	{
@@ -397,6 +397,7 @@ hlaPredict_gpu <- function(object, snp,
 	## build OpenCL kernels ##
 
 	.packageEnv$flag_build_f64 <- f64_build
+	.packageEnv$flag_pred_f64  <- f64_pred
 	.packageEnv$prec_build   <- prec_build   <- ifelse(f64_build, "double", "single")
 	.packageEnv$prec_predict <- prec_predict <- ifelse(f64_pred,  "double", "single")
 

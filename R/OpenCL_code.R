@@ -277,14 +277,19 @@ __kernel void clear_memory(const int n, __global int *p)
 ##########################################################################
 
 code_pred_calc_prob <- "
+#define SIZEOF_THAPLO_SHIFT    5
+#define SIZEOF_TGENOTYPE       48
+#define OFFSET_ALLELE_INDEX    28
+#define OFFSET_PARAM           3
+
 __kernel void pred_calc_prob(
 	const int nHLA,
 	const int nClassifier,
-	__constant double *exp_log_min_rare_freq,
+	__constant numeric *exp_log_min_rare_freq,
 	__global unsigned char *pHaplo,
 	__global int *nHaplo,
 	__global unsigned char *pGeno,
-	__global double *outProb)
+	__global numeric *outProb)
 {
 	const int i1 = get_global_id(0);
 	const int i2 = get_global_id(1);
@@ -300,27 +305,27 @@ __kernel void pred_calc_prob(
 		if (i1 < n_haplo && i2 < n_haplo)
 		{
 			// the first haplotype
-			__global unsigned char *p1 = pHaplo + (i1 << 5);
+			__global unsigned char *p1 = pHaplo + (i1 << SIZEOF_THAPLO_SHIFT);
 			// the second haplotype
-			__global unsigned char *p2 = pHaplo + (i2 << 5);
+			__global unsigned char *p2 = pHaplo + (i2 << SIZEOF_THAPLO_SHIFT);
 			// hamming distance
 			int d = hamming_dist(nHaplo[1], pGeno, p1, p2);
 			// since exp_log_min_rare_freq[>HAMM_DIST_MAX] = 0
 			if (d <= HAMM_DIST_MAX)
 			{
-				const double fq1 = *(__global double*)(p1 + OFFSET_HAPLO_FREQ);
-				const int h1 = *(__global int*)(p1 + 28);
-				const double fq2 = *(__global double*)(p2 + OFFSET_HAPLO_FREQ);
-				const int h2 = *(__global int*)(p2 + 28);
+				const numeric fq1 = *(__global double*)(p1 + OFFSET_HAPLO_FREQ);
+				const int h1 = *(__global int*)(p1 + OFFSET_ALLELE_INDEX);
+				const numeric fq2 = *(__global double*)(p2 + OFFSET_HAPLO_FREQ);
+				const int h2 = *(__global int*)(p2 + OFFSET_ALLELE_INDEX);
 				// genotype frequency
-				double ff = (i1 != i2) ? (2 * fq1 * fq2) : (fq1 * fq2);
+				numeric ff = (i1 != i2) ? (2 * fq1 * fq2) : (fq1 * fq2);
 				ff *= exp_log_min_rare_freq[d];  // account for mutation and error rate
 				// update
 				int k = h2 + (h1 * ((nHLA << 1) - h1 - 1) >> 1);
 				atomic_fadd(&outProb[k], ff);
 			}
 		}
-		pHaplo += (n_haplo << 5);
+		pHaplo += (n_haplo << SIZEOF_THAPLO_SHIFT);
 		nHaplo += 2;
 		pGeno += 64;
 		outProb += sz_hla;
@@ -330,18 +335,18 @@ __kernel void pred_calc_prob(
 
 
 code_pred_calc_sumprob <- "
-// since LibHLA_gpu.cpp: gpu_local_size_d1 = 64
 #define CONST_LOCAL_SIZE    64
 
-__kernel void pred_calc_sumprob(const int num_hla_geno, __global double *prob,
-	__global double *out_sum)
+__kernel void pred_calc_sumprob(__global numeric *out_sum, const int num_hla_geno,
+	__global const numeric *prob)
 {
-	__local double local_sum[CONST_LOCAL_SIZE];
+	__local numeric local_sum[CONST_LOCAL_SIZE];
+
 	const int i = get_local_id(0);
 	const int i_cfr = get_global_id(1);
 	prob += num_hla_geno * i_cfr;
 
-	double sum = 0;
+	numeric sum = 0;
 	for (int k=i; k < num_hla_geno; k+=CONST_LOCAL_SIZE)
 		sum += prob[k];
 	if (i < CONST_LOCAL_SIZE) local_sum[i] = sum;
@@ -358,14 +363,15 @@ __kernel void pred_calc_sumprob(const int num_hla_geno, __global double *prob,
 
 
 code_pred_calc_addprob <- "
-__kernel void pred_calc_addprob(const int num_hla_geno, const int nClassifier,
-	__global double *weight, __global double *out_prob)
+// sum of probabilities among all classifiers
+__kernel void pred_calc_addprob(__global numeric *out_prob, const int num_hla_geno,
+	const int nClassifier, __global const numeric *weight)
 {
 	const int i = get_global_id(0);
 	if (i < num_hla_geno)
 	{
-		__global double *p = out_prob + i;
-		double sum = 0;
+		__global numeric *p = out_prob + i;
+		numeric sum = 0;
 		for (int j=0; j < nClassifier; j++)
 		{
 			sum += weight[j] * (*p);
