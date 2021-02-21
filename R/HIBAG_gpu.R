@@ -392,7 +392,7 @@ hlaPredict_gpu <- function(object, snp,
 		f64_build <- FALSE
 		f64_pred  <- TRUE
 		showmsg(paste("By default, training uses 32-bit floating-point numbers in GPU",
-			" and prediction uses 64-bit floating-point numbers."))
+			"and prediction uses 64-bit floating-point numbers."))
 	} else if (isTRUE(use_double))
 	{
 		if (!dev_fp64)

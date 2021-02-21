@@ -174,6 +174,14 @@ namespace HLA_LIB
 	// the max number of haplotypes can be hold in mem_haplo_list
 	static int build_haplo_nmax = 0;
 
+	// num of haplotypes and SNPs for each classifier: int[][2]
+	static cl_mem mem_pred_haplo_num = NULL;
+
+	// classifier weight
+	static cl_mem mem_pred_weight = NULL;
+
+	static int wdim_pred_addprob = 0;
+
 
 	// used for work-group size (1-dim and 2-dim)
 	const  size_t gpu_const_local_size = 64;
@@ -192,18 +200,6 @@ namespace HLA_LIB
 	static int wdim_num_haplo; ///< global_work_size for the number of haplotypes
 
 	static vector<int> hla_map_index;
-
-
-	// ===================================================================== //
-	// prediction for calculating the posterior probabilities
-
-	// num of haplotypes and SNPs for each classifier: int[][2]
-	static cl_mem mem_pred_haplo_num = NULL;
-
-	// classifier weight
-	static cl_mem mem_pred_weight = NULL;
-
-	static int wdim_pred_addprob = 0;
 
 
 	// ===================================================================== //
