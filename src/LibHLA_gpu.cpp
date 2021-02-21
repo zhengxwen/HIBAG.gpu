@@ -822,6 +822,7 @@ void predict_init(int nHLA, int nClassifier, const THaplotype *const pHaplo[],
 		"mem_exp_log_min_rare_freq64" : "mem_exp_log_min_rare_freq32");
 
 	// haplotype lists for all classifiers
+	vector<int> nhaplo_buf(4*nClassifier);
 	const size_t msize_haplo = sizeof(THaplotype)*sum_n_haplo;
 	GPU_CREATE_MEM(mem_haplo_list, CL_MEM_READ_ONLY, msize_haplo, NULL);
 	{
@@ -829,15 +830,18 @@ void predict_init(int nHLA, int nClassifier, const THaplotype *const pHaplo[],
 		THaplotype *p = M.ptr();
 		for (int i=0; i < nClassifier; i++)
 		{
-			size_t m = nHaplo[i << 1];
+			size_t m = nHaplo[i*2];
+			nhaplo_buf[i*4 + 0] = m;
+			nhaplo_buf[i*4 + 1] = p - M.ptr();
+			nhaplo_buf[i*4 + 2] = nHaplo[i*2 + 1];
 			memcpy(p, pHaplo[i], sizeof(THaplotype)*m);
 			p += m;
 		}
 	}
 
 	// the numbers of haplotypes
-	GPU_CREATE_MEM(mem_pred_haplo_num, CL_MEM_READ_ONLY | CL_MEM_USE_HOST_PTR,
-		sizeof(int)*2*nClassifier, (void*)nHaplo);
+	GPU_CREATE_MEM(mem_pred_haplo_num, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
+		sizeof(int)*nhaplo_buf.size(), (void*)&nhaplo_buf[0]);
 
 	// memory for SNP genotypes
 	GPU_CREATE_MEM(mem_snpgeno, CL_MEM_READ_ONLY,
@@ -852,17 +856,17 @@ void predict_init(int nHLA, int nClassifier, const THaplotype *const pHaplo[],
 	GPU_CREATE_MEM(mem_pred_weight, CL_MEM_READ_WRITE | CL_MEM_ALLOC_HOST_PTR,
 		sizeof(double)*nClassifier, NULL);
 
-	// arguments for gpu_kernel, pred_calc_prob
-	GPU_SETARG(gpu_kl_pred_calc, 0, nHLA);
-	GPU_SETARG(gpu_kl_pred_calc, 1, nClassifier);
-	GPU_SETARG(gpu_kl_pred_calc, 2, mem_rare_freq);
-	GPU_SETARG(gpu_kl_pred_calc, 3, mem_haplo_list);
-	GPU_SETARG(gpu_kl_pred_calc, 4, mem_pred_haplo_num);
-	GPU_SETARG(gpu_kl_pred_calc, 5, mem_snpgeno);
-	GPU_SETARG(gpu_kl_pred_calc, 6, mem_prob_buffer);
+	// arguments for gpu_kl_pred_calc, pred_calc_prob
+	int sz_hla = size_hla;
+	GPU_SETARG(gpu_kl_pred_calc, 0, mem_prob_buffer);
+	GPU_SETARG(gpu_kl_pred_calc, 1, nHLA);
+	GPU_SETARG(gpu_kl_pred_calc, 2, sz_hla);
+	GPU_SETARG(gpu_kl_pred_calc, 3, mem_rare_freq);
+	GPU_SETARG(gpu_kl_pred_calc, 4, mem_haplo_list);
+	GPU_SETARG(gpu_kl_pred_calc, 5, mem_pred_haplo_num);
+	GPU_SETARG(gpu_kl_pred_calc, 6, mem_snpgeno);
 
 	// arguments for gpu_kl_pred_sumprob, pred_calc_sumprob
-	int sz_hla = size_hla;
 	GPU_SETARG(gpu_kl_pred_sumprob, 0, mem_pred_weight);
 	GPU_SETARG(gpu_kl_pred_sumprob, 1, sz_hla);
 	GPU_SETARG(gpu_kl_pred_sumprob, 2, mem_prob_buffer);
@@ -905,9 +909,11 @@ void predict_avg_prob(const TGenotype geno[], const double weight[],
 
 	// pred_calc_prob
 	{
-		size_t wdims[2] = { (size_t)wdim_num_haplo, (size_t)wdim_num_haplo };
-		size_t local_size[2] = { gpu_local_size_d2, gpu_local_size_d2 };
-		GPU_RUN_KERNAL(gpu_kl_pred_calc, 2, wdims, local_size);
+		size_t wdims[3] =
+			{ (size_t)wdim_num_haplo, (size_t)wdim_num_haplo, (size_t)Num_Classifier };
+		size_t local_size[3] =
+			{ gpu_local_size_d2, gpu_local_size_d2, 1 };
+		GPU_RUN_KERNAL(gpu_kl_pred_calc, 3, wdims, local_size);
 	}
 
 	// use host to calculate if single-precision
