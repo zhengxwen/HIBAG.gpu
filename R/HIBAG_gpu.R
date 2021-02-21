@@ -291,66 +291,6 @@ hlaAttrBagging_gpu <- function(hla, snp, nclassifier=100,
 # Predict HLA types from unphased SNP data
 #
 
-.gpu_predict_init_memory <- function(nhla, nsamp)
-{
-	# internal
-	offset_build_param <- 4L
-	sizeof_TGenotype  <- 48L
-	sizeof_THaplotype <- 32L
-	
-	# allocate
-	.packageEnv$mem_build_param <- clBuffer(.packageEnv$gpu_context,
-		offset_build_param + 2L*nsamp, "integer")
-
-	.packageEnv$mem_snpgeno <- clBuffer(.packageEnv$gpu_context,
-		nsamp*sizeof_TGenotype %/% 4L, "integer")
-
-	.packageEnv$mem_build_output <- clBuffer(.packageEnv$gpu_context,
-		nsamp, .packageEnv$prec_build)
-
-	# determine max # of haplo
-	if (nsamp <= 1000L)
-		build_haplo_nmax <- nsamp * 5L
-	else if (nsamp <= 5000L)
-		build_haplo_nmax <- nsamp * 3L
-	else if (nsamp <= 10000L)
-		build_haplo_nmax <- round(nsamp * 1.5)
-	else
-		build_haplo_nmax <- nsamp
-	.packageEnv$build_haplo_nmax <- build_haplo_nmax
-	.packageEnv$mem_haplo_list <- clBuffer(.packageEnv$gpu_context,
-		build_haplo_nmax*sizeof_THaplotype %/% 4L, "integer")
-
-	size_hla <- nhla * (nhla+1L) %/% 2L
-	build_sample_nmax <- nsamp
-	while (build_sample_nmax > 0L)
-	{
-		ntry <- build_sample_nmax * size_hla
-		ok <- tryCatch({
-			buffer <- clBuffer(.packageEnv$gpu_context, ntry, .packageEnv$prec_build)
-			TRUE
-		}, error=function(e) FALSE)
-		if (ok) break
-		build_sample_nmax <- build_sample_nmax - 1000L
-		if (build_sample_nmax <= 0L)
-			stop(sprintf("Fail to allocate %s[%d] in GPU", .packageEnv$prec_build, ntry))
-	}
-	.packageEnv$build_sample_nmax <- build_sample_nmax
-	.packageEnv$mem_prob_buffer <- buffer
-
-	invisible()
-}
-
-.gpu_predict_free_memory <- function()
-{
-	remove(
-		mem_build_param, mem_snpgeno, mem_build_output, mem_haplo_list, mem_prob_buffer,
-		build_haplo_nmax, build_sample_nmax,
-		envir=.packageEnv)
-	invisible()
-}
-
-
 hlaPredict_gpu <- function(object, snp,
 	type=c("response", "prob", "response+prob"), vote=c("prob", "majority"),
 	allele.check=TRUE, match.type=c("Position", "RefSNP+Position", "RefSNP"),
@@ -471,14 +411,14 @@ hlaPredict_gpu <- function(object, snp,
 		code_build_sum_prob, output.mode=prec_predict)
 
 	## build kernels for prediction
-#	.packageEnv$kernel_pred <- oclSimpleKernel(ctx, "pred_calc_prob",
-#		paste(if (f64_pred) code_atomic_add_f64 else code_atomic_add_f32,
-#			code_hamming_dist, code_pred_calc_prob, collapse="\n"),
-#		output.mode=prec_predict)
-#	.packageEnv$kernel_pred_sumprob <- oclSimpleKernel(ctx, "pred_calc_sumprob",
-#		code_pred_calc_sumprob, output.mode=prec_predict)
-#	.packageEnv$kernel_pred_addprob <- oclSimpleKernel(ctx, "pred_calc_addprob",
-#		code_pred_calc_addprob, output.mode=prec_predict)
+	.packageEnv$kernel_pred_calc <- oclSimpleKernel(ctx, "pred_calc_prob",
+		paste(if (f64_pred) code_atomic_add_f64 else code_atomic_add_f32,
+			code_hamming_dist, code_pred_calc_prob, collapse="\n"),
+		output.mode=prec_predict)
+	.packageEnv$kernel_pred_sumprob <- oclSimpleKernel(ctx, "pred_calc_sumprob",
+		code_pred_calc_sumprob, output.mode=prec_predict)
+	.packageEnv$kernel_pred_addprob <- oclSimpleKernel(ctx, "pred_calc_addprob",
+		code_pred_calc_addprob, output.mode=prec_predict)
 
 	## initialize GPU memory buffer
 	fq <- .Call(gpu_exp_log_min_rare_freq)
