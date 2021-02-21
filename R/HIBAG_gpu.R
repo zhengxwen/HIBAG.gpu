@@ -85,6 +85,7 @@
 
 .gpu_build_free_memory <- function()
 {
+	HIBAG:::.hlaClearGPU()
 	remove(
 		mem_build_param, mem_snpgeno, mem_build_output, mem_haplo_list, mem_prob_buffer,
 		build_haplo_nmax, build_sample_nmax,
@@ -116,7 +117,6 @@ hlaAttrBagging_gpu <- function(hla, snp, nclassifier=100,
 
 	# GPU platform
 	on.exit({
-		HIBAG:::.hlaClearGPU()
 		.gpu_build_free_memory()
 		gc(reset=TRUE)
 	})
@@ -269,6 +269,12 @@ hlaAttrBagging_gpu <- function(hla, snp, nclassifier=100,
 	# calculate matching statistic
 	if (verbose)
 		cat("Calculating matching proportion:\n")
+
+	# clear memory
+	on.exit()
+	.gpu_build_free_memory()
+	gc(reset=TRUE)
+
 	pd <- hlaPredict_gpu(mod, snp, verbose=FALSE)
 	mod$matching <- pd$value$matching
 	if (verbose)

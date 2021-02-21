@@ -313,9 +313,9 @@ __kernel void pred_calc_prob(
 			// since exp_log_min_rare_freq[>HAMM_DIST_MAX] = 0
 			if (d <= HAMM_DIST_MAX)
 			{
-				const numeric fq1 = *(__global double*)(p1 + OFFSET_HAPLO_FREQ);
+				const numeric fq1 = *(__global numeric*)(p1 + OFFSET_HAPLO_FREQ);
 				const int h1 = *(__global int*)(p1 + OFFSET_ALLELE_INDEX);
-				const numeric fq2 = *(__global double*)(p2 + OFFSET_HAPLO_FREQ);
+				const numeric fq2 = *(__global numeric*)(p2 + OFFSET_HAPLO_FREQ);
 				const int h2 = *(__global int*)(p2 + OFFSET_ALLELE_INDEX);
 				// genotype frequency
 				numeric ff = (i1 != i2) ? (2 * fq1 * fq2) : (fq1 * fq2);
@@ -327,7 +327,7 @@ __kernel void pred_calc_prob(
 		}
 		pHaplo += (n_haplo << SIZEOF_THAPLO_SHIFT);
 		nHaplo += 2;
-		pGeno += 64;
+		pGeno += SIZEOF_TGENOTYPE;
 		outProb += sz_hla;
 	}
 }

@@ -162,7 +162,7 @@ namespace HLA_LIB
 	static cl_kernel gpu_kl_build_calc_prob	 = NULL;
 	static cl_kernel gpu_kl_build_find_maxprob = NULL;
 	static cl_kernel gpu_kl_build_sum_prob = NULL;
-	static cl_kernel gpu_kl_predict = NULL;
+	static cl_kernel gpu_kl_pred_calc = NULL;
 	static cl_kernel gpu_kl_pred_sumprob = NULL;
 	static cl_kernel gpu_kl_pred_addprob = NULL;
 	static cl_kernel gpu_kl_clear_mem = NULL;
@@ -502,7 +502,7 @@ static void set_auto_local_size(cl_device_id dev, cl_kernel kernel)
 		gpu_local_size_d1 = 64;
 		gpu_local_size_d2 = 8;
 	}
-	Rprintf("gpu_local_size_d1: %d, gpu_local_size_d2: %d\n",
+	Rprintf("GPU, local work size (d1): %d, local work size (d2): %d\n",
 		(int)gpu_local_size_d1, (int)gpu_local_size_d2);
 }
 
@@ -538,7 +538,7 @@ void build_init(int nHLA, int nSample)
 	gpu_kl_build_find_maxprob = get_kernel_env("kernel_build_find_maxprob");
 	gpu_kl_build_sum_prob     = get_kernel_env("kernel_build_sum_prob");
 	gpu_kl_clear_mem          = get_kernel_env("kernel_clear_mem");
-	set_auto_local_size(dev, gpu_kl_clear_mem);
+	set_auto_local_size(dev, gpu_kl_build_calc_prob);
 
 	// GPU memory
 	cl_mem mem_rare_freq = get_mem_env(gpu_f64_build_flag ?
@@ -794,10 +794,11 @@ void predict_init(int nHLA, int nClassifier, const THaplotype *const pHaplo[],
 	gpu_command_queue = get_command_queue_env("gpu_context");
 
 	// kernels
-	gpu_kl_predict      = get_kernel_env("kernel_pred_calc");
+	gpu_kl_pred_calc    = get_kernel_env("kernel_pred_calc");
 	gpu_kl_pred_sumprob = get_kernel_env("kernel_pred_sumprob");
 	gpu_kl_pred_addprob = get_kernel_env("kernel_pred_addprob");
-	set_auto_local_size(dev, gpu_kl_predict);
+	gpu_kl_clear_mem    = get_kernel_env("kernel_clear_mem");
+	set_auto_local_size(dev, gpu_kl_pred_calc);
 
 	// assign
 	Num_HLA = nHLA;
@@ -817,7 +818,7 @@ void predict_init(int nHLA, int nClassifier, const THaplotype *const pHaplo[],
 		wdim_num_haplo = (wdim_num_haplo/gpu_local_size_d2 + 1)*gpu_local_size_d2;
 
 	// GPU memory
-	cl_mem mem_rare_freq = get_mem_env(gpu_f64_build_flag ?
+	cl_mem mem_rare_freq = get_mem_env(gpu_f64_pred_flag ?
 		"mem_exp_log_min_rare_freq64" : "mem_exp_log_min_rare_freq32");
 
 	// haplotype lists for all classifiers
@@ -852,13 +853,13 @@ void predict_init(int nHLA, int nClassifier, const THaplotype *const pHaplo[],
 		sizeof(double)*nClassifier, NULL);
 
 	// arguments for gpu_kernel, pred_calc_prob
-	GPU_SETARG(gpu_kl_predict, 0, nHLA);
-	GPU_SETARG(gpu_kl_predict, 1, nClassifier);
-	GPU_SETARG(gpu_kl_predict, 2, mem_rare_freq);
-	GPU_SETARG(gpu_kl_predict, 3, mem_haplo_list);
-	GPU_SETARG(gpu_kl_predict, 4, mem_pred_haplo_num);
-	GPU_SETARG(gpu_kl_predict, 5, mem_snpgeno);
-	GPU_SETARG(gpu_kl_predict, 6, mem_prob_buffer);
+	GPU_SETARG(gpu_kl_pred_calc, 0, nHLA);
+	GPU_SETARG(gpu_kl_pred_calc, 1, nClassifier);
+	GPU_SETARG(gpu_kl_pred_calc, 2, mem_rare_freq);
+	GPU_SETARG(gpu_kl_pred_calc, 3, mem_haplo_list);
+	GPU_SETARG(gpu_kl_pred_calc, 4, mem_pred_haplo_num);
+	GPU_SETARG(gpu_kl_pred_calc, 5, mem_snpgeno);
+	GPU_SETARG(gpu_kl_pred_calc, 6, mem_prob_buffer);
 
 	// arguments for gpu_kl_pred_sumprob, pred_calc_sumprob
 	int sz_hla = size_hla;
@@ -874,6 +875,9 @@ void predict_init(int nHLA, int nClassifier, const THaplotype *const pHaplo[],
 	wdim_pred_addprob = size_hla;
 	if (wdim_pred_addprob % gpu_local_size_d1)
 		wdim_pred_addprob = (wdim_pred_addprob/gpu_local_size_d1 + 1) * gpu_local_size_d1;
+
+	// arguments for gpu_kl_build_clear_mem
+	GPU_SETARG(gpu_kl_clear_mem, 1, mem_prob_buffer);
 }
 
 
@@ -903,7 +907,7 @@ void predict_avg_prob(const TGenotype geno[], const double weight[],
 	{
 		size_t wdims[2] = { (size_t)wdim_num_haplo, (size_t)wdim_num_haplo };
 		size_t local_size[2] = { gpu_local_size_d2, gpu_local_size_d2 };
-		GPU_RUN_KERNAL(gpu_kl_predict, 2, wdims, local_size);
+		GPU_RUN_KERNAL(gpu_kl_pred_calc, 2, wdims, local_size);
 	}
 
 	// use host to calculate if single-precision
@@ -973,16 +977,18 @@ void predict_avg_prob(const TGenotype geno[], const double weight[],
 		const float *p = M.ptr();
 		double psum = 0;
 
-		for (int i=0; i < Num_Classifier; i++)
+		for (int i=0; i < Num_Classifier; i++, p+=num_size)
 		{
 			double ss = 0;
 			for (size_t k=0; k < num_size; k++)
 				ss += p[k];
-			psum += ss;
-			double w = (ss > 0) ? weight[i] / ss : 0;
-			for (size_t k=0; k < num_size; k++)
-				out_prob[k] += p[k] * w;
-			p += num_size;
+			if (ss > 0)
+			{
+				psum += ss;
+				double w = weight[i] / ss;
+				for (size_t k=0; k < num_size; k++)
+					out_prob[k] += p[k] * w;
+			}
 		}
 
 		*out_match = psum / Num_Classifier;
@@ -1110,11 +1116,10 @@ SEXP gpu_init_proc(SEXP env)
 	GPU_Proc.build_set_haplo_geno = build_set_haplo_geno;
 	GPU_Proc.build_acc_oob = build_acc_oob;
 	GPU_Proc.build_acc_ib = build_acc_ib;
-/*
 	GPU_Proc.predict_init = predict_init;
 	GPU_Proc.predict_done = predict_done;
 	GPU_Proc.predict_avg_prob = predict_avg_prob;
-*/
+
 	// return the pointer object
 	return R_MakeExternalPtr(&GPU_Proc, R_NilValue, R_NilValue);
 }
