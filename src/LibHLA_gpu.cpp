@@ -179,7 +179,7 @@ namespace HLA_LIB
 	static cl_mem mem_snpgeno = NULL;
 
 	// haplotype list, THaplotype[]
-	static cl_mem mem_pred_haplo_list = NULL;
+	static cl_mem mem_haplo_list = NULL;
 
 	// the buffer of probabilities
 	// double[nHLA*(nHLA+1)/2][# of samples] -- prob. for classifiers or samples
@@ -195,7 +195,7 @@ namespace HLA_LIB
 
 	// the max number of samples can be hold in mem_prob_buffer
 	static int mem_sample_nmax = 0;
-	// the max number of haplotypes can be hold in mem_pred_haplo_list
+	// the max number of haplotypes can be hold in mem_haplo_list
 	static int build_haplo_nmax = 0;
 
 
@@ -546,7 +546,7 @@ void build_init(int nHLA, int nSample)
 	mem_prob_buffer = get_mem_env("mem_prob_buffer");
 	msize_prob_buffer = nHLA*(nHLA+1)/2 * (gpu_f64_build_flag ? 64 : 32);
 	mem_build_param = get_mem_env("mem_build_param");
-	mem_pred_haplo_list = get_mem_env("mem_pred_haplo_list");
+	mem_haplo_list = get_mem_env("mem_haplo_list");
 	mem_snpgeno = get_mem_env("mem_snpgeno");
 	build_haplo_nmax = Rf_asInteger(get_var_env("build_haplo_nmax"));
 	mem_sample_nmax = Rf_asInteger(get_var_env("build_sample_nmax"));
@@ -560,7 +560,7 @@ void build_init(int nHLA, int nSample)
 	GPU_SETARG(gpu_kl_build_calc_prob, 2, sz_hla);
 	GPU_SETARG(gpu_kl_build_calc_prob, 3, mem_rare_freq);
 	GPU_SETARG(gpu_kl_build_calc_prob, 4, mem_build_param);
-	GPU_SETARG(gpu_kl_build_calc_prob, 5, mem_pred_haplo_list);
+	GPU_SETARG(gpu_kl_build_calc_prob, 5, mem_haplo_list);
 	GPU_SETARG(gpu_kl_build_calc_prob, 6, mem_snpgeno);
 
 	// arguments for gpu_kl_build_find_maxprob (out-of-bag)
@@ -590,7 +590,7 @@ void build_done()
 	mem_build_param =
 		mem_snpgeno =
 		mem_build_output =
-		mem_pred_haplo_list =
+		mem_haplo_list =
 		mem_prob_buffer = NULL;
 	hla_map_index.clear();
 
@@ -645,7 +645,7 @@ void build_set_haplo_geno(const THaplotype haplo[], int n_haplo,
 	wdim_num_haplo = run_num_haplo = n_haplo;
 	if (wdim_num_haplo % gpu_local_size_d2)
 		wdim_num_haplo = (wdim_num_haplo/gpu_local_size_d2 + 1)*gpu_local_size_d2;
-	GPU_WRITE_MEM(mem_pred_haplo_list, 0, sizeof(THaplotype)*n_haplo, (void*)haplo);
+	GPU_WRITE_MEM(mem_haplo_list, 0, sizeof(THaplotype)*n_haplo, (void*)haplo);
 
 	run_num_snp = n_snp;
 	GPU_WRITE_MEM(mem_snpgeno, 0, sizeof(TGenotype)*Num_Sample, (void*)geno);
@@ -822,9 +822,9 @@ void predict_init(int nHLA, int nClassifier, const THaplotype *const pHaplo[],
 
 	// haplotype lists for all classifiers
 	const size_t msize_haplo = sizeof(THaplotype)*sum_n_haplo;
-	GPU_CREATE_MEM(mem_pred_haplo_list, CL_MEM_READ_ONLY, msize_haplo, NULL);
+	GPU_CREATE_MEM(mem_haplo_list, CL_MEM_READ_ONLY, msize_haplo, NULL);
 	{
-		GPU_MEM_MAP<THaplotype> M(mem_pred_haplo_list, msize_haplo, false);
+		GPU_MEM_MAP<THaplotype> M(mem_haplo_list, msize_haplo, false);
 		THaplotype *p = M.ptr();
 		for (int i=0; i < nClassifier; i++)
 		{
@@ -855,7 +855,7 @@ void predict_init(int nHLA, int nClassifier, const THaplotype *const pHaplo[],
 	GPU_SETARG(gpu_kl_predict, 0, nHLA);
 	GPU_SETARG(gpu_kl_predict, 1, nClassifier);
 	GPU_SETARG(gpu_kl_predict, 2, mem_rare_freq);
-	GPU_SETARG(gpu_kl_predict, 3, mem_pred_haplo_list);
+	GPU_SETARG(gpu_kl_predict, 3, mem_haplo_list);
 	GPU_SETARG(gpu_kl_predict, 4, mem_pred_haplo_num);
 	GPU_SETARG(gpu_kl_predict, 5, mem_snpgeno);
 	GPU_SETARG(gpu_kl_predict, 6, mem_prob_buffer);
@@ -880,7 +880,7 @@ void predict_init(int nHLA, int nClassifier, const THaplotype *const pHaplo[],
 /// finalize the structure for predicting
 void predict_done()
 {
-	GPU_FREE_MEM(mem_pred_haplo_list);
+	GPU_FREE_MEM(mem_haplo_list);
 	GPU_FREE_MEM(mem_pred_haplo_num);
 	GPU_FREE_MEM(mem_snpgeno);
 	GPU_FREE_MEM(mem_prob_buffer);

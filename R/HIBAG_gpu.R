@@ -306,8 +306,13 @@ hlaPredict_gpu <- function(object, snp,
 			"-precision floating-point numbers in GPU computing\n", sep="")
 	}
 
-	predict(object, snp, NULL, type, vote, allele.check, match.type,
-		same.strand, verbose, proc_ptr=.packageEnv$gpu_proc_ptr)
+	# GPU proc pointer
+	cl <- FALSE
+	attr(cl, "proc_ptr") <- .packageEnv$gpu_proc_ptr
+
+	# run
+	hlaPredict(object, snp, cl, type, vote, allele.check, match.type, same.strand,
+		verbose)
 }
 
 
