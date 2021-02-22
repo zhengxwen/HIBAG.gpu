@@ -882,62 +882,35 @@ void predict_avg_prob(const TGenotype geno[], const double weight[],
 	// use host to calculate if single-precision
 	if (gpu_f64_pred_flag)
 	{
-/*
 		// sum up all probs for each classifier
 		{
+			// output to mem_pred_weight
 			size_t wdims[2] = { (size_t)gpu_const_local_size, (size_t)Num_Classifier };
 			size_t local_size[2] = { gpu_const_local_size, 1 };
 			GPU_RUN_KERNAL(gpu_kl_pred_sumprob, 2, wdims, local_size);
 		}
 
-		// map to host memory
-		GPU_MAP_MEM(mem_pred_weight, ptr_buf, sizeof(double)*Num_Classifier);
-		double psum = 0;
-		if (gpu_f64_pred_flag)
+		// mem_pred_weight
 		{
-			double *w = (double*)ptr_buf;
+			GPU_MEM_MAP<double> M(mem_pred_weight, sizeof(double)*Num_Classifier, false);
+			double psum = 0, *w = M.ptr();
 			for (int i=0; i < Num_Classifier; i++)
 			{
 				psum += w[i];
 				w[i] = weight[i] / w[i];
 				if (!R_FINITE(w[i])) w[i] = 0;
 			}
-		} else {
-			float *w = (float*)ptr_buf;
-			for (int i=0; i < Num_Classifier; i++)
-			{
-				psum += w[i];
-				w[i] = weight[i] / w[i];
-				if (!R_FINITE(w[i])) w[i] = 0;
-			}
+			if (out_match)
+				*out_match = psum / Num_Classifier;
 		}
-		if (out_match)
-			*out_match = psum / Num_Classifier;
-		GPU_UNMAP_MEM(mem_pred_weight, ptr_buf);
 
 		// sum up all probs among classifiers per HLA genotype
 		size_t wdim = wdim_pred_addprob;
 		GPU_RUN_KERNAL(gpu_kl_pred_addprob, 1, &wdim, &gpu_local_size_d1);
+		GPU_READ_MEM(mem_prob_buffer, sizeof(double)*num_size, out_prob);
+		// normalize out_prob
+		fmul_f64(out_prob, num_size, 1 / get_sum_f64(out_prob, num_size));
 
-		if (gpu_f64_pred_flag)
-		{
-			GPU_READ_MEM(mem_prob_buffer, sizeof(double)*num_size, out_prob);
-			// normalize out_prob
-			fmul_f64(out_prob, num_size, 1 / get_sum_f64(out_prob, num_size));
-		} else {
-			GPU_MAP_MEM(mem_prob_buffer, ptr_buf, sizeof(float)*num_size);
-			const float *s = (const float*)ptr_buf;
-			double *p=out_prob, sum=0;
-			for (size_t n=num_size; n > 0; n--)
-			{
-				sum += *s; *p++ = *s++;
-			}
-			GPU_UNMAP_MEM(mem_prob_buffer, ptr_buf);
-
-			// normalize out_prob
-			fmul_f64(out_prob, num_size, 1 / sum);
-		}
-*/
 	} else {
 		// using double in hosts to improve precision
 		GPU_MEM_MAP<float> M(mem_prob_buffer, msize_prob_buffer_total, true);

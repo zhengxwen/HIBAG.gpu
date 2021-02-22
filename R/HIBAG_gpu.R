@@ -382,7 +382,7 @@ hlaPredict_gpu <- function(object, snp,
 					showmsg("    force to use 64-bit floating-point numbers since `force=TRUE`")
 				} else {
 					showmsg("    switch to 32-bit floating-point numbers to avoid the hardware limit")
-					dev_fp64 <- FALSE
+					# dev_fp64 <- FALSE
 				}
 			}
 		}
@@ -422,7 +422,7 @@ hlaPredict_gpu <- function(object, snp,
 	.packageEnv$kernel_build_calc_prob <- oclSimpleKernel(ctx, "build_calc_prob",
 		paste(if (f64_build) code_atomic_add_f64 else code_atomic_add_f32,
 			code_hamming_dist, code_build_calc_prob, collapse="\n"),
-		output.mode=prec_predict)
+		output.mode=prec_build)
 	.packageEnv$kernel_build_find_maxprob <- oclSimpleKernel(ctx, "build_find_maxprob",
 		code_build_find_maxprob, output.mode=prec_predict)
 	.packageEnv$kernel_build_sum_prob <- oclSimpleKernel(ctx, "build_sum_prob",
