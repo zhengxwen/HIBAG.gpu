@@ -33,22 +33,31 @@
 .yesno <- function(flag) ifelse(flag, "YES", "NO")
 
 
-.gpu_build_init_memory <- function(nhla, nsamp)
+.gpu_create_mem <- function(len, mode, verbose)
+{
+	sz <- switch(mode, single=4, double=8, integer=4, NA)
+	if (verbose) cat("    allocating", sz*len, "bytes ")
+	rv <- clBuffer(.packageEnv$gpu_context, len, mode)
+	if (verbose) cat("[OK]\n")
+	rv
+}
+
+.gpu_build_init_memory <- function(nhla, nsamp, verbose)
 {
 	# internal
-	offset_build_param <- 4L
+	offset_param <- 4L
 	sizeof_TGenotype  <- 48L
 	sizeof_THaplotype <- 32L
 	
 	# allocate
-	.packageEnv$mem_build_param <- clBuffer(.packageEnv$gpu_context,
-		offset_build_param + 2L*nsamp, "integer")
+	.packageEnv$mem_build_param <- .gpu_create_mem(offset_param + 2L*nsamp,
+		"integer", FALSE)
 
-	.packageEnv$mem_snpgeno <- clBuffer(.packageEnv$gpu_context,
-		nsamp*sizeof_TGenotype %/% 4L, "integer")
+	.packageEnv$mem_snpgeno <- .gpu_create_mem(nsamp*sizeof_TGenotype %/% 4L,
+		"integer", FALSE)
 
-	.packageEnv$mem_build_output <- clBuffer(.packageEnv$gpu_context,
-		nsamp, .packageEnv$prec_build)
+	.packageEnv$mem_build_output <- .gpu_create_mem(nsamp,
+		.packageEnv$prec_build, FALSE)
 
 	# determine max # of haplo
 	if (nsamp <= 1000L)
@@ -60,8 +69,8 @@
 	else
 		build_haplo_nmax <- nsamp
 	.packageEnv$build_haplo_nmax <- build_haplo_nmax
-	.packageEnv$mem_haplo_list <- clBuffer(.packageEnv$gpu_context,
-		build_haplo_nmax*sizeof_THaplotype %/% 4L, "integer")
+	.packageEnv$mem_haplo_list <- .gpu_create_mem(
+		build_haplo_nmax*sizeof_THaplotype %/% 4L, "integer", verbose)
 
 	size_hla <- nhla * (nhla+1L) %/% 2L
 	build_sample_nmax <- nsamp
@@ -69,9 +78,9 @@
 	{
 		ntry <- build_sample_nmax * size_hla
 		ok <- tryCatch({
-			buffer <- clBuffer(.packageEnv$gpu_context, ntry, .packageEnv$prec_build)
+			buffer <- .gpu_create_mem(ntry, .packageEnv$prec_build, verbose)
 			TRUE
-		}, error=function(e) FALSE)
+		}, error=function(e) { cat("[Failed]\n"); FALSE })
 		if (ok) break
 		build_sample_nmax <- build_sample_nmax - 1000L
 		if (build_sample_nmax <= 0L)
@@ -250,7 +259,7 @@ hlaAttrBagging_gpu <- function(hla, snp, nclassifier=100,
 	# training ...
 
 	.Call(gpu_set_local_size, verbose)
-	.gpu_build_init_memory(n.hla, n.samp)
+	.gpu_build_init_memory(n.hla, n.samp, verbose)
 
 	# add new individual classifers
 	.Call("HIBAG_NewClassifiers", ABmodel, nclassifier, mtry, prune,
