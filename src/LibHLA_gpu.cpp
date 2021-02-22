@@ -90,13 +90,16 @@
 		throw err_text("Failed to set kernel (" #kernel ") argument (" #i ")", err);
 
 #define GPU_RUN_KERNAL(kernel, ndim, wdims, lsize)	  \
+	{ \
+	cl_event e; \
 	err = clEnqueueNDRangeKernel(gpu_command_queue, kernel, ndim, NULL, \
-		wdims, lsize, 0, NULL, NULL); \
+		wdims, lsize, 0, NULL, &e); \
 	if (err != CL_SUCCESS) \
 		throw err_text("Failed to run clEnqueueNDRangeKernel() with " #kernel, err); \
-	err = clFinish(gpu_command_queue); \
+	err = clWaitForEvents(1, &e); \
 	if (err != CL_SUCCESS) \
-		throw err_text("Failed to run clFinish() with " #kernel, err);
+		throw err_text("Failed to run clWaitForEvents() with " #kernel, err); \
+	}
 
 
 namespace HLA_LIB
@@ -451,13 +454,7 @@ static inline void clear_prob_buffer(size_t size)
 	size_t wdim = n / gpu_local_size_d1;
 	if (n % gpu_local_size_d1) wdim++;
 	wdim *= gpu_local_size_d1;
-
-Rprintf("gpu_kl_clear_mem: %p, gpu_command_queue: %p\n",
-	gpu_kl_clear_mem, gpu_command_queue);
-
 	GPU_RUN_KERNAL(gpu_kl_clear_mem, 1, &wdim, &gpu_local_size_d1);
-
-Rprintf("OK\n");
 #endif
 }
 
