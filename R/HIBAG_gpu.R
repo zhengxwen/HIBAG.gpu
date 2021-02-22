@@ -36,7 +36,7 @@
 .gpu_create_mem <- function(len, mode, verbose)
 {
 	sz <- switch(mode, single=4, double=8, integer=4, NA)
-	if (verbose) cat("    allocating", sz*len, "bytes ")
+	if (verbose) cat("    allocating", sz*len, "bytes in GPU ")
 	rv <- clBuffer(.packageEnv$gpu_context, len, mode)
 	if (verbose) cat("[OK]\n")
 	rv
@@ -258,7 +258,8 @@ hlaAttrBagging_gpu <- function(hla, snp, nclassifier=100,
 	###################################################################
 	# training ...
 
-	.Call(gpu_set_local_size, verbose)
+	.Call(gpu_set_verbose, verbose)
+	.Call(gpu_set_local_size)
 	.gpu_build_init_memory(n.hla, n.samp, verbose)
 
 	# add new individual classifers
@@ -324,7 +325,8 @@ hlaPredict_gpu <- function(object, snp,
 		cat("Using ", .packageEnv$prec_predict,
 			"-precision floating-point numbers in GPU computing\n", sep="")
 	}
-	.Call(gpu_set_local_size, verbose)
+	.Call(gpu_set_verbose, verbose)
+	.Call(gpu_set_local_size)
 
 	# GPU proc pointer
 	cl <- FALSE

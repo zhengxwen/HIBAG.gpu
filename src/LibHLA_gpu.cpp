@@ -432,25 +432,6 @@ static int get_kernel_param(cl_device_id dev, cl_kernel kernel,
 	return n;
 }
 
-
-/// get the sum of double array
-inline static MATH_OFAST double get_sum_f64(const double p[], size_t n)
-{
-	double sum = 0;
-	for (size_t i=0; i < n; i++) sum += p[i];
-	return sum;
-}
-
-/// mul operation
-inline static MATH_OFAST void fmul_f64(double p[], size_t n, double scalar)
-{
-	for (size_t i=0; i < n; i++) p[i] *= scalar;
-}
-
-
-
-// ===================================================================== //
-
 /// clear the memory buffer 'mem_prob_buffer'
 static inline void clear_prob_buffer(size_t size)
 {
@@ -469,6 +450,33 @@ static inline void clear_prob_buffer(size_t size)
 	wdim *= gpu_local_size_d1;
 	GPU_RUN_KERNAL(gpu_kl_clear_mem, 1, &wdim, &gpu_local_size_d1);
 #endif
+}
+
+
+/// get the sum of double array
+inline static MATH_OFAST double get_sum_f64(const double p[], size_t n)
+{
+	double sum = 0;
+	for (size_t i=0; i < n; i++) sum += p[i];
+	return sum;
+}
+
+/// mul operation
+inline static MATH_OFAST void fmul_f64(double p[], size_t n, double scalar)
+{
+	for (size_t i=0; i < n; i++) p[i] *= scalar;
+}
+
+
+// ===================================================================== //
+
+static bool gpu_verbose = false;
+
+/// release the memory buffer object
+SEXP gpu_set_verbose(SEXP verbose)
+{
+	gpu_verbose = (Rf_asLogical(verbose)==TRUE);
+	return R_NilValue;
 }
 
 
@@ -791,7 +799,10 @@ void predict_init(int nHLA, int nClassifier, const THaplotype *const pHaplo[],
 	// haplotype lists for all classifiers
 	vector<int> nhaplo_buf(4*nClassifier);
 	const size_t msize_haplo = sizeof(THaplotype)*sum_n_haplo;
+	if (gpu_verbose)
+		Rprintf("    allocating %lld bytes in GPU ", (long long)msize_haplo);
 	GPU_CREATE_MEM(mem_haplo_list, CL_MEM_READ_ONLY, msize_haplo, NULL);
+	if (gpu_verbose) Rprintf("[OK]\n");
 	{
 		GPU_MEM_MAP<THaplotype> M(mem_haplo_list, msize_haplo, false);
 		THaplotype *p = M.ptr();
@@ -813,7 +824,10 @@ void predict_init(int nHLA, int nClassifier, const THaplotype *const pHaplo[],
 	// pred_calc_prob -- out_prob
 	msize_prob_buffer = size_hla * (gpu_f64_pred_flag ? sizeof(double) : sizeof(float));
 	msize_prob_buffer_total = msize_prob_buffer * nClassifier;
+	if (gpu_verbose)
+		Rprintf("    allocating %lld bytes in GPU ", (long long)msize_prob_buffer_total);
 	GPU_CREATE_MEM(mem_prob_buffer, CL_MEM_READ_WRITE, msize_prob_buffer_total, NULL);
+	if (gpu_verbose) Rprintf("[OK]\n");
 
 	// pred_calc_addprob -- weight
 	GPU_CREATE_MEM(mem_pred_weight, CL_MEM_READ_WRITE | CL_MEM_ALLOC_HOST_PTR,
@@ -959,7 +973,7 @@ SEXP gpu_free_memory(SEXP buffer)
 
 
 /// automatically set the work local size for the kernel
-SEXP gpu_set_local_size(SEXP verbose)
+SEXP gpu_set_local_size()
 {
 	cl_device_id dev = get_device_env("gpu_device");
 	cl_kernel kernel = get_kernel_env("kernel_clear_mem");
@@ -981,7 +995,7 @@ SEXP gpu_set_local_size(SEXP verbose)
 		gpu_local_size_d2 = 8;
 	}
 
-	if (Rf_asLogical(verbose) == TRUE)
+	if (gpu_verbose)
 	{
 		Rprintf("    local work size: %d (D1), %dx%d (D2)\n",
 			(int)gpu_local_size_d1, (int)gpu_local_size_d2, (int)gpu_local_size_d2);
