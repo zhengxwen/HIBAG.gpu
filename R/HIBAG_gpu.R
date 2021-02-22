@@ -241,7 +241,8 @@ hlaAttrBagging_gpu <- function(hla, snp, nclassifier=100,
 		cat("# of SNPs: ", n.snp, ", # of samples: ", n.samp, "\n", sep="")
         s <- ifelse(!grepl("^KIR", hla$locus), "HLA", "KIR")
         cat("# of unique ", s, " alleles: ", n.hla, "\n", sep="")
-		cat("using ", .packageEnv$prec_build, "-precision floating-point numbers in GPU computing\n", sep="")
+		cat("using ", .packageEnv$prec_build,
+			"-precision floating-point numbers in GPU computing\n", sep="")
 	}
 
 
