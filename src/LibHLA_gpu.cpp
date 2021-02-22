@@ -784,6 +784,10 @@ void predict_init(int nHLA, int nClassifier, const THaplotype *const pHaplo[],
 	cl_mem mem_rare_freq = get_mem_env(gpu_f64_pred_flag ?
 		"mem_exp_log_min_rare_freq64" : "mem_exp_log_min_rare_freq32");
 
+	// memory for SNP genotypes
+	GPU_CREATE_MEM(mem_snpgeno, CL_MEM_READ_ONLY,
+		sizeof(TGenotype)*nClassifier, NULL);
+
 	// haplotype lists for all classifiers
 	vector<int> nhaplo_buf(4*nClassifier);
 	const size_t msize_haplo = sizeof(THaplotype)*sum_n_haplo;
@@ -805,10 +809,6 @@ void predict_init(int nHLA, int nClassifier, const THaplotype *const pHaplo[],
 	// the numbers of haplotypes
 	GPU_CREATE_MEM(mem_pred_haplo_num, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
 		sizeof(int)*nhaplo_buf.size(), (void*)&nhaplo_buf[0]);
-
-	// memory for SNP genotypes
-	GPU_CREATE_MEM(mem_snpgeno, CL_MEM_READ_ONLY,
-		sizeof(TGenotype)*nClassifier, NULL);
 
 	// pred_calc_prob -- out_prob
 	msize_prob_buffer = size_hla * (gpu_f64_pred_flag ? sizeof(double) : sizeof(float));

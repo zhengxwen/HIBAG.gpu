@@ -54,6 +54,7 @@ code_atomic_add_f64 <- "
 #define OFFSET_HAPLO_FREQ    16
 
 #pragma OPENCL EXTENSION cl_khr_int64_base_atomics : enable
+// #pragma OPENCL EXTENSION cl_khr_global_int64_base_atomics : enable
 inline static void atomic_fadd(volatile __global double *addr, double val)
 {
 	union{

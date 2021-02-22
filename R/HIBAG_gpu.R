@@ -352,6 +352,12 @@ hlaPredict_gpu <- function(object, snp,
 		s <- paste("Using", info$vendor, info$name)
 	showmsg(s)
 
+	# set env variables and need a kernel function
+	.packageEnv$gpu_device <- device
+	.packageEnv$gpu_context <- ctx <- suppressWarnings(oclContext(device))
+	.packageEnv$kernel_clear_mem <- oclSimpleKernel(ctx, "clear_memory",
+		code_clear_memory, output.mode="integer")
+
 	if (!is.null(info$driver.ver))
 		showmsg(paste("    Driver Version:", info$driver.ver))
 
@@ -362,43 +368,33 @@ hlaPredict_gpu <- function(object, snp,
 	for (h in test_ext_lst)
 		showmsg(paste0("    EXTENSION ", h, ": ", .yesno(any(grepl(h, exts)))))
 
-	# need a kernel function
-	.packageEnv$gpu_device <- device
-	.packageEnv$gpu_context <- ctx <- suppressWarnings(oclContext(device))
-	.packageEnv$kernel_clear_mem <- oclSimpleKernel(ctx, "clear_memory",
-		code_clear_memory, output.mode="integer")
+	# support 64-bit floating-point numbers or not
+	dev_fp64 <- any(grepl("cl_khr_fp64", exts))
+	if (dev_fp64)
+	{
+		# also need cl_khr_int64_base_atomics : enable
+		dev_fp64 <- tryCatch({
+			k <- oclSimpleKernel(ctx, "build_calc_prob",
+				paste(code_atomic_add_f64, code_hamming_dist, code_build_calc_prob,
+					collapse="\n"),
+				output.mode="double")
+			TRUE
+		}, error=function(e) FALSE)
+		showmsg(paste("    atom_cmpxchg (enable cl_khr_int64_base_atomics):",
+			ifelse(dev_fp64, "OK", "Failed")))
+	}
 
+	# parameters
 	pm <- .Call(gpu_get_param)
 	showmsg(paste0("    CL_DEVICE_GLOBAL_MEM_SIZE: ", pm[[1L]]))
 	showmsg(paste0("    CL_DEVICE_MAX_MEM_ALLOC_SIZE: ", pm[[2L]]))
 	showmsg(paste0("    CL_DEVICE_MAX_COMPUTE_UNITS: ", pm[[3L]]))
 	showmsg(paste0("    CL_KERNEL_WORK_GROUP_SIZE: ", pm[[4L]]))
 	showmsg(paste0("    CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE: ", pm[[5L]]))
+	showmsg(paste("GPU device", ifelse(dev_fp64, "supports", "does not support"),
+		"double-precision floating-point numbers"))
 
-
-	# support 64-bit floating-point numbers or not
-	dev_fp64 <- any(grepl("cl_khr_fp64", exts))
-	if (dev_fp64)
-	{
-		showmsg("GPU device supports 64-bit floating-point numbers")
-		if (!any(grepl("cl_khr_int64_base_atomics", exts)))
-		{
-			if (!any(grepl("NVIDIA", oclInfo(device)$vendor)))
-			{
-				showmsg("    but it does not support the extension 'cl_khr_int64_base_atomics'")
-				if (isTRUE(force))
-				{
-					showmsg("    force to use 64-bit floating-point numbers since `force=TRUE`")
-				} else {
-					showmsg("    switch to 32-bit floating-point numbers to avoid the hardware limit")
-					# dev_fp64 <- FALSE
-				}
-			}
-		}
-	} else {
-		showmsg("GPU device does not support 64-bit floating-point numbers.")
-	}
-
+	# user-defined
 	if (is.na(use_double) & dev_fp64)
 	{
 		f64_build <- FALSE
