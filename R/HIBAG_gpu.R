@@ -95,13 +95,11 @@
 .gpu_build_free_memory <- function()
 {
 	HIBAG:::.hlaClearGPU()
-	with(.packageEnv, {
-		.Call(gpu_free_memory, mem_build_param)
-		.Call(gpu_free_memory, mem_snpgeno)
-		.Call(gpu_free_memory, mem_build_output)
-		.Call(gpu_free_memory, mem_haplo_list)
-		.Call(gpu_free_memory, mem_prob_buffer)
-	})
+	.Call(gpu_free_memory, .packageEnv$mem_build_param)
+	.Call(gpu_free_memory, .packageEnv$mem_snpgeno)
+	.Call(gpu_free_memory, .packageEnv$mem_build_output)
+	.Call(gpu_free_memory, .packageEnv$mem_haplo_list)
+	.Call(gpu_free_memory, .packageEnv$mem_prob_buffer)
 	remove(
 		mem_build_param, mem_snpgeno, mem_build_output, mem_haplo_list, mem_prob_buffer,
 		build_haplo_nmax, build_sample_nmax,
@@ -388,8 +386,10 @@ hlaPredict_gpu <- function(object, snp,
 
 	# parameters
 	pm <- .Call(gpu_get_param)
-	showmsg(paste0("    CL_DEVICE_GLOBAL_MEM_SIZE: ", pm[[1L]]))
-	showmsg(paste0("    CL_DEVICE_MAX_MEM_ALLOC_SIZE: ", pm[[2L]]))
+	showmsg(paste0("    CL_DEVICE_GLOBAL_MEM_SIZE: ",
+		prettyNum(pm[[1L]], big.mark=",", scientific=FALSE)))
+	showmsg(paste0("    CL_DEVICE_MAX_MEM_ALLOC_SIZE: ",
+		prettyNum(pm[[2L]], big.mark=",", scientific=FALSE)))
 	showmsg(paste0("    CL_DEVICE_MAX_COMPUTE_UNITS: ", pm[[3L]]))
 	showmsg(paste0("    CL_KERNEL_WORK_GROUP_SIZE: ", pm[[4L]]))
 	showmsg(paste0("    CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE: ", pm[[5L]]))

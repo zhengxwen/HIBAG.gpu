@@ -90,7 +90,8 @@
 		throw err_text("Failed to set kernel (" #kernel ") argument (" #i ")", err);
 
 #define GPU_RUN_KERNAL(kernel, ndim, wdims, lsize)	  \
-	err = clEnqueueNDRangeKernel(gpu_command_queue, kernel, ndim, NULL, wdims, lsize, 0, NULL, NULL); \
+	err = clEnqueueNDRangeKernel(gpu_command_queue, kernel, ndim, NULL, \
+		wdims, lsize, 0, NULL, NULL); \
 	if (err != CL_SUCCESS) \
 		throw err_text("Failed to run clEnqueueNDRangeKernel() with " #kernel, err); \
 	err = clFinish(gpu_command_queue); \
@@ -443,12 +444,20 @@ static inline void clear_prob_buffer(size_t size)
 	if (err != CL_SUCCESS)
 		throw err_text("clEnqueueFillBuffer() with mem_prob_buffer failed", err);
 #else
-	size_t n = size / 4;
+	if (size >= 4294967296)
+		throw "size is too large in clear_prob_buffer().";
+	int n = size / 4;
 	GPU_SETARG(gpu_kl_clear_mem, 0, n);
 	size_t wdim = n / gpu_local_size_d1;
 	if (n % gpu_local_size_d1) wdim++;
 	wdim *= gpu_local_size_d1;
+
+Rprintf("gpu_kl_clear_mem: %p, gpu_command_queue: %p\n",
+	gpu_kl_clear_mem, gpu_command_queue);
+
 	GPU_RUN_KERNAL(gpu_kl_clear_mem, 1, &wdim, &gpu_local_size_d1);
+
+Rprintf("OK\n");
 #endif
 }
 
