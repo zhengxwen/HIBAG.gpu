@@ -275,7 +275,6 @@ hlaAttrBagging_gpu <- function(hla, snp, nclassifier=100,
 		model = ABmodel,
 		appendix = list())
 	if (is.na(mod$assembly)) mod$assembly <- "unknown"
-
 	class(mod) <- "hlaAttrBagClass"
 
 	# clear memory
@@ -438,9 +437,9 @@ hlaPredict_gpu <- function(object, snp,
 		c(if (f64_build) code_atomic_add_f64 else code_atomic_add_f32,
 			code_hamming_dist, code_build_calc_prob), prec_build)
 	.packageEnv$kernel_build_find_maxprob <- .new_kernel("build_find_maxprob",
-		code_build_find_maxprob, prec_predict)
+		code_build_find_maxprob, prec_build)
 	.packageEnv$kernel_build_sum_prob <- .new_kernel("build_sum_prob",
-		code_build_sum_prob, prec_predict)
+		code_build_sum_prob, prec_build)
 
 	## build kernels for prediction
 	.packageEnv$kernel_pred_calc <- .new_kernel("pred_calc_prob",
