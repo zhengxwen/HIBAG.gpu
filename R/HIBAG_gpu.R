@@ -362,7 +362,8 @@ hlaPredict_gpu <- function(object, snp,
 	showmsg(s)
 
 	# set env variables and need a kernel function
-	.packageEnv$gpu_device <- device
+	.packageEnv$gpu_device  <- device
+	.packageEnv$gpu_dev_idx <- dev_idx
 	.packageEnv$gpu_context <- suppressWarnings(oclContext(device))
 	.packageEnv$kernel_clear_mem <- .new_kernel("clear_memory",
 		code_clear_memory, "integer")
@@ -464,13 +465,21 @@ hlaPredict_gpu <- function(object, snp,
 
 
 # initialize the internal GPU methods
-hlaGPU_Init <- function(device=1L, use_double=NA, force=FALSE, verbose=TRUE)
+hlaGPU_Init <- function(device=NA_integer_, use_double=NA, force=FALSE, verbose=TRUE)
 {
 	# check
 	stopifnot(is.numeric(device) | inherits(device, "clDeviceID"))
 	stopifnot(is.logical(use_double), length(use_double)==1L)
 	stopifnot(is.logical(force), length(force)==1L)
 	stopifnot(is.logical(verbose), length(verbose)==1L)
+
+	if (is.na(device))
+	{
+		device <- .packageEnv$gpu_dev_idx
+		if (is.null(device)) device <- NA_integer_
+	}
+	if (is.na(device))
+		device <- .packageEnv$gpu_init_dev_idx
 
 	if (is.numeric(device))
 	{
@@ -549,6 +558,7 @@ hlaGPU_Init <- function(device=1L, use_double=NA, force=FALSE, verbose=TRUE)
 			if (!any(grepl("cl_khr_global_int32_base_atomics", exts)))
 				stop("Need the OpenCL extension cl_khr_global_int32_base_atomics.")
 			# initialize
+			.packageEnv$gpu_init_dev_idx <- i
 			.gpu_init(dev, NA, FALSE, i, showmsg)
 			TRUE
 		}, error=function(cond) {
