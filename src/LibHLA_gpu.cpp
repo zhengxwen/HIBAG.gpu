@@ -447,7 +447,6 @@ static inline void clear_prob_buffer(size_t size)
 {
 	cl_int err;
 #if defined(CL_VERSION_1_2)
-	// Rprintf("size: %d\n", (int)size);
 	int zero = 0;
 	err = clEnqueueFillBuffer(gpu_command_queue, mem_prob_buffer,
 		&zero, sizeof(zero), 0, size, 0, NULL, NULL);
@@ -847,7 +846,7 @@ void predict_init(int nHLA, int nClassifier, const THaplotype *const pHaplo[],
 	if (gpu_verbose) Rprintf("[OK]\n");
 
 	// pred_calc_addprob -- weight
-	GPU_CREATE_MEM(mem_pred_weight, CL_MEM_READ_WRITE | CL_MEM_ALLOC_HOST_PTR,
+	GPU_CREATE_MEM(mem_pred_weight, CL_MEM_READ_WRITE,
 		sizeof(double)*nClassifier, NULL);
 
 	// arguments for gpu_kl_pred_calc, pred_calc_prob

@@ -338,13 +338,15 @@ __kernel void pred_calc_sumprob(__global numeric *out_sum, const int num_hla_gen
 	__local numeric local_sum[CONST_LOCAL_SIZE];
 
 	const int i = get_local_id(0);
+	if (i >= CONST_LOCAL_SIZE) return;
+
 	const int i_cfr = get_global_id(1);
 	prob += num_hla_geno * i_cfr;
 
 	numeric sum = 0;
 	for (int k=i; k < num_hla_geno; k+=CONST_LOCAL_SIZE)
 		sum += prob[k];
-	if (i < CONST_LOCAL_SIZE) local_sum[i] = sum;
+	local_sum[i] = sum;
 
 	barrier(CLK_LOCAL_MEM_FENCE);
 	if (i == 0)
