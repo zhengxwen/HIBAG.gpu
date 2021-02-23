@@ -297,22 +297,31 @@ namespace HLA_LIB
 	}
 
 
-	// Map and unmap GPU memory buffer
-	template<typename TYPE> struct GPU_MEM_MAP
+	#define GPU_MEM_MAP(VAR, TYPE, m, s, r)    TGPU_Mem_Map<TYPE> VAR(m, s, r, #m)
+
+	/// Map and unmap GPU memory buffer
+	template<typename TYPE> struct TGPU_Mem_Map
 	{
 	public:
-		GPU_MEM_MAP(cl_mem mem, size_t size, bool readonly)
+		/// constructor
+		TGPU_Mem_Map(cl_mem mem, size_t size, bool readonly, const char *fn)
 		{
 			cl_int err;
 			gpu_mem = mem;
-			void *p = clEnqueueMapBuffer(gpu_command_queue, gpu_mem, CL_TRUE,
+			void *p = clEnqueueMapBuffer(gpu_command_queue, gpu_mem, CL_TRUE, // blocking
 				CL_MAP_READ | (readonly ? 0 : CL_MAP_WRITE),
 				0, size * sizeof(TYPE), 0, NULL, NULL, &err);
-			mem_ptr = (TYPE*)p;
-			if (!p)
-				throw err_text("Unable to map buffer to host memory", err);
+			if (!(mem_ptr = (TYPE*)p))
+			{
+				static char buf[1024];
+				if (fn == NULL) fn = "";
+				sprintf(buf, "Unable to map '%s' to host memory (error: %d, %s)",
+					fn, err, err_code(err));
+				throw buf;
+			}
 		}
-		~GPU_MEM_MAP()
+		/// destructor
+		~TGPU_Mem_Map()
 		{
 			if (mem_ptr)
 			{
@@ -603,7 +612,7 @@ void build_done()
 
 void build_set_bootstrap(const int oob_cnt[])
 {
-	GPU_MEM_MAP<int> M(mem_build_param, offset_build_param + 2*Num_Sample, false);
+	GPU_MEM_MAP(M, int, mem_build_param, offset_build_param + 2*Num_Sample, false);
 	int *p_oob = M.ptr() + offset_build_param;
 	int *p_ib  = p_oob + Num_Sample;
 	build_num_oob = build_num_ib  = 0;
@@ -680,9 +689,9 @@ int build_acc_oob()
 	}
 
 	// sync memory
-	GPU_MEM_MAP<TGenotype> MG(mem_snpgeno, Num_Sample, true);
-	GPU_MEM_MAP<int> MP(mem_build_param, offset_build_param + Num_Sample, true);
-	GPU_MEM_MAP<int> MO(mem_build_output, build_num_oob, true);
+	GPU_MEM_MAP(MG, TGenotype, mem_snpgeno, Num_Sample, true);
+	GPU_MEM_MAP(MP, int, mem_build_param, offset_build_param + Num_Sample, true);
+	GPU_MEM_MAP(MO, int, mem_build_output, build_num_oob, true);
 
 	TGenotype *pGeno = MG.ptr();
 	int *pIdx = MP.ptr() + offset_build_param;
@@ -744,11 +753,11 @@ double build_acc_ib()
 	double LogLik = 0;
 	if (gpu_f64_build_flag)
 	{
-		GPU_MEM_MAP<double> M(mem_build_output, build_num_ib, true);
+		GPU_MEM_MAP(M, double, mem_build_output, build_num_ib, true);
 		const double *p = M.ptr();
 		for (int i=0; i < build_num_ib; i++) LogLik += p[i];
 	} else {
-		GPU_MEM_MAP<float> M(mem_build_output, build_num_ib, true);
+		GPU_MEM_MAP(M, float, mem_build_output, build_num_ib, true);
 		const float *p = M.ptr();
 		for (int i=0; i < build_num_ib; i++) LogLik += p[i];
 	}
@@ -809,10 +818,10 @@ void predict_init(int nHLA, int nClassifier, const THaplotype *const pHaplo[],
 	const size_t msize_haplo = sizeof(THaplotype)*sum_n_haplo;
 	if (gpu_verbose)
 		Rprintf("    allocating %lld bytes in GPU ", (long long)msize_haplo);
-	GPU_CREATE_MEM(mem_haplo_list, CL_MEM_READ_ONLY, msize_haplo, NULL);
+	GPU_CREATE_MEM(mem_haplo_list, CL_MEM_READ_WRITE, msize_haplo, NULL);
 	if (gpu_verbose) Rprintf("[OK]\n");
 	{
-		GPU_MEM_MAP<THaplotype> M(mem_haplo_list, msize_haplo, false);
+		GPU_MEM_MAP(M, THaplotype, mem_haplo_list, msize_haplo, false);
 		THaplotype *p = M.ptr();
 		for (int i=0; i < nClassifier; i++)
 		{
@@ -914,7 +923,7 @@ void predict_avg_prob(const TGenotype geno[], const double weight[],
 
 		// mem_pred_weight
 		{
-			GPU_MEM_MAP<double> M(mem_pred_weight, sizeof(double)*Num_Classifier, false);
+			GPU_MEM_MAP(M, double, mem_pred_weight, sizeof(double)*Num_Classifier, false);
 			double psum = 0, *w = M.ptr();
 			for (int i=0; i < Num_Classifier; i++)
 			{
@@ -935,7 +944,7 @@ void predict_avg_prob(const TGenotype geno[], const double weight[],
 
 	} else {
 		// using double in hosts to improve precision
-		GPU_MEM_MAP<float> M(mem_prob_buffer, msize_prob_buffer_each_total, true);
+		GPU_MEM_MAP(M, float, mem_prob_buffer, msize_prob_buffer_each_total, true);
 
 		memset(out_prob, 0, sizeof(double)*num_size);
 		const float *p = M.ptr();
