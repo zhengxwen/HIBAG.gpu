@@ -520,7 +520,8 @@ void build_init(int nHLA, int nSample)
 	cl_mem mem_rare_freq = get_mem_env(gpu_f64_build_flag ?
 		"mem_exp_log_min_rare_freq64" : "mem_exp_log_min_rare_freq32");
 	mem_prob_buffer = get_mem_env("mem_prob_buffer");
-	msize_prob_buffer = nHLA*(nHLA+1)/2 * (gpu_f64_build_flag ? 64 : 32);
+	msize_prob_buffer = nHLA*(nHLA+1)/2 *
+		(gpu_f64_build_flag ? sizeof(double) : sizeof(float));
 	mem_build_param = get_mem_env("mem_build_param");
 	mem_haplo_list = get_mem_env("mem_haplo_list");
 	mem_snpgeno = get_mem_env("mem_snpgeno");
