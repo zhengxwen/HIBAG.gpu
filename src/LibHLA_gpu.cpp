@@ -90,16 +90,13 @@
 		throw err_text("Failed to set kernel (" #kernel ") argument (" #i ")", err);
 
 #define GPU_RUN_KERNAL(kernel, ndim, wdims, lsize)	  \
-	{ \
-	cl_event e; \
 	err = clEnqueueNDRangeKernel(gpu_command_queue, kernel, ndim, NULL, \
-		wdims, lsize, 0, NULL, &e); \
+		wdims, lsize, 0, NULL, NULL); \
 	if (err != CL_SUCCESS) \
 		throw err_text("Failed to run clEnqueueNDRangeKernel() with " #kernel, err); \
-	err = clWaitForEvents(1, &e); \
+	err = clFinish(gpu_command_queue); \
 	if (err != CL_SUCCESS) \
-		throw err_text("Failed to run clWaitForEvents() with " #kernel, err); \
-	}
+		throw err_text("Failed to run clFinish() with " #kernel, err);
 
 
 namespace HLA_LIB

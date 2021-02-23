@@ -341,6 +341,15 @@ hlaPredict_gpu <- function(object, snp,
 # GPU utilities
 #
 
+.new_kernel <- function(name, src, mode)
+{
+	if (mode == "double")
+		src <- gsub("numeric", "double", src, fixed=TRUE)
+	else if (mode == "single")
+		src <- gsub("numeric", "float", src, fixed=TRUE)
+	oclSimpleKernel(.packageEnv$gpu_context, name, src, output.mode=mode)
+}
+
 # initialize GPU device
 .gpu_init <- function(device, use_double, force, dev_idx, showmsg)
 {
@@ -354,9 +363,9 @@ hlaPredict_gpu <- function(object, snp,
 
 	# set env variables and need a kernel function
 	.packageEnv$gpu_device <- device
-	.packageEnv$gpu_context <- ctx <- suppressWarnings(oclContext(device))
-	.packageEnv$kernel_clear_mem <- oclSimpleKernel(ctx, "clear_memory",
-		code_clear_memory, output.mode="integer")
+	.packageEnv$gpu_context <- suppressWarnings(oclContext(device))
+	.packageEnv$kernel_clear_mem <- .new_kernel("clear_memory",
+		code_clear_memory, "integer")
 
 	if (!is.null(info$driver.ver))
 		showmsg(paste("    Driver Version:", info$driver.ver))
@@ -374,10 +383,8 @@ hlaPredict_gpu <- function(object, snp,
 	{
 		# also need cl_khr_int64_base_atomics : enable
 		dev_fp64 <- tryCatch({
-			k <- oclSimpleKernel(ctx, "build_calc_prob",
-				paste(code_atomic_add_f64, code_hamming_dist, code_build_calc_prob,
-					collapse="\n"),
-				output.mode="double")
+			k <- .new_kernel("build_calc_prob",
+				c(code_atomic_add_f64, code_hamming_dist, code_build_calc_prob), "double")
 			TRUE
 		}, error=function(e) FALSE)
 		showmsg(paste("    atom_cmpxchg (enable cl_khr_int64_base_atomics):",
@@ -426,30 +433,30 @@ hlaPredict_gpu <- function(object, snp,
 	.packageEnv$prec_predict <- prec_predict <- ifelse(f64_pred,  "double", "single")
 
 	## build kernels for constructing classifiers
-	.packageEnv$kernel_build_calc_prob <- oclSimpleKernel(ctx, "build_calc_prob",
-		paste(if (f64_build) code_atomic_add_f64 else code_atomic_add_f32,
-			code_hamming_dist, code_build_calc_prob, collapse="\n"),
-		output.mode=prec_build)
-	.packageEnv$kernel_build_find_maxprob <- oclSimpleKernel(ctx, "build_find_maxprob",
-		code_build_find_maxprob, output.mode=prec_predict)
-	.packageEnv$kernel_build_sum_prob <- oclSimpleKernel(ctx, "build_sum_prob",
-		code_build_sum_prob, output.mode=prec_predict)
+	.packageEnv$kernel_build_calc_prob <- .new_kernel("build_calc_prob",
+		c(if (f64_build) code_atomic_add_f64 else code_atomic_add_f32,
+			code_hamming_dist, code_build_calc_prob), prec_build)
+	.packageEnv$kernel_build_find_maxprob <- .new_kernel("build_find_maxprob",
+		code_build_find_maxprob, prec_predict)
+	.packageEnv$kernel_build_sum_prob <- .new_kernel("build_sum_prob",
+		code_build_sum_prob, prec_predict)
 
 	## build kernels for prediction
-	.packageEnv$kernel_pred_calc <- oclSimpleKernel(ctx, "pred_calc_prob",
-		paste(if (f64_pred) code_atomic_add_f64 else code_atomic_add_f32,
-			code_hamming_dist, code_pred_calc_prob, collapse="\n"),
-		output.mode=prec_predict)
-	.packageEnv$kernel_pred_sumprob <- oclSimpleKernel(ctx, "pred_calc_sumprob",
-		code_pred_calc_sumprob, output.mode=prec_predict)
-	.packageEnv$kernel_pred_addprob <- oclSimpleKernel(ctx, "pred_calc_addprob",
-		code_pred_calc_addprob, output.mode=prec_predict)
+	.packageEnv$kernel_pred_calc <- .new_kernel("pred_calc_prob",
+		c(if (f64_pred) code_atomic_add_f64 else code_atomic_add_f32,
+			code_hamming_dist, code_pred_calc_prob), prec_predict)
+	.packageEnv$kernel_pred_sumprob <- .new_kernel("pred_calc_sumprob",
+		code_pred_calc_sumprob, prec_predict)
+	.packageEnv$kernel_pred_addprob <- .new_kernel("pred_calc_addprob",
+		code_pred_calc_addprob, prec_predict)
 
 	## initialize GPU memory buffer
 	fq <- .Call(gpu_exp_log_min_rare_freq)
-	x <- clBuffer(ctx, length(fq), "double"); x[] <- fq
+	x <- clBuffer(.packageEnv$gpu_context, length(fq), "double")
+	x[] <- fq
 	.packageEnv$mem_exp_log_min_rare_freq64 <- x
-	x <- clBuffer(ctx, length(fq), "single"); x[] <- fq
+	x <- clBuffer(.packageEnv$gpu_context, length(fq), "single")
+	x[] <- fq
 	.packageEnv$mem_exp_log_min_rare_freq32 <- x
 
 	invisible()
