@@ -163,9 +163,9 @@ namespace HLA_LIB
 	static cl_mem mem_prob_buffer = NULL;
 	// sizeof(double[nHLA*(nHLA+1)/2]), or sizeof(float[nHLA*(nHLA+1)/2])
 	static size_t msize_prob_buffer_each = 0;
-	// build:   msize_prob_buffer_each_total = msize_prob_buffer_each * num_sample
-	// predict: msize_prob_buffer_each_total = msize_prob_buffer_each * num_classifier
-	static size_t msize_prob_buffer_each_total = 0;
+	// build:   msize_prob_buffer_total = msize_prob_buffer_each * num_sample
+	// predict: msize_prob_buffer_total = msize_prob_buffer_each * num_classifier
+	static size_t msize_prob_buffer_total = 0;
 
 	// max. index or sum of prob.
 	static cl_mem mem_build_output = NULL;
@@ -540,7 +540,7 @@ void build_init(int nHLA, int nSample)
 	mem_snpgeno = get_mem_env("mem_snpgeno");
 	build_haplo_nmax = Rf_asInteger(get_var_env("build_haplo_nmax"));
 	mem_sample_nmax = Rf_asInteger(get_var_env("build_sample_nmax"));
-	msize_prob_buffer_each_total = msize_prob_buffer_each * mem_sample_nmax;
+	msize_prob_buffer_total = msize_prob_buffer_each * mem_sample_nmax;
 	mem_build_output = get_mem_env("mem_build_output");
 
 	// arguments for build_calc_prob
@@ -818,10 +818,10 @@ void predict_init(int nHLA, int nClassifier, const THaplotype *const pHaplo[],
 	const size_t msize_haplo = sizeof(THaplotype)*sum_n_haplo;
 	if (gpu_verbose)
 		Rprintf("    allocating %lld bytes in GPU ", (long long)msize_haplo);
-	GPU_CREATE_MEM(mem_haplo_list, CL_MEM_READ_WRITE, msize_haplo, NULL);
+	GPU_CREATE_MEM(mem_haplo_list, CL_MEM_READ_ONLY, msize_haplo, NULL);
 	if (gpu_verbose) Rprintf("[OK]\n");
 	{
-		GPU_MEM_MAP(M, THaplotype, mem_haplo_list, msize_haplo, false);
+		GPU_MEM_MAP(M, THaplotype, mem_haplo_list, sum_n_haplo, false);
 		THaplotype *p = M.ptr();
 		for (int i=0; i < nClassifier; i++)
 		{
@@ -840,10 +840,10 @@ void predict_init(int nHLA, int nClassifier, const THaplotype *const pHaplo[],
 
 	// pred_calc_prob -- out_prob
 	msize_prob_buffer_each = size_hla * (gpu_f64_pred_flag ? sizeof(double) : sizeof(float));
-	msize_prob_buffer_each_total = msize_prob_buffer_each * nClassifier;
+	msize_prob_buffer_total = msize_prob_buffer_each * nClassifier;
 	if (gpu_verbose)
-		Rprintf("    allocating %lld bytes in GPU ", (long long)msize_prob_buffer_each_total);
-	GPU_CREATE_MEM(mem_prob_buffer, CL_MEM_READ_WRITE, msize_prob_buffer_each_total, NULL);
+		Rprintf("    allocating %lld bytes in GPU ", (long long)msize_prob_buffer_total);
+	GPU_CREATE_MEM(mem_prob_buffer, CL_MEM_READ_WRITE, msize_prob_buffer_total, NULL);
 	if (gpu_verbose) Rprintf("[OK]\n");
 
 	// pred_calc_addprob -- weight
@@ -899,7 +899,7 @@ void predict_avg_prob(const TGenotype geno[], const double weight[],
 	// initialize
 	cl_int err;
 	GPU_WRITE_MEM(mem_snpgeno, 0, sizeof(TGenotype)*Num_Classifier, geno);
-	clear_prob_buffer(msize_prob_buffer_each_total);
+	clear_prob_buffer(msize_prob_buffer_total);
 
 	// pred_calc_prob
 	{
@@ -923,7 +923,7 @@ void predict_avg_prob(const TGenotype geno[], const double weight[],
 
 		// mem_pred_weight
 		{
-			GPU_MEM_MAP(M, double, mem_pred_weight, sizeof(double)*Num_Classifier, false);
+			GPU_MEM_MAP(M, double, mem_pred_weight, Num_Classifier, false);
 			double psum = 0, *w = M.ptr();
 			for (int i=0; i < Num_Classifier; i++)
 			{
@@ -944,7 +944,8 @@ void predict_avg_prob(const TGenotype geno[], const double weight[],
 
 	} else {
 		// using double in hosts to improve precision
-		GPU_MEM_MAP(M, float, mem_prob_buffer, msize_prob_buffer_each_total, true);
+		GPU_MEM_MAP(M, float, mem_prob_buffer,
+			msize_prob_buffer_total/sizeof(float), true);
 
 		memset(out_prob, 0, sizeof(double)*num_size);
 		const float *p = M.ptr();
