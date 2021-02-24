@@ -673,9 +673,9 @@ int build_acc_oob()
 	{
 		HIBAG_TIMING(TM_BUILD_OOB_PROB)
 		size_t wdims[3] =
-			{ (size_t)wdim_num_haplo, (size_t)wdim_num_haplo, (size_t)build_num_oob };
+			{ (size_t)build_num_oob, (size_t)wdim_num_haplo, (size_t)wdim_num_haplo };
 		size_t local_size[3] =
-			{ gpu_local_size_d2, gpu_local_size_d2, 1 };
+			{ 1, gpu_local_size_d2, gpu_local_size_d2 };
 		GPU_RUN_KERNAL(gpu_kl_build_calc_prob, 3, wdims, local_size);
 	}
 
@@ -734,9 +734,9 @@ double build_acc_ib()
 	{
 		HIBAG_TIMING(TM_BUILD_IB_PROB)
 		size_t wdims[3] =
-			{ (size_t)wdim_num_haplo, (size_t)wdim_num_haplo, (size_t)build_num_ib };
+			{ (size_t)build_num_ib, (size_t)wdim_num_haplo, (size_t)wdim_num_haplo };
 		size_t local_size[3] =
-			{ gpu_local_size_d2, gpu_local_size_d2, 1 };
+			{ 1, gpu_local_size_d2, gpu_local_size_d2 };
 		GPU_RUN_KERNAL(gpu_kl_build_calc_prob, 3, wdims, local_size);
 	}
 

@@ -133,12 +133,11 @@ __kernel void build_calc_prob(
 	__global const unsigned char *pHaplo,
 	__global const unsigned char *pGeno)
 {
-	const int i1 = get_global_id(0);  // first haplotype index
-	const int i2 = get_global_id(1);  // second haplotype index
-	if (i2 < i1) return;
-	const int n_haplo = pParam[0];  // the number of haplotypes
-	if (i2 >= n_haplo) return;
-	const int ii = get_global_id(2);
+	const int i1 = get_global_id(1);  // first haplotype index
+	const int i2 = get_global_id(2);  // second haplotype index
+	const int n_haplo = pParam[0];    // the number of haplotypes
+	if ((i2 < i1) || (i2 >= n_haplo)) return;
+	const int ii = get_global_id(0);
 
 	// constants
 	const int n_snp  = pParam[1];
