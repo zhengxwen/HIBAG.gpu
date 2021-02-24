@@ -137,9 +137,9 @@ __kernel void build_calc_prob(
 	const int i2 = get_global_id(2);  // second haplotype index
 	const int n_haplo = pParam[0];    // the number of haplotypes
 	if ((i2 < i1) || (i2 >= n_haplo)) return;
-	const int ii = get_global_id(0);
 
 	// constants
+	const int ii = get_global_id(0);  // individual index
 	const int n_snp  = pParam[1];
 	const int st_samp = pParam[2];
 	pParam += pParam[OFFSET_PARAM];  // offset pParam
@@ -290,14 +290,12 @@ __kernel void pred_calc_prob(
 	__global const int *nHaplo,
 	__global const unsigned char *pGeno)
 {
-	const int i1 = get_global_id(0);  // first haplotype index
-	const int i2 = get_global_id(1);  // second haplotype index
-	if (i2 < i1) return;
-
-	const int ii = get_global_id(2);  // the index of individual classifier
+	const int ii = get_global_id(0);  // the index of individual classifier
+	const int i1 = get_global_id(1);  // first haplotype index
+	const int i2 = get_global_id(2);  // second haplotype index
 	nHaplo += (ii << 2);
 	const int n_haplo = nHaplo[0];    // the number of haplotypes
-	if (i2 >= n_haplo) return;
+	if ((i2 < i1) || (i2 >= n_haplo)) return;
 
 	// haplotype list for the classifier ii
 	pHaplo += (nHaplo[1] << SIZEOF_THAPLO_SHIFT);

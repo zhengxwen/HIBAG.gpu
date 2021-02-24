@@ -129,6 +129,15 @@ hlaAttrBagging_gpu <- function(hla, snp, nclassifier=100,
 	stopifnot(is.logical(verbose.detail), length(verbose.detail)==1L)
 	if (verbose.detail) verbose <- TRUE
 
+    if (is.na(nclassifier)) nclassifier <- 0L
+    with.in.call <- nclassifier==0L
+    with.matching <- (nclassifier > 0L)
+    if (!with.matching)
+    {
+        nclassifier <- -nclassifier
+        if (nclassifier == 0L) nclassifier <- 1L
+    }
+
 	# GPU platform
 	on.exit({ .gpu_build_free_memory() })
 
@@ -283,20 +292,22 @@ hlaAttrBagging_gpu <- function(hla, snp, nclassifier=100,
 
 	###################################################################
 	# calculate matching statistic
-	if (verbose)
-		cat("Calculating matching proportion:\n")
-
-	pd <- hlaPredict_gpu(mod, snp, verbose=FALSE)
-	mod$matching <- pd$value$matching
-	if (verbose)
-	{
-		print(summary(mod$matching))
-		acc <- hlaCompareAllele(hla, pd, verbose=FALSE)$overall$acc.haplo
-		cat(sprintf("Accuracy with training data: %.1f%%\n", acc*100))
-		# out-of-bag accuracy
-		mobj <- hlaModelToObj(mod)
-		acc <- sapply(mobj$classifiers, function(x) x$outofbag.acc)
-		cat(sprintf("Out-of-bag accuracy: %.1f%%\n", mean(acc)*100))
+    if (with.matching)
+    {
+		if (verbose)
+			cat("Calculating matching proportion:\n")
+		pd <- hlaPredict_gpu(mod, snp, verbose=FALSE)
+		mod$matching <- pd$value$matching
+		if (verbose)
+		{
+			print(summary(mod$matching))
+			acc <- hlaCompareAllele(hla, pd, verbose=FALSE)$overall$acc.haplo
+			cat(sprintf("Accuracy with training data: %.1f%%\n", acc*100))
+			# out-of-bag accuracy
+			mobj <- hlaModelToObj(mod)
+			acc <- sapply(mobj$classifiers, function(x) x$outofbag.acc)
+			cat(sprintf("Out-of-bag accuracy: %.1f%%\n", mean(acc)*100))
+		}
 	}
 
 	mod
@@ -398,8 +409,11 @@ hlaPredict_gpu <- function(object, snp,
 	showmsg(paste0("    CL_DEVICE_MAX_MEM_ALLOC_SIZE: ",
 		prettyNum(pm[[2L]], big.mark=",", scientific=FALSE)))
 	showmsg(paste0("    CL_DEVICE_MAX_COMPUTE_UNITS: ", pm[[3L]]))
-	showmsg(paste0("    CL_KERNEL_WORK_GROUP_SIZE: ", pm[[4L]]))
-	showmsg(paste0("    CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE: ", pm[[5L]]))
+	showmsg(paste0("    CL_DEVICE_MAX_WORK_GROUP_SIZE: ", pm[[4L]]))
+	showmsg(paste0("    CL_DEVICE_MAX_WORK_ITEM_DIMENSIONS: ", pm[[5L]]))
+	showmsg(paste0("    CL_DEVICE_MAX_WORK_ITEM_SIZES: ", paste(pm[[6L]], collapse=",")))
+	showmsg(paste0("    CL_KERNEL_WORK_GROUP_SIZE: ", pm[[7L]]))
+	showmsg(paste0("    CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE: ", pm[[8L]]))
 	showmsg(paste("GPU device", ifelse(dev_fp64, "supports", "does not support"),
 		"double-precision floating-point numbers"))
 

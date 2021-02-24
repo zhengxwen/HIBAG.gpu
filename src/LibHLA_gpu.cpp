@@ -65,7 +65,11 @@
 
 #define GPU_CREATE_MEM(x, flag, size, ptr)	  \
 	x = clCreateBuffer(gpu_context, flag, size, ptr, &err); \
-	if (!x) throw err_text("Unable to create buffer " #x, err);
+	if (!x) \
+	{ \
+		Rprintf("size: %lld\n", (long long)size); \
+		throw err_text("Unable to create buffer " #x, err); \
+	}
 
 #define GPU_FREE_MEM(x)	   if (x) { \
 		cl_int err = clReleaseMemObject(x); \
@@ -458,7 +462,7 @@ static inline void clear_prob_buffer(size_t size)
 #else
 	if (size >= 4294967296)
 		throw "size is too large in clear_prob_buffer().";
-	int n = size / 4;
+	int n = size / sizeof(int);
 	GPU_SETARG(gpu_kl_clear_mem, 0, n);
 	size_t wdim = n / gpu_local_size_d1;
 	if (n % gpu_local_size_d1) wdim++;
@@ -771,7 +775,7 @@ double build_acc_ib()
 
 /// initialize the internal structure for predicting
 void predict_init(int nHLA, int nClassifier, const THaplotype *const pHaplo[],
-	const int nHaplo[])
+	const int nHaplo[], const int nSNP[])
 {
 	// 64-bit floating-point number or not?
 	gpu_f64_pred_flag = Rf_asLogical(get_var_env("flag_pred_f64")) == TRUE;
@@ -796,7 +800,7 @@ void predict_init(int nHLA, int nClassifier, const THaplotype *const pHaplo[],
 	size_t sum_n_haplo=0, max_n_haplo=0;
 	for (int i=0; i < nClassifier; i++)
 	{
-		size_t m = nHaplo[i << 1];
+		size_t m = nHaplo[i];
 		sum_n_haplo += m;
 		if (m > max_n_haplo) max_n_haplo = m;
 	}
@@ -824,10 +828,10 @@ void predict_init(int nHLA, int nClassifier, const THaplotype *const pHaplo[],
 		THaplotype *p = M.ptr();
 		for (int i=0; i < nClassifier; i++)
 		{
-			size_t m = nHaplo[i*2];
-			nhaplo_buf[i*4 + 0] = m;
-			nhaplo_buf[i*4 + 1] = p - M.ptr();
-			nhaplo_buf[i*4 + 2] = nHaplo[i*2 + 1];
+			size_t m = nHaplo[i];
+			nhaplo_buf[i*4 + 0] = m;            // # of haplotypes
+			nhaplo_buf[i*4 + 1] = p - M.ptr();  // starting index
+			nhaplo_buf[i*4 + 2] = nSNP[i];      // # of SNPs
 			memcpy(p, pHaplo[i], sizeof(THaplotype)*m);
 			p += m;
 		}
@@ -838,7 +842,8 @@ void predict_init(int nHLA, int nClassifier, const THaplotype *const pHaplo[],
 		sizeof(int)*nhaplo_buf.size(), (void*)&nhaplo_buf[0]);
 
 	// pred_calc_prob -- out_prob
-	msize_prob_buffer_each = size_hla * (gpu_f64_pred_flag ? sizeof(double) : sizeof(float));
+	msize_prob_buffer_each = size_hla *
+		(gpu_f64_pred_flag ? sizeof(double) : sizeof(float));
 	msize_prob_buffer_total = msize_prob_buffer_each * nClassifier;
 	if (gpu_verbose)
 		Rprintf("    allocating %lld bytes in GPU ", (long long)msize_prob_buffer_total);
@@ -903,9 +908,9 @@ void predict_avg_prob(const TGenotype geno[], const double weight[],
 	// pred_calc_prob
 	{
 		size_t wdims[3] =
-			{ (size_t)wdim_num_haplo, (size_t)wdim_num_haplo, (size_t)Num_Classifier };
+			{ (size_t)Num_Classifier, (size_t)wdim_num_haplo, (size_t)wdim_num_haplo };
 		size_t local_size[3] =
-			{ gpu_local_size_d2, gpu_local_size_d2, 1 };
+			{ 1, gpu_local_size_d2, gpu_local_size_d2 };
 		GPU_RUN_KERNAL(gpu_kl_pred_calc, 3, wdims, local_size);
 	}
 
@@ -966,7 +971,6 @@ void predict_avg_prob(const TGenotype geno[], const double weight[],
 
 		*out_match = psum / Num_Classifier;
 		fmul_f64(out_prob, num_size, 1 / get_sum_f64(out_prob, num_size));
-		return;
 	}
 }
 
@@ -995,8 +999,14 @@ SEXP gpu_set_local_size()
 	cl_device_id dev = get_device_env("gpu_device");
 	cl_kernel kernel = get_kernel_env("kernel_clear_mem");
 
+	cl_int err;
+	size_t max_wz[3];
+	err = clGetDeviceInfo(dev, CL_DEVICE_MAX_WORK_ITEM_SIZES, sizeof(max_wz),
+		&max_wz, NULL);
+	if (err != CL_SUCCESS) max_wz[0] = max_wz[1] = max_wz[2] = 65536;
+
 	size_t mem_byte = 0;
-	cl_int err = clGetKernelWorkGroupInfo(kernel, dev, CL_KERNEL_WORK_GROUP_SIZE,
+	err = clGetKernelWorkGroupInfo(kernel, dev, CL_KERNEL_WORK_GROUP_SIZE,
 		sizeof(mem_byte), &mem_byte, NULL);
 	if (err==CL_SUCCESS && mem_byte>64)
 	{
@@ -1011,6 +1021,11 @@ SEXP gpu_set_local_size()
 		gpu_local_size_d1 = 64;
 		gpu_local_size_d2 = 8;
 	}
+
+	if (gpu_local_size_d1 > max_wz[0])
+		gpu_local_size_d1 = max_wz[0];
+	if (gpu_local_size_d2 > max_wz[1])
+		gpu_local_size_d2 = max_wz[1];
 
 	if (gpu_verbose)
 	{
@@ -1029,33 +1044,46 @@ SEXP gpu_get_param()
 	cl_device_id dev = get_device_env("gpu_device");
 	cl_kernel k = get_kernel_env("kernel_clear_mem");
 
+	#define GET_DEV_INFO(TYPE, PARAM, VAR)    { \
+		TYPE v; \
+		err = clGetDeviceInfo(dev, PARAM, sizeof(v), &v, NULL); \
+		if (err == CL_SUCCESS) VAR = v; \
+	}
+
 	double gl_mem_sz = R_NaN;
-	{
-		cl_ulong v;
-		err = clGetDeviceInfo(dev, CL_DEVICE_GLOBAL_MEM_SIZE, sizeof(v), &v, NULL);
-		if (err == CL_SUCCESS) gl_mem_sz = v;
-	}
+	GET_DEV_INFO(cl_ulong, CL_DEVICE_GLOBAL_MEM_SIZE, gl_mem_sz)
 	double gl_mem_alloc_sz = R_NaN;
-	{
-		cl_ulong v;
-		err = clGetDeviceInfo(dev, CL_DEVICE_MAX_MEM_ALLOC_SIZE, sizeof(v), &v, NULL);
-		if (err == CL_SUCCESS) gl_mem_alloc_sz = v;
-	}
-	int n_unit = NA_INTEGER;
-	{
-		cl_uint v;
-		err = clGetDeviceInfo(dev, CL_DEVICE_MAX_COMPUTE_UNITS, sizeof(v), &v, NULL);
-		if (err == CL_SUCCESS) n_unit = v;
-	}
+	GET_DEV_INFO(cl_ulong, CL_DEVICE_MAX_MEM_ALLOC_SIZE, gl_mem_alloc_sz)
+	int gl_n_unit = NA_INTEGER;
+	GET_DEV_INFO(cl_uint, CL_DEVICE_MAX_COMPUTE_UNITS, gl_n_unit)
+	int gl_max_worksize = NA_INTEGER;
+	GET_DEV_INFO(size_t, CL_DEVICE_MAX_WORK_GROUP_SIZE, gl_max_worksize)
+	int gl_max_workdim = NA_INTEGER;
+	GET_DEV_INFO(cl_uint, CL_DEVICE_MAX_WORK_ITEM_DIMENSIONS, gl_max_workdim)
+
+	size_t gl_max_work_item_sizes[3] =
+		{ (size_t)NA_INTEGER, (size_t)NA_INTEGER, (size_t)NA_INTEGER };
+	clGetDeviceInfo(dev, CL_DEVICE_MAX_WORK_ITEM_SIZES, sizeof(gl_max_work_item_sizes),
+		&gl_max_work_item_sizes, NULL);
 
 	int ws = get_kernel_param(dev, k, CL_KERNEL_WORK_GROUP_SIZE);
 	int mt = get_kernel_param(dev, k, CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE);
-	SEXP rv_ans = PROTECT(NEW_LIST(5));
+
+	SEXP rv_ans = PROTECT(NEW_LIST(8));
 	SET_ELEMENT(rv_ans, 0, Rf_ScalarReal(gl_mem_sz));
 	SET_ELEMENT(rv_ans, 1, Rf_ScalarReal(gl_mem_alloc_sz));
-	SET_ELEMENT(rv_ans, 2, Rf_ScalarInteger(n_unit));
-	SET_ELEMENT(rv_ans, 3, Rf_ScalarInteger(ws));
-	SET_ELEMENT(rv_ans, 4, Rf_ScalarInteger(mt));
+	SET_ELEMENT(rv_ans, 2, Rf_ScalarInteger(gl_n_unit));
+	SET_ELEMENT(rv_ans, 3, Rf_ScalarInteger(gl_max_worksize));
+	SET_ELEMENT(rv_ans, 4, Rf_ScalarInteger(gl_max_workdim));
+
+	SEXP p_wis = NEW_INTEGER(3);
+	INTEGER(p_wis)[0] = gl_max_work_item_sizes[0];
+	INTEGER(p_wis)[1] = gl_max_work_item_sizes[1];
+	INTEGER(p_wis)[2] = gl_max_work_item_sizes[2];
+	SET_ELEMENT(rv_ans, 5, p_wis);
+
+	SET_ELEMENT(rv_ans, 6, Rf_ScalarInteger(ws));
+	SET_ELEMENT(rv_ans, 7, Rf_ScalarInteger(mt));
 	UNPROTECT(1);
 	return rv_ans;
 }
