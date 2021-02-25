@@ -83,11 +83,6 @@
 	if (err != CL_SUCCESS) \
 		throw err_text("Failed to read memory buffer " #x, err);
 
-#define GPU_WRITE_MEM(x, offset, size, ptr)	   \
-	err = clEnqueueWriteBuffer(gpu_command_queue, x, CL_TRUE, offset, size, ptr, 0, NULL, NULL); \
-	if (err != CL_SUCCESS) \
-		throw err_text("Failed to write memory buffer " #x, err);
-
 #define GPU_SETARG(kernel, i, x)	\
 	err = clSetKernelArg(kernel, i, sizeof(x), &x); \
 	if (err != CL_SUCCESS) \
@@ -379,6 +374,84 @@ template<size_t I> struct TTiming
 
 extern "C"
 {
+/// GPU debug information with function name
+static const char *gpu_debug_func_name = NULL;
+
+/// OpenCL error message
+static const char *gpu_err_msg(const char *txt, int err)
+{
+	static char buf[1024];
+	if (gpu_debug_func_name)
+	{
+		sprintf(buf, "%s '%s' (error: %d, %s).", txt, gpu_debug_func_name,
+			err, err_code(err));
+	} else {
+		sprintf(buf, "%s (error: %d, %s).", txt, err, err_code(err));
+	}
+	return buf;
+}
+
+static void gpu_wait(cl_uint num_events, const cl_event event_list[])
+{
+	cl_int err= clWaitForEvents(num_events, event_list);
+	if (err != CL_SUCCESS)
+		throw gpu_err_msg("Failed to wait the GPU event(s)", err);
+}
+
+
+// ====  GPU memory buffer writing  ====
+
+#define GPU_WRITE(x, size, ptr)    \
+	gpu_debug_func_name = #x; \
+	gpu_write_mem(x, true, size, ptr); \
+	gpu_debug_func_name = NULL;
+
+#define GPU_WRITE_EVENT(v, x, size, ptr)    \
+	gpu_debug_func_name = #x; \
+	v = gpu_write_mem(x, false, size, ptr); \
+	gpu_debug_func_name = NULL;
+
+static cl_event gpu_write_mem(cl_mem buffer, bool blocking, size_t size,
+	const void *ptr)
+{
+	cl_event event = NULL;
+	cl_int err = clEnqueueWriteBuffer(gpu_command_queue, buffer,
+		blocking ? CL_TRUE : CL_FALSE, 0, size, ptr, 0, NULL, &event);
+	if (err != CL_SUCCESS)
+		throw gpu_err_msg("Failed to write memory buffer", err);
+	return blocking ? NULL : event;
+}
+
+
+
+
+/// clear the memory buffer 'mem_prob_buffer'
+static inline void clear_prob_buffer(size_t size)
+{
+	cl_int err;
+#if defined(CL_VERSION_1_2)
+	int zero = 0;
+	err = clEnqueueFillBuffer(gpu_command_queue, mem_prob_buffer,
+		&zero, sizeof(zero), 0, size, 0, NULL, NULL);
+	if (err != CL_SUCCESS)
+		throw err_text("clEnqueueFillBuffer() with mem_prob_buffer failed", err);
+	err = clFinish(gpu_command_queue);
+	if (err != CL_SUCCESS)
+		throw err_text("Failed to run clFinish() in clear_prob_buffer", err);
+#else
+	if (size >= 4294967296)
+		throw "size is too large in clear_prob_buffer().";
+	int n = size / sizeof(int);
+	GPU_SETARG(gpu_kl_clear_mem, 0, n);
+	size_t wdim = n / gpu_local_size_d1;
+	if (n % gpu_local_size_d1) wdim++;
+	wdim *= gpu_local_size_d1;
+	GPU_RUN_KERNAL(gpu_kl_clear_mem, 1, &wdim, &gpu_local_size_d1);
+#endif
+}
+
+
+// =========================================================================
 
 /// get the external R object
 inline static SEXP get_var_env(const char *varnm)
@@ -446,31 +519,8 @@ static int get_kernel_param(cl_device_id dev, cl_kernel kernel,
 	return n;
 }
 
-/// clear the memory buffer 'mem_prob_buffer'
-static inline void clear_prob_buffer(size_t size)
-{
-	cl_int err;
-#if defined(CL_VERSION_1_2)
-	int zero = 0;
-	err = clEnqueueFillBuffer(gpu_command_queue, mem_prob_buffer,
-		&zero, sizeof(zero), 0, size, 0, NULL, NULL);
-	if (err != CL_SUCCESS)
-		throw err_text("clEnqueueFillBuffer() with mem_prob_buffer failed", err);
-	err = clFinish(gpu_command_queue);
-	if (err != CL_SUCCESS)
-		throw err_text("Failed to run clFinish() in clear_prob_buffer", err);
-#else
-	if (size >= 4294967296)
-		throw "size is too large in clear_prob_buffer().";
-	int n = size / sizeof(int);
-	GPU_SETARG(gpu_kl_clear_mem, 0, n);
-	size_t wdim = n / gpu_local_size_d1;
-	if (n % gpu_local_size_d1) wdim++;
-	wdim *= gpu_local_size_d1;
-	GPU_RUN_KERNAL(gpu_kl_clear_mem, 1, &wdim, &gpu_local_size_d1);
-#endif
-}
 
+// =========================================================================
 
 /// get the sum of double array
 inline static MATH_OFAST double get_sum_f64(const double p[], size_t n)
@@ -634,14 +684,15 @@ void build_set_haplo_geno(const THaplotype haplo[], int n_haplo,
 	if (n_haplo > build_haplo_nmax)
 		throw "Too many haplotypes out of the limit, please contact the package author.";
 
-	cl_int err;
 	wdim_num_haplo = run_num_haplo = n_haplo;
 	if (wdim_num_haplo % gpu_local_size_d2)
 		wdim_num_haplo = (wdim_num_haplo/gpu_local_size_d2 + 1)*gpu_local_size_d2;
-	GPU_WRITE_MEM(mem_haplo_list, 0, sizeof(THaplotype)*n_haplo, (void*)haplo);
-
 	run_num_snp = n_snp;
-	GPU_WRITE_MEM(mem_snpgeno, 0, sizeof(TGenotype)*Num_Sample, (void*)geno);
+
+	cl_event events[2];
+	GPU_WRITE_EVENT(events[0], mem_haplo_list, sizeof(THaplotype)*n_haplo, (void*)haplo);
+	GPU_WRITE_EVENT(events[1], mem_snpgeno, sizeof(TGenotype)*Num_Sample, (void*)geno);
+	gpu_wait(2, events);
 }
 
 inline static int compare(const THLAType &H1, const THLAType &H2)
@@ -670,7 +721,7 @@ int build_acc_oob()
 		HIBAG_TIMING(TM_BUILD_OOB_CLEAR)
 		clear_prob_buffer(msize_prob_buffer_each * build_num_oob);
 		int param[4] = { run_num_haplo, run_num_snp, 0, offset_build_param };
-		GPU_WRITE_MEM(mem_build_param, 0, sizeof(param), param);
+		GPU_WRITE(mem_build_param, sizeof(param), param);
 	}
 
 	// run OpenCL (calculating probabilities)
@@ -731,7 +782,7 @@ double build_acc_ib()
 		HIBAG_TIMING(TM_BUILD_IB_CLEAR)
 		clear_prob_buffer(msize_prob_buffer_each * build_num_ib);
 		int param[4] = { run_num_haplo, run_num_snp, 0, offset_build_param+Num_Sample };
-		GPU_WRITE_MEM(mem_build_param, 0, sizeof(param), param);
+		GPU_WRITE(mem_build_param, sizeof(param), param);
 	}
 
 	// run OpenCL (calculating probabilities)
@@ -902,7 +953,7 @@ void predict_avg_prob(const TGenotype geno[], const double weight[],
 
 	// initialize
 	cl_int err;
-	GPU_WRITE_MEM(mem_snpgeno, 0, sizeof(TGenotype)*Num_Classifier, geno);
+	GPU_WRITE(mem_snpgeno, sizeof(TGenotype)*Num_Classifier, geno);
 	clear_prob_buffer(msize_prob_buffer_total);
 
 	// pred_calc_prob
