@@ -189,7 +189,7 @@ namespace HLA_LIB
 
 
 	// used for work-group size (1-dim and 2-dim)
-	const  size_t gpu_const_local_size = 64;
+	static size_t gpu_const_local_size = 64;
 	static size_t gpu_local_size_d1 = 64;  // will be determined automatically
 	static size_t gpu_local_size_d2 = 8;   // will be determined automatically
 
@@ -1026,6 +1026,16 @@ SEXP gpu_set_local_size()
 		gpu_local_size_d1 = max_wz[0];
 	if (gpu_local_size_d2 > max_wz[1])
 		gpu_local_size_d2 = max_wz[1];
+
+	gpu_const_local_size = 64;
+	if (gpu_const_local_size > gpu_local_size_d1)
+		gpu_const_local_size = gpu_local_size_d1;
+
+	if (gpu_local_size_d2 == 1)
+	{
+		gpu_local_size_d1 = 1;
+		gpu_const_local_size = 1;
+	}
 
 	if (gpu_verbose)
 	{
