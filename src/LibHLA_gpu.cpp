@@ -917,6 +917,34 @@ void predict_avg_prob(const TGenotype geno[], const double weight[],
 	// use host to calculate if single-precision
 	if (gpu_f64_pred_flag)
 	{
+		// using double in hosts to improve precision
+		GPU_MEM_MAP(M, double, mem_prob_buffer,
+			msize_prob_buffer_total/sizeof(double), true);
+
+		memset(out_prob, 0, sizeof(double)*num_size);
+		const double *p = M.ptr();
+		double sum_matching=0, num_matching=0;
+
+		for (int i=0; i < Num_Classifier; i++, p+=num_size)
+		{
+			if (weight[i] <= 0) continue;
+			double ss = 0;
+			for (size_t k=0; k < num_size; k++)
+				ss += p[k];
+			sum_matching += ss * weight[i];
+			num_matching += weight[i];
+			if (ss > 0)
+			{
+				double w = weight[i] / ss;
+				for (size_t k=0; k < num_size; k++)
+					out_prob[k] += p[k] * w;
+			}
+		}
+
+		*out_match = sum_matching / num_matching;
+		fmul_f64(out_prob, num_size, 1 / get_sum_f64(out_prob, num_size));
+
+/*
 		// sum up all probs for each classifier
 		{
 			// output to mem_pred_weight
@@ -945,7 +973,7 @@ void predict_avg_prob(const TGenotype geno[], const double weight[],
 		GPU_READ_MEM(mem_prob_buffer, sizeof(double)*num_size, out_prob);
 		// normalize out_prob
 		fmul_f64(out_prob, num_size, 1 / get_sum_f64(out_prob, num_size));
-
+*/
 	} else {
 		// using double in hosts to improve precision
 		GPU_MEM_MAP(M, float, mem_prob_buffer,
@@ -953,23 +981,25 @@ void predict_avg_prob(const TGenotype geno[], const double weight[],
 
 		memset(out_prob, 0, sizeof(double)*num_size);
 		const float *p = M.ptr();
-		double psum = 0;
+		double sum_matching=0, num_matching=0;
 
 		for (int i=0; i < Num_Classifier; i++, p+=num_size)
 		{
+			if (weight[i] <= 0) continue;
 			double ss = 0;
 			for (size_t k=0; k < num_size; k++)
 				ss += p[k];
+			sum_matching += ss * weight[i];
+			num_matching += weight[i];
 			if (ss > 0)
 			{
-				psum += ss;
 				double w = weight[i] / ss;
 				for (size_t k=0; k < num_size; k++)
 					out_prob[k] += p[k] * w;
 			}
 		}
 
-		*out_match = psum / Num_Classifier;
+		*out_match = sum_matching / num_matching;
 		fmul_f64(out_prob, num_size, 1 / get_sum_f64(out_prob, num_size));
 	}
 }
@@ -1031,7 +1061,7 @@ SEXP gpu_set_local_size()
 	if (gpu_const_local_size > gpu_local_size_d1)
 		gpu_const_local_size = gpu_local_size_d1;
 
-	if (gpu_local_size_d2 == 1)
+	if (gpu_local_size_d2 == 1) // it is a CPU (very likely)
 	{
 		gpu_local_size_d1 = 1;
 		gpu_const_local_size = 1;
