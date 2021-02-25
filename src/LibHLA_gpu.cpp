@@ -1000,9 +1000,9 @@ SEXP gpu_set_local_size()
 	cl_kernel kernel = get_kernel_env("kernel_clear_mem");
 
 	cl_int err;
-	size_t max_wz[3];
+	size_t max_wz[128];
 	err = clGetDeviceInfo(dev, CL_DEVICE_MAX_WORK_ITEM_SIZES, sizeof(max_wz),
-		&max_wz, NULL);
+		max_wz, NULL);
 	if (err != CL_SUCCESS) max_wz[0] = max_wz[1] = max_wz[2] = 65536;
 
 	size_t mem_byte = 0;
@@ -1071,10 +1071,10 @@ SEXP gpu_get_param()
 	int gl_max_workdim = NA_INTEGER;
 	GET_DEV_INFO(cl_uint, CL_DEVICE_MAX_WORK_ITEM_DIMENSIONS, gl_max_workdim)
 
-	size_t gl_max_work_item_sizes[3] =
+	size_t gl_max_work_item_sizes[128] =
 		{ (size_t)NA_INTEGER, (size_t)NA_INTEGER, (size_t)NA_INTEGER };
 	clGetDeviceInfo(dev, CL_DEVICE_MAX_WORK_ITEM_SIZES, sizeof(gl_max_work_item_sizes),
-		&gl_max_work_item_sizes, NULL);
+		gl_max_work_item_sizes, NULL);
 
 	int ws = get_kernel_param(dev, k, CL_KERNEL_WORK_GROUP_SIZE);
 	int mt = get_kernel_param(dev, k, CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE);
