@@ -158,13 +158,16 @@ namespace HLA_LIB
 	// ===================================================================== //
 	// building classifiers
 
-	static int build_num_oob;  ///< the number of out-of-bag samples
-	static int build_num_ib;   ///< the number of in-bag samples
-	static int run_num_haplo;  ///< the total number of haplotypes
-	static int run_num_snp;    ///< the number of SNPs
-	static int wdim_num_haplo; ///< global_work_size for the number of haplotypes
+	static int build_num_oob;   ///< the number of out-of-bag samples
+	static int build_num_ib;    ///< the number of in-bag samples
+	static int run_num_haplo;   ///< the total number of haplotypes
+	static int run_num_snp;     ///< the number of SNPs
+	static int wdim_num_haplo;  ///< global_work_size for the number of haplotypes
 
-	static vector<int> hla_map_index;
+	static vector<int> build_oob_idx;     ///< the indices for out-of-bag samples
+	static vector<int> build_ib_idx;      ///< the indices for in-bag samples
+	static vector<TGenotype> build_geno;  ///< the copy of a list of SNP genotypes
+	static vector<int> build_hla_map_index;  ///< an index according to a pair of alleles
 
 
 	// ===================================================================== //
@@ -463,15 +466,13 @@ static cl_event gpu_write_mem(cl_mem buffer, bool blocking, size_t size,
 /// clear the memory buffer 'mem_prob_buffer'
 static void clear_prob_buffer(size_t size, cl_event *event)
 {
-#if defined(CL_VERSION_1_2) && 0
+#if defined(CL_VERSION_1_2)
 	int zero = 0;
-	err = clEnqueueFillBuffer(gpu_command_queue, mem_prob_buffer,
-		&zero, sizeof(zero), 0, size, 0, NULL, NULL);
+	cl_int err = clEnqueueFillBuffer(gpu_command_queue, mem_prob_buffer,
+		&zero, sizeof(zero), 0, size, 0, NULL, event);
 	if (err != CL_SUCCESS)
 		throw err_text("clEnqueueFillBuffer() with mem_prob_buffer failed", err);
-	err = clFinish(gpu_command_queue);
-	if (err != CL_SUCCESS)
-		throw err_text("Failed to run clFinish() in clear_prob_buffer", err);
+	if (!event) gpu_finish();
 #else
 	if (size >= 4294967296)
 		throw "size is too large in clear_prob_buffer().";
@@ -604,9 +605,13 @@ void build_init(int nHLA, int nSample)
 	// initialize
 	Num_HLA = nHLA;
 	Num_Sample = nSample;
+	build_oob_idx.resize(nSample);
+	build_ib_idx.resize(nSample);
+	build_geno.resize(nSample);
+
 	const size_t size_hla = nHLA * (nHLA+1) >> 1;
-	hla_map_index.resize(size_hla*2);
-	int *p = &hla_map_index[0];
+	build_hla_map_index.resize(size_hla*2);
+	int *p = &build_hla_map_index[0];
 	for (int h1=0; h1 < nHLA; h1++)
 		for (int h2=h1; h2 < nHLA; h2++, p+=2) { p[0] = h1; p[1] = h2; }
 
@@ -667,16 +672,14 @@ void build_init(int nHLA, int nSample)
 
 void build_done()
 {
-	gpu_kl_build_calc_prob =
-		gpu_kl_build_find_maxprob =
-		gpu_kl_build_sum_prob =
-		gpu_kl_clear_mem = NULL;
-	mem_build_param =
-		mem_snpgeno =
-		mem_build_output =
-		mem_haplo_list =
-		mem_prob_buffer = NULL;
-	hla_map_index.clear();
+	gpu_kl_build_calc_prob = gpu_kl_build_find_maxprob =
+		gpu_kl_build_sum_prob = gpu_kl_clear_mem = NULL;
+	mem_build_param = mem_snpgeno = mem_build_output =
+		mem_haplo_list = mem_prob_buffer = NULL;
+	build_oob_idx.clear();
+	build_ib_idx.clear();
+	build_geno.clear();
+	build_hla_map_index.clear();
 
 #ifdef HIBAG_ENABLE_TIMING
 	timing_array[TM_BUILD_TOTAL] = clock() - timing_array[TM_BUILD_TOTAL];
@@ -713,9 +716,13 @@ void build_set_bootstrap(const int oob_cnt[])
 	for (int i=0; i < Num_Sample; i++)
 	{
 		if (oob_cnt[i] <= 0)
-			p_oob[build_num_oob++] = i;
-		else
-			p_ib[build_num_ib++] = i;
+		{
+			p_oob[build_num_oob] = build_oob_idx[build_num_oob] = i;
+			build_num_oob ++;
+		} else {
+			p_ib[build_num_ib] = build_ib_idx[build_num_ib] = i;
+			build_num_ib ++;
+		}
 	}
 }
 
@@ -730,8 +737,12 @@ void build_set_haplo_geno(const THaplotype haplo[], int n_haplo,
 		wdim_num_haplo = (wdim_num_haplo/gpu_local_size_d2 + 1)*gpu_local_size_d2;
 	run_num_snp = n_snp;
 
-	GPU_WRITE_MEM(mem_haplo_list, sizeof(THaplotype)*n_haplo, (void*)haplo);
-	GPU_WRITE_MEM(mem_snpgeno, sizeof(TGenotype)*Num_Sample, (void*)geno);
+	const size_t sz_haplo = sizeof(THaplotype)*n_haplo;
+	GPU_WRITE_MEM(mem_haplo_list, sz_haplo, (void*)haplo);
+
+	const size_t sz_geno = sizeof(TGenotype)*Num_Sample;
+	GPU_WRITE_MEM(mem_snpgeno, sz_geno, (void*)geno);
+	memcpy(&build_geno[0], geno, sz_geno);
 }
 
 inline static int compare(const THLAType &H1, const THLAType &H2)
@@ -785,27 +796,21 @@ int build_acc_oob()
 	gpu_free_events(4, events);
 
 	// sync memory
-	GPU_MEM_MAP(MG, TGenotype, mem_snpgeno, Num_Sample, true);
-	GPU_MEM_MAP(MP, int, mem_build_param, offset_build_param + Num_Sample, true);
 	GPU_MEM_MAP(MO, int, mem_build_output, build_num_oob, true);
-
-	TGenotype *pGeno = MG.ptr();
-	int *pIdx = MP.ptr() + offset_build_param;
 	int *pMaxI = MO.ptr();
 	THLAType hla;
 	int corrent_cnt = 0;
-
 	for (int i=0; i < build_num_oob; i++)
 	{
 		size_t k = pMaxI[i] << 1;
 		if (k >= 0)
 		{
-			hla.Allele1 = hla_map_index[k];
-			hla.Allele2 = hla_map_index[k+1];
+			hla.Allele1 = build_hla_map_index[k];
+			hla.Allele2 = build_hla_map_index[k+1];
 		} else {
 			hla.Allele1 = hla.Allele2 = NA_INTEGER;
 		}
-		corrent_cnt += compare(hla, pGeno[pIdx[i]].aux_hla_type);
+		corrent_cnt += compare(hla, build_geno[build_oob_idx[i]].aux_hla_type);
 	}
 
 	return corrent_cnt;
@@ -1134,7 +1139,9 @@ SEXP gpu_set_local_size()
 	if (err==CL_SUCCESS && mem_byte>64)
 	{
 		gpu_local_size_d1 = mem_byte;
-		if (mem_byte >= 1024)
+		if (mem_byte >= 4096)
+			gpu_local_size_d2 = 64;
+		else if (mem_byte >= 1024)
 			gpu_local_size_d2 = 32;
 		else if (mem_byte >= 256)
 			gpu_local_size_d2 = 16;
