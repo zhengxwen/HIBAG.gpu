@@ -309,34 +309,6 @@ using namespace HLA_LIB;
 
 // ========================================================================= //
 
-#ifdef HIBAG_ENABLE_TIMING
-
-static clock_t timing_array[7];
-
-template<size_t I> struct TTiming
-{
-	clock_t start;
-	inline TTiming() { start = clock(); }
-	inline ~TTiming() { Stop(); }
-	inline void Stop() { timing_array[I] += clock() - start; }
-};
-
-#define HIBAG_TIMING(i)    TTiming<i> tm;
-#define TM_BUILD_TOTAL         0
-#define TM_BUILD_OOB_CLEAR     1
-#define TM_BUILD_OOB_PROB      2
-#define TM_BUILD_OOB_MAXIDX    3
-#define TM_BUILD_IB_CLEAR      4
-#define TM_BUILD_IB_PROB       5
-#define TM_BUILD_IB_LOGLIK     6
-
-#else
-#   define HIBAG_TIMING(i)
-#endif
-
-
-// ========================================================================= //
-
 extern "C"
 {
 /// GPU debug information with function name
@@ -370,6 +342,13 @@ inline static void gpu_finish()
 	cl_int err = clFinish(gpu_command_queue);
 	if (err != CL_SUCCESS)
 		throw gpu_err_msg("Failed to call clFinish()", err);
+}
+
+/// OpenCL call clReleaseEvent
+inline static void gpu_free_events(cl_uint num_events, const cl_event event_list[])
+{
+	for (cl_uint i=0; i < num_events; i++)
+		clReleaseEvent(event_list[i]);
 }
 
 
@@ -415,7 +394,7 @@ static cl_mem gpu_create_mem(cl_mem_flags flags, size_t size, void *host_ptr)
 
 // ====  GPU memory buffer writing  ====
 
-#define GPU_WRITE(x, size, ptr)    \
+#define GPU_WRITE_MEM(x, size, ptr)    \
 	gpu_debug_func_name = #x; \
 	gpu_write_mem(x, true, size, ptr); \
 	gpu_debug_func_name = NULL;
@@ -438,7 +417,8 @@ static cl_event gpu_write_mem(cl_mem buffer, bool blocking, size_t size,
 }
 
 
-#define GPU_READ_MEM(x, size, ptr)    { \
+#define GPU_READ_MEM(x, size, ptr)    \
+	{ \
 		cl_int err = clEnqueueReadBuffer(gpu_command_queue, x, CL_TRUE, 0, size, ptr, \
 			0, NULL, NULL); \
 		if (err != CL_SUCCESS) \
@@ -448,7 +428,8 @@ static cl_event gpu_write_mem(cl_mem buffer, bool blocking, size_t size,
 
 // ====  GPU set arguments  ====
 
-#define GPU_SETARG(kernel, i, x)    { \
+#define GPU_SETARG(kernel, i, x)    \
+	{ \
 		cl_int err = clSetKernelArg(kernel, i, sizeof(x), &x); \
 		if (err != CL_SUCCESS) \
 			throw err_text("Failed to set kernel (" #kernel ") argument (" #i ")", err); \
@@ -457,22 +438,31 @@ static cl_event gpu_write_mem(cl_mem buffer, bool blocking, size_t size,
 
 // ====  GPU run kernel  ====
 
-#define GPU_RUN_KERNEL(kernel, ndim, wdims, lsize)	  \
-	err = clEnqueueNDRangeKernel(gpu_command_queue, kernel, ndim, NULL, \
-		wdims, lsize, 0, NULL, NULL); \
-	if (err != CL_SUCCESS) \
-		throw err_text("Failed to run clEnqueueNDRangeKernel() with " #kernel, err); \
-	err = clFinish(gpu_command_queue); \
-	if (err != CL_SUCCESS) \
-		throw err_text("Failed to run clFinish() with " #kernel, err);
+#define GPU_RUN_KERNEL(kernel, ndim, wdims, lsize)    \
+	{ \
+		cl_int err = clEnqueueNDRangeKernel(gpu_command_queue, kernel, ndim, NULL, \
+			wdims, lsize, 0, NULL, NULL); \
+		if (err != CL_SUCCESS) \
+			throw err_text("Failed to run clEnqueueNDRangeKernel() with " #kernel, err); \
+		err = clFinish(gpu_command_queue); \
+		if (err != CL_SUCCESS) \
+			throw err_text("Failed to run clFinish() with " #kernel, err); \
+	}
+
+#define GPU_RUN_KERNEL_EVENT(kernel, ndim, wdims, lsize, num_e, ptr_e, out_e)    \
+	{ \
+		cl_int err = clEnqueueNDRangeKernel(gpu_command_queue, kernel, ndim, NULL, \
+			wdims, lsize, num_e, ptr_e, out_e); \
+		if (err != CL_SUCCESS) \
+			throw err_text("Failed to run clEnqueueNDRangeKernel() with " #kernel, err); \
+	}
 
 
 // ====  GPU clear memory buffer  ====
 
 /// clear the memory buffer 'mem_prob_buffer'
-inline static void clear_prob_buffer(size_t size)
+static void clear_prob_buffer(size_t size, cl_event *event)
 {
-	cl_int err;
 #if defined(CL_VERSION_1_2) && 0
 	int zero = 0;
 	err = clEnqueueFillBuffer(gpu_command_queue, mem_prob_buffer,
@@ -485,12 +475,20 @@ inline static void clear_prob_buffer(size_t size)
 #else
 	if (size >= 4294967296)
 		throw "size is too large in clear_prob_buffer().";
+	// set parameter
 	int n = size / sizeof(int);
 	GPU_SETARG(gpu_kl_clear_mem, 0, n);
 	size_t wdim = n / gpu_local_size_d1;
 	if (n % gpu_local_size_d1) wdim++;
 	wdim *= gpu_local_size_d1;
-	GPU_RUN_KERNEL(gpu_kl_clear_mem, 1, &wdim, &gpu_local_size_d1);
+	// run the kernel
+	gpu_debug_func_name = "gpu_kl_clear_mem";
+	cl_int err = clEnqueueNDRangeKernel(gpu_command_queue, gpu_kl_clear_mem, 1, NULL,
+		&wdim, &gpu_local_size_d1, 0, NULL, event);
+	if (err != CL_SUCCESS)
+		throw gpu_err_msg("Failed to run clEnqueueNDRangeKernel() on", err);
+	gpu_debug_func_name = NULL;
+	if (!event) gpu_finish();
 #endif
 }
 
@@ -616,7 +614,6 @@ void build_init(int nHLA, int nSample)
 	gpu_f64_build_flag = Rf_asLogical(get_var_env("flag_build_f64")) == TRUE;
 
 	// device variables
-	cl_int err;
 	gpu_context = get_context_env("gpu_context");
 	gpu_command_queue = get_command_queue_env("gpu_context");
 
@@ -733,14 +730,8 @@ void build_set_haplo_geno(const THaplotype haplo[], int n_haplo,
 		wdim_num_haplo = (wdim_num_haplo/gpu_local_size_d2 + 1)*gpu_local_size_d2;
 	run_num_snp = n_snp;
 
-/*
-	cl_event events[2];
-	GPU_WRITE_EVENT(events[0], mem_haplo_list, sizeof(THaplotype)*n_haplo, (void*)haplo);
-	GPU_WRITE_EVENT(events[1], mem_snpgeno, sizeof(TGenotype)*Num_Sample, (void*)geno);
-	gpu_wait(2, events);
-*/
-	GPU_WRITE(mem_haplo_list, sizeof(THaplotype)*n_haplo, (void*)haplo);
-	GPU_WRITE(mem_snpgeno, sizeof(TGenotype)*Num_Sample, (void*)geno);
+	GPU_WRITE_MEM(mem_haplo_list, sizeof(THaplotype)*n_haplo, (void*)haplo);
+	GPU_WRITE_MEM(mem_snpgeno, sizeof(TGenotype)*Num_Sample, (void*)geno);
 }
 
 inline static int compare(const THLAType &H1, const THLAType &H2)
@@ -763,32 +754,35 @@ int build_acc_oob()
 	if (build_num_oob > mem_sample_nmax)
 		throw "Too many sample out of the limit of GPU memory, please contact the package author.";
 
-	cl_int err;
+	cl_event events[4];
 	// initialize
 	{
-		HIBAG_TIMING(TM_BUILD_OOB_CLEAR)
-		clear_prob_buffer(msize_prob_buffer_each * build_num_oob);
+		clear_prob_buffer(msize_prob_buffer_each * build_num_oob, &events[0]);
 		int param[4] = { run_num_haplo, run_num_snp, 0, offset_build_param };
-		GPU_WRITE(mem_build_param, sizeof(param), param);
+		GPU_WRITE_EVENT(events[1], mem_build_param, sizeof(param), param);
 	}
 
 	// run OpenCL (calculating probabilities)
 	{
-		HIBAG_TIMING(TM_BUILD_OOB_PROB)
 		size_t wdims[3] =
 			{ (size_t)build_num_oob, (size_t)wdim_num_haplo, (size_t)wdim_num_haplo };
 		size_t local_size[3] =
 			{ 1, gpu_local_size_d2, gpu_local_size_d2 };
-		GPU_RUN_KERNEL(gpu_kl_build_calc_prob, 3, wdims, local_size);
+		GPU_RUN_KERNEL_EVENT(gpu_kl_build_calc_prob, 3, wdims, local_size,
+			2, events, &events[2]);
 	}
 
 	// find max index
 	{
-		HIBAG_TIMING(TM_BUILD_OOB_MAXIDX)
 		size_t wdims[2] = { gpu_const_local_size, (size_t)build_num_oob };
 		size_t local_size[2] = { gpu_const_local_size, 1 };
-		GPU_RUN_KERNEL(gpu_kl_build_find_maxprob, 2, wdims, local_size);
+		GPU_RUN_KERNEL_EVENT(gpu_kl_build_find_maxprob, 2, wdims, local_size,
+			1, &events[2], &events[3]);
 	}
+
+	// host waits for GPU
+	gpu_finish();
+	gpu_free_events(4, events);
 
 	// sync memory
 	GPU_MEM_MAP(MG, TGenotype, mem_snpgeno, Num_Sample, true);
@@ -824,32 +818,35 @@ double build_acc_ib()
 	if (build_num_ib > mem_sample_nmax)
 		throw "Too many sample out of the limit of GPU memory, please contact the package author.";
 
-	cl_int err;
+	cl_event events[4];
 	// initialize
 	{
-		HIBAG_TIMING(TM_BUILD_IB_CLEAR)
-		clear_prob_buffer(msize_prob_buffer_each * build_num_ib);
+		clear_prob_buffer(msize_prob_buffer_each * build_num_ib, &events[0]);
 		int param[4] = { run_num_haplo, run_num_snp, 0, offset_build_param+Num_Sample };
-		GPU_WRITE(mem_build_param, sizeof(param), param);
+		GPU_WRITE_EVENT(events[1], mem_build_param, sizeof(param), param);
 	}
 
 	// run OpenCL (calculating probabilities)
 	{
-		HIBAG_TIMING(TM_BUILD_IB_PROB)
 		size_t wdims[3] =
 			{ (size_t)build_num_ib, (size_t)wdim_num_haplo, (size_t)wdim_num_haplo };
 		size_t local_size[3] =
 			{ 1, gpu_local_size_d2, gpu_local_size_d2 };
-		GPU_RUN_KERNEL(gpu_kl_build_calc_prob, 3, wdims, local_size);
+		GPU_RUN_KERNEL_EVENT(gpu_kl_build_calc_prob, 3, wdims, local_size,
+			2, events, &events[2]);
 	}
 
 	// get sum of prob for each sample
 	{
-		HIBAG_TIMING(TM_BUILD_IB_LOGLIK)
 		size_t wdims[2] = { gpu_const_local_size, (size_t)build_num_ib };
 		size_t local_size[2] = { gpu_const_local_size, 1 };
-		GPU_RUN_KERNEL(gpu_kl_build_sum_prob, 2, wdims, local_size);
+		GPU_RUN_KERNEL_EVENT(gpu_kl_build_sum_prob, 2, wdims, local_size,
+			1, &events[2], &events[3]);
 	}
+
+	// host waits for GPU
+	gpu_finish();
+	gpu_free_events(4, events);
 
 	// sum of log likelihood
 	double LogLik = 0;
@@ -880,7 +877,6 @@ void predict_init(int nHLA, int nClassifier, const THaplotype *const pHaplo[],
 	gpu_f64_pred_flag = Rf_asLogical(get_var_env("flag_pred_f64")) == TRUE;
 
 	// device variables
-	cl_int err;
 	gpu_context = get_context_env("gpu_context");
 	gpu_command_queue = get_command_queue_env("gpu_context");
 
@@ -999,9 +995,8 @@ void predict_avg_prob(const TGenotype geno[], const double weight[],
 	const size_t num_size = Num_HLA * (Num_HLA + 1) >> 1;
 
 	// initialize
-	cl_int err;
-	GPU_WRITE(mem_snpgeno, sizeof(TGenotype)*Num_Classifier, geno);
-	clear_prob_buffer(msize_prob_buffer_total);
+	GPU_WRITE_MEM(mem_snpgeno, sizeof(TGenotype)*Num_Classifier, geno);
+	clear_prob_buffer(msize_prob_buffer_total, NULL);
 
 	// pred_calc_prob
 	{
