@@ -93,8 +93,8 @@ namespace HLA_LIB
 
 	// OpenCL kernel functions
 	static cl_kernel gpu_kl_build_calc_prob	 = NULL;
-	static cl_kernel gpu_kl_build_find_maxprob = NULL;
-	static cl_kernel gpu_kl_build_sum_prob = NULL;
+	static cl_kernel gpu_kl_build_calc_oob = NULL;
+	static cl_kernel gpu_kl_build_calc_ib = NULL;
 	static cl_kernel gpu_kl_pred_calc = NULL;
 	static cl_kernel gpu_kl_pred_sumprob = NULL;
 	static cl_kernel gpu_kl_pred_addprob = NULL;
@@ -412,10 +412,10 @@ static cl_event gpu_write_mem(cl_mem buffer, bool blocking, size_t size,
 }
 
 
-#define GPU_READ_MEM(x, size, ptr)    \
+#define GPU_READ_MEM(x, offset, size, ptr)    \
 	{ \
-		cl_int err = clEnqueueReadBuffer(gpu_command_queue, x, CL_TRUE, 0, size, ptr, \
-			0, NULL, NULL); \
+		cl_int err = clEnqueueReadBuffer(gpu_command_queue, x, CL_TRUE, offset, size, \
+			ptr, 0, NULL, NULL); \
 		if (err != CL_SUCCESS) \
 			throw err_text("Failed to read memory buffer " #x, err); \
 	}
@@ -606,10 +606,10 @@ void build_init(int nHLA, int nSample)
 	gpu_command_queue = get_command_queue_env("gpu_context");
 
 	// kernels
-	gpu_kl_build_calc_prob    = get_kernel_env("kernel_build_calc_prob");
-	gpu_kl_build_find_maxprob = get_kernel_env("kernel_build_find_maxprob");
-	gpu_kl_build_sum_prob     = get_kernel_env("kernel_build_sum_prob");
-	gpu_kl_clear_mem          = get_kernel_env("kernel_clear_mem");
+	gpu_kl_build_calc_prob = get_kernel_env("kernel_build_calc_prob");
+	gpu_kl_build_calc_oob  = get_kernel_env("kernel_build_calc_oob");
+	gpu_kl_build_calc_ib   = get_kernel_env("kernel_build_calc_ib");
+	gpu_kl_clear_mem       = get_kernel_env("kernel_clear_mem");
 
 	// GPU memory
 	cl_mem mem_rare_freq = get_mem_env(gpu_f64_build_flag ?
@@ -646,20 +646,20 @@ void build_init(int nHLA, int nSample)
 	GPU_SETARG(gpu_kl_build_calc_prob, 5, mem_haplo_list);
 	GPU_SETARG(gpu_kl_build_calc_prob, 6, mem_snpgeno);
 
-	// arguments for gpu_kl_build_find_maxprob (out-of-bag)
-	GPU_SETARG(gpu_kl_build_find_maxprob, 0, mem_build_param);
-	GPU_SETARG(gpu_kl_build_find_maxprob, 1, sz_hla);
-	GPU_SETARG(gpu_kl_build_find_maxprob, 2, mem_prob_buffer);
-	GPU_SETARG(gpu_kl_build_find_maxprob, 3, mem_build_hla_idx_map);
-	GPU_SETARG(gpu_kl_build_find_maxprob, 4, mem_snpgeno);
+	// arguments for gpu_kl_build_calc_oob (out-of-bag)
+	GPU_SETARG(gpu_kl_build_calc_oob, 0, mem_build_param);
+	GPU_SETARG(gpu_kl_build_calc_oob, 1, sz_hla);
+	GPU_SETARG(gpu_kl_build_calc_oob, 2, mem_prob_buffer);
+	GPU_SETARG(gpu_kl_build_calc_oob, 3, mem_build_hla_idx_map);
+	GPU_SETARG(gpu_kl_build_calc_oob, 4, mem_snpgeno);
 
-	// arguments for gpu_kl_build_sum_prob (in-bag)
-	GPU_SETARG(gpu_kl_build_sum_prob, 0, mem_build_output);
-	GPU_SETARG(gpu_kl_build_sum_prob, 1, nHLA);
-	GPU_SETARG(gpu_kl_build_sum_prob, 2, sz_hla);
-	GPU_SETARG(gpu_kl_build_sum_prob, 3, mem_build_param);
-	GPU_SETARG(gpu_kl_build_sum_prob, 4, mem_snpgeno);
-	GPU_SETARG(gpu_kl_build_sum_prob, 5, mem_prob_buffer);
+	// arguments for gpu_kl_build_calc_ib (in-bag)
+	GPU_SETARG(gpu_kl_build_calc_ib, 0, mem_build_output);
+	GPU_SETARG(gpu_kl_build_calc_ib, 1, nHLA);
+	GPU_SETARG(gpu_kl_build_calc_ib, 2, sz_hla);
+	GPU_SETARG(gpu_kl_build_calc_ib, 3, mem_build_param);
+	GPU_SETARG(gpu_kl_build_calc_ib, 4, mem_snpgeno);
+	GPU_SETARG(gpu_kl_build_calc_ib, 5, mem_prob_buffer);
 
 	// arguments for gpu_kl_build_clear_mem
 	GPU_SETARG(gpu_kl_clear_mem, 1, mem_prob_buffer);
@@ -668,8 +668,8 @@ void build_init(int nHLA, int nSample)
 
 void build_done()
 {
-	gpu_kl_build_calc_prob = gpu_kl_build_find_maxprob =
-		gpu_kl_build_sum_prob = gpu_kl_clear_mem = NULL;
+	gpu_kl_build_calc_prob = gpu_kl_build_calc_oob =
+		gpu_kl_build_calc_ib = gpu_kl_clear_mem = NULL;
 	mem_build_param = mem_snpgeno = mem_build_output =
 		mem_haplo_list = mem_build_hla_idx_map = mem_prob_buffer = NULL;
 	build_geno.clear();
@@ -737,7 +737,7 @@ int build_acc_oob()
 	{
 		size_t wdims[2] = { gpu_const_local_size, (size_t)build_num_oob };
 		size_t local_size[2] = { gpu_const_local_size, 1 };
-		GPU_RUN_KERNEL_EVENT(gpu_kl_build_find_maxprob, 2, wdims, local_size,
+		GPU_RUN_KERNEL_EVENT(gpu_kl_build_calc_oob, 2, wdims, local_size,
 			1, &events[2], &events[3]);
 	}
 
@@ -745,11 +745,10 @@ int build_acc_oob()
 	gpu_finish();
 	gpu_free_events(4, events);
 
-	// sync memory
-	GPU_MEM_MAP(M, int, mem_build_param, 5, true);
-	int corrent_cnt = build_num_oob*2 - M.ptr()[4];
-
-	return corrent_cnt;
+	// read output
+	int err_cnt;
+	GPU_READ_MEM(mem_build_param, sizeof(int)*4, sizeof(int), &err_cnt);
+	return build_num_oob*2 - err_cnt;
 }
 
 
@@ -781,7 +780,7 @@ double build_acc_ib()
 	{
 		size_t wdims[2] = { gpu_const_local_size, (size_t)build_num_ib };
 		size_t local_size[2] = { gpu_const_local_size, 1 };
-		GPU_RUN_KERNEL_EVENT(gpu_kl_build_sum_prob, 2, wdims, local_size,
+		GPU_RUN_KERNEL_EVENT(gpu_kl_build_calc_ib, 2, wdims, local_size,
 			1, &events[2], &events[3]);
 	}
 

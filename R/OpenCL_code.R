@@ -185,7 +185,7 @@ __kernel void build_calc_prob(
 "
 
 
-code_build_find_maxprob <- "
+code_build_calc_oob <- "
 inline static int compare_allele(int P1, int P2, int T1, int T2)
 {
 	int cnt = 0;
@@ -199,7 +199,7 @@ inline static int compare_allele(int P1, int P2, int T1, int T2)
 }
 
 #pragma OPENCL EXTENSION cl_khr_global_int32_base_atomics : enable
-__kernel void build_find_maxprob(__global int *out_param, const int num_hla_geno,
+__kernel void build_calc_oob(__global int *out_param, const int num_hla_geno,
 	__global const numeric *prob, __global const int *hla_idx_map,
 	__global const unsigned char *pGeno)
 {
@@ -260,8 +260,8 @@ __kernel void build_find_maxprob(__global int *out_param, const int num_hla_geno
 "
 
 
-code_build_sum_prob <- "
-__kernel void build_sum_prob(__global numeric *out_prob,
+code_build_calc_ib <- "
+__kernel void build_calc_ib(__global numeric *out_prob,
 	const int nHLA, const int num_hla_geno,
 	__global const int *pParam, __global const unsigned char *pGeno,
 	__global const numeric *prob)

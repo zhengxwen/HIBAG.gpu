@@ -455,10 +455,10 @@ hlaPredict_gpu <- function(object, snp,
 	.packageEnv$kernel_build_calc_prob <- .new_kernel("build_calc_prob",
 		c(if (f64_build) code_atomic_add_f64 else code_atomic_add_f32,
 			code_macro, code_hamming_dist, code_build_calc_prob), prec_build)
-	.packageEnv$kernel_build_find_maxprob <- .new_kernel("build_find_maxprob",
-		c(code_macro, code_build_find_maxprob), prec_build)
-	.packageEnv$kernel_build_sum_prob <- .new_kernel("build_sum_prob",
-		c(code_macro, code_build_sum_prob), prec_build)
+	.packageEnv$kernel_build_calc_oob <- .new_kernel("build_calc_oob",
+		c(code_macro, code_build_calc_oob), prec_build)
+	.packageEnv$kernel_build_calc_ib <- .new_kernel("build_calc_ib",
+		c(code_macro, code_build_calc_ib), prec_build)
 
 	## build kernels for prediction
 	.packageEnv$kernel_pred_calc <- .new_kernel("pred_calc_prob",
