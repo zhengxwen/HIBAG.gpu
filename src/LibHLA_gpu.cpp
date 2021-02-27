@@ -697,10 +697,10 @@ void build_set_haplo_geno(const THaplotype haplo[], int n_haplo,
 	if (n_haplo > build_haplo_nmax)
 		throw "Too many haplotypes out of the limit, please contact the package author.";
 
-	wdim_num_haplo = run_num_haplo = n_haplo;
+	run_num_snp = n_snp;
+	run_num_haplo = wdim_num_haplo = n_haplo;
 	if (wdim_num_haplo % gpu_local_size_d2)
 		wdim_num_haplo = (wdim_num_haplo/gpu_local_size_d2 + 1)*gpu_local_size_d2;
-	run_num_snp = n_snp;
 
 	const size_t sz_haplo = sizeof(THaplotype)*n_haplo;
 	GPU_WRITE_MEM(mem_haplo_list, sz_haplo, (void*)haplo);
@@ -755,7 +755,6 @@ int build_acc_oob()
 	GPU_READ_MEM(mem_build_output, 0, sizeof(int), &err_cnt);
 	return build_num_oob*2 - err_cnt;
 }
-
 
 double build_acc_ib()
 {

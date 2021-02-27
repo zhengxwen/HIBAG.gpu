@@ -45,7 +45,6 @@
 .gpu_build_init_memory <- function(nhla, nsamp, verbose)
 {
 	# internal
-	offset_param <- 5L
 	sizeof_TGenotype  <- 48L
 	sizeof_THaplotype <- 32L
 	size_hla <- nhla * (nhla+1L) / 2L
