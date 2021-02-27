@@ -45,19 +45,20 @@
 .gpu_build_init_memory <- function(nhla, nsamp, verbose)
 {
 	# internal
-	offset_param <- 4L
+	offset_param <- 5L
 	sizeof_TGenotype  <- 48L
 	sizeof_THaplotype <- 32L
+	size_hla <- nhla * (nhla+1L) / 2L
 	
 	# allocate
 	.packageEnv$mem_build_param <- .gpu_create_mem(offset_param + 2L*nsamp,
-		"integer", FALSE)
+		"integer", TRUE)
 
-	.packageEnv$mem_snpgeno <- .gpu_create_mem(nsamp*sizeof_TGenotype %/% 4L,
-		"integer", FALSE)
+	.packageEnv$mem_snpgeno <- .gpu_create_mem(nsamp*sizeof_TGenotype / 4L,
+		"integer", TRUE)
 
-	.packageEnv$mem_build_hla_idx_map <- .gpu_create_mem(nhla*(nhla+1L) %/% 2L,
-		"integer", FALSE)
+	.packageEnv$mem_build_hla_idx_map <- .gpu_create_mem(size_hla,
+		"integer", TRUE)
 
 	.packageEnv$mem_build_output <- .gpu_create_mem(nsamp,
 		.packageEnv$prec_build, FALSE)
@@ -73,9 +74,8 @@
 		build_haplo_nmax <- nsamp
 	.packageEnv$build_haplo_nmax <- build_haplo_nmax
 	.packageEnv$mem_haplo_list <- .gpu_create_mem(
-		build_haplo_nmax*sizeof_THaplotype %/% 4L, "integer", verbose)
+		build_haplo_nmax*sizeof_THaplotype / 4L, "integer", verbose)
 
-	size_hla <- nhla * (nhla+1L) %/% 2L
 	build_sample_nmax <- nsamp
 	while (build_sample_nmax > 0L)
 	{

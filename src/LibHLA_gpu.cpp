@@ -272,11 +272,12 @@ namespace HLA_LIB
 				0, size * sizeof(TYPE), 0, NULL, NULL, &err);
 			if (!(mem_ptr = (TYPE*)p))
 			{
-				static char buf[1024];
+				static char buffer[256];
 				if (fn == NULL) fn = "";
-				sprintf(buf, "Unable to map '%s' to host memory (error: %d, %s)",
-					fn, err, err_code(err));
-				throw buf;
+				sprintf(buffer,
+					"Unable to map '%s' to host memory [%lld bytes] (error: %d, %s)",
+					fn, (long long)(size*sizeof(TYPE)), err, err_code(err));
+				throw buffer;
 			}
 		}
 		/// destructor
@@ -595,7 +596,7 @@ void build_init(int nHLA, int nSample)
 	// initialize
 	Num_HLA = nHLA;
 	Num_Sample = nSample;
-	int sz_hla = nHLA*(nHLA+1)/2;
+	const int sz_hla = nHLA*(nHLA+1)/2;
 	build_geno.resize(nSample);
 
 	// 64-bit floating-point number or not?
