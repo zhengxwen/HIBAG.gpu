@@ -55,14 +55,6 @@
 #include <Rdefines.h>
 
 
-// disable timing
-// #define HIBAG_ENABLE_TIMING
-
-#ifdef HIBAG_ENABLE_TIMING
-#   include <time.h>
-#endif
-
-
 namespace HLA_LIB
 {
 	using namespace std;
@@ -111,10 +103,10 @@ namespace HLA_LIB
 	// OpenCL memory objects
 
 	// parameters, int[] =
-	//   [ # of haplotypes, # of SNPs, starting sample index, offset, ... ]
+	//   [ # of haplotypes, # of SNPs, starting sample index, offset, OOB accuracy, ... ]
 	static cl_mem mem_build_param = NULL;
 	// parameter offset
-	static const int offset_build_param = 4;
+	static const int offset_build_param = 5;
 
 	// SNP genotypes, TGenotype[]
 	static cl_mem mem_snpgeno = NULL;
@@ -131,7 +123,10 @@ namespace HLA_LIB
 	// predict: msize_prob_buffer_total = msize_prob_buffer_each * num_classifier
 	static size_t msize_prob_buffer_total = 0;
 
-	// max. index or sum of prob.
+	///< an index according to a pair of alleles
+	static cl_mem mem_build_hla_idx_map = NULL;
+
+	/// max. index or sum of prob.
 	static cl_mem mem_build_output = NULL;
 
 	// the max number of samples can be hold in mem_prob_buffer
@@ -164,10 +159,7 @@ namespace HLA_LIB
 	static int run_num_snp;     ///< the number of SNPs
 	static int wdim_num_haplo;  ///< global_work_size for the number of haplotypes
 
-	static vector<int> build_oob_idx;     ///< the indices for out-of-bag samples
-	static vector<int> build_ib_idx;      ///< the indices for in-bag samples
 	static vector<TGenotype> build_geno;  ///< the copy of a list of SNP genotypes
-	static vector<int> build_hla_map_index;  ///< an index according to a pair of alleles
 
 
 	// ===================================================================== //
@@ -466,7 +458,7 @@ static cl_event gpu_write_mem(cl_mem buffer, bool blocking, size_t size,
 /// clear the memory buffer 'mem_prob_buffer'
 static void clear_prob_buffer(size_t size, cl_event *event)
 {
-#if defined(CL_VERSION_1_2)
+#if defined(CL_VERSION_1_2) && 0
 	int zero = 0;
 	cl_int err = clEnqueueFillBuffer(gpu_command_queue, mem_prob_buffer,
 		&zero, sizeof(zero), 0, size, 0, NULL, event);
@@ -597,23 +589,14 @@ SEXP gpu_set_verbose(SEXP verbose)
 // initialize the internal structure for building a model
 void build_init(int nHLA, int nSample)
 {
-#ifdef HIBAG_ENABLE_TIMING
-	memset(timing_array, 0, sizeof(timing_array));
-	timing_array[TM_BUILD_TOTAL] = clock();
-#endif
+	if (nHLA >= 32768)
+		throw "There are too many unique HLA alleles.";
 
 	// initialize
 	Num_HLA = nHLA;
 	Num_Sample = nSample;
-	build_oob_idx.resize(nSample);
-	build_ib_idx.resize(nSample);
+	int sz_hla = nHLA*(nHLA+1)/2;
 	build_geno.resize(nSample);
-
-	const size_t size_hla = nHLA * (nHLA+1) >> 1;
-	build_hla_map_index.resize(size_hla*2);
-	int *p = &build_hla_map_index[0];
-	for (int h1=0; h1 < nHLA; h1++)
-		for (int h2=h1; h2 < nHLA; h2++, p+=2) { p[0] = h1; p[1] = h2; }
 
 	// 64-bit floating-point number or not?
 	gpu_f64_build_flag = Rf_asLogical(get_var_env("flag_build_f64")) == TRUE;
@@ -632,7 +615,7 @@ void build_init(int nHLA, int nSample)
 	cl_mem mem_rare_freq = get_mem_env(gpu_f64_build_flag ?
 		"mem_exp_log_min_rare_freq64" : "mem_exp_log_min_rare_freq32");
 	mem_prob_buffer = get_mem_env("mem_prob_buffer");
-	msize_prob_buffer_each = nHLA*(nHLA+1)/2 *
+	msize_prob_buffer_each = sz_hla *
 		(gpu_f64_build_flag ? sizeof(double) : sizeof(float));
 	mem_build_param = get_mem_env("mem_build_param");
 	mem_haplo_list = get_mem_env("mem_haplo_list");
@@ -640,10 +623,21 @@ void build_init(int nHLA, int nSample)
 	build_haplo_nmax = Rf_asInteger(get_var_env("build_haplo_nmax"));
 	mem_sample_nmax = Rf_asInteger(get_var_env("build_sample_nmax"));
 	msize_prob_buffer_total = msize_prob_buffer_each * mem_sample_nmax;
+	mem_build_hla_idx_map = get_mem_env("mem_build_hla_idx_map");
 	mem_build_output = get_mem_env("mem_build_output");
 
+	{
+		// initialize mem_build_hla_idx_map
+		GPU_MEM_MAP(M, int, mem_build_hla_idx_map, sz_hla, false);
+		int *p = M.ptr();
+		for (int h1=0; h1 < nHLA; h1++)
+		{
+			for (int h2=h1; h2 < nHLA; h2++)
+				*p++ = h1 | (h2 << 16);
+		}
+	}
+
 	// arguments for build_calc_prob
-	int sz_hla = size_hla;
 	GPU_SETARG(gpu_kl_build_calc_prob, 0, mem_prob_buffer);
 	GPU_SETARG(gpu_kl_build_calc_prob, 1, nHLA);
 	GPU_SETARG(gpu_kl_build_calc_prob, 2, sz_hla);
@@ -653,9 +647,11 @@ void build_init(int nHLA, int nSample)
 	GPU_SETARG(gpu_kl_build_calc_prob, 6, mem_snpgeno);
 
 	// arguments for gpu_kl_build_find_maxprob (out-of-bag)
-	GPU_SETARG(gpu_kl_build_find_maxprob, 0, mem_build_output);
+	GPU_SETARG(gpu_kl_build_find_maxprob, 0, mem_build_param);
 	GPU_SETARG(gpu_kl_build_find_maxprob, 1, sz_hla);
 	GPU_SETARG(gpu_kl_build_find_maxprob, 2, mem_prob_buffer);
+	GPU_SETARG(gpu_kl_build_find_maxprob, 3, mem_build_hla_idx_map);
+	GPU_SETARG(gpu_kl_build_find_maxprob, 4, mem_snpgeno);
 
 	// arguments for gpu_kl_build_sum_prob (in-bag)
 	GPU_SETARG(gpu_kl_build_sum_prob, 0, mem_build_output);
@@ -675,36 +671,8 @@ void build_done()
 	gpu_kl_build_calc_prob = gpu_kl_build_find_maxprob =
 		gpu_kl_build_sum_prob = gpu_kl_clear_mem = NULL;
 	mem_build_param = mem_snpgeno = mem_build_output =
-		mem_haplo_list = mem_prob_buffer = NULL;
-	build_oob_idx.clear();
-	build_ib_idx.clear();
+		mem_haplo_list = mem_build_hla_idx_map = mem_prob_buffer = NULL;
 	build_geno.clear();
-	build_hla_map_index.clear();
-
-#ifdef HIBAG_ENABLE_TIMING
-	timing_array[TM_BUILD_TOTAL] = clock() - timing_array[TM_BUILD_TOTAL];
-	Rprintf("GPU implementation took %0.2f seconds in total:\n"
-			"    OOB init(): %0.2f%%, %0.2fs\n"
-			"    OOB prob(): %0.2f%%, %0.2fs\n"
-			"    OOB max index: %0.2f%%, %0.2fs\n"
-			"    IB init(): %0.2f%%, %0.2fs\n"
-			"    IB prob(): %0.2f%%, %0.2fs\n"
-			"    IB log likelihood(): %0.2f%%, %0.2fs\n",
-		((double)timing_array[TM_BUILD_TOTAL]) / CLOCKS_PER_SEC,
-		100.0 * timing_array[TM_BUILD_OOB_CLEAR] / timing_array[TM_BUILD_TOTAL],
-		((double)timing_array[TM_BUILD_OOB_CLEAR]) / CLOCKS_PER_SEC,
-		100.0 * timing_array[TM_BUILD_OOB_PROB] / timing_array[TM_BUILD_TOTAL],
-		((double)timing_array[TM_BUILD_OOB_PROB]) / CLOCKS_PER_SEC,
-		100.0 * timing_array[TM_BUILD_OOB_MAXIDX] / timing_array[TM_BUILD_TOTAL],
-		((double)timing_array[TM_BUILD_OOB_MAXIDX]) / CLOCKS_PER_SEC,
-		100.0 * timing_array[TM_BUILD_IB_CLEAR] / timing_array[TM_BUILD_TOTAL],
-		((double)timing_array[TM_BUILD_IB_CLEAR]) / CLOCKS_PER_SEC,
-		100.0 * timing_array[TM_BUILD_IB_PROB] / timing_array[TM_BUILD_TOTAL],
-		((double)timing_array[TM_BUILD_IB_PROB]) / CLOCKS_PER_SEC,
-		100.0 * timing_array[TM_BUILD_IB_LOGLIK] / timing_array[TM_BUILD_TOTAL],
-		((double)timing_array[TM_BUILD_IB_LOGLIK]) / CLOCKS_PER_SEC
-	);
-#endif
 }
 
 void build_set_bootstrap(const int oob_cnt[])
@@ -716,13 +684,9 @@ void build_set_bootstrap(const int oob_cnt[])
 	for (int i=0; i < Num_Sample; i++)
 	{
 		if (oob_cnt[i] <= 0)
-		{
-			p_oob[build_num_oob] = build_oob_idx[build_num_oob] = i;
-			build_num_oob ++;
-		} else {
-			p_ib[build_num_ib] = build_ib_idx[build_num_ib] = i;
-			build_num_ib ++;
-		}
+			p_oob[build_num_oob++] = i;
+		else
+			p_ib[build_num_ib++] = i;
 	}
 }
 
@@ -745,20 +709,6 @@ void build_set_haplo_geno(const THaplotype haplo[], int n_haplo,
 	memcpy(&build_geno[0], geno, sz_geno);
 }
 
-inline static int compare(const THLAType &H1, const THLAType &H2)
-{
-	int P1=H1.Allele1, P2=H1.Allele2;
-	int T1=H2.Allele1, T2=H2.Allele2;
-	int cnt = 0;
-	if ((P1==T1) || (P1==T2))
-	{
-		cnt = 1;
-		if (P1==T1) T1 = -1; else T2 = -1;
-	}
-	if ((P2==T1) || (P2==T2)) cnt ++;
-	return cnt;
-}
-
 int build_acc_oob()
 {
 	if (build_num_oob <= 0) return 0;
@@ -769,7 +719,7 @@ int build_acc_oob()
 	// initialize
 	{
 		clear_prob_buffer(msize_prob_buffer_each * build_num_oob, &events[0]);
-		int param[4] = { run_num_haplo, run_num_snp, 0, offset_build_param };
+		int param[5] = { run_num_haplo, run_num_snp, 0, offset_build_param, 0 };
 		GPU_WRITE_EVENT(events[1], mem_build_param, sizeof(param), param);
 	}
 
@@ -796,22 +746,8 @@ int build_acc_oob()
 	gpu_free_events(4, events);
 
 	// sync memory
-	GPU_MEM_MAP(MO, int, mem_build_output, build_num_oob, true);
-	int *pMaxI = MO.ptr();
-	THLAType hla;
-	int corrent_cnt = 0;
-	for (int i=0; i < build_num_oob; i++)
-	{
-		size_t k = pMaxI[i] << 1;
-		if (k >= 0)
-		{
-			hla.Allele1 = build_hla_map_index[k];
-			hla.Allele2 = build_hla_map_index[k+1];
-		} else {
-			hla.Allele1 = hla.Allele2 = NA_INTEGER;
-		}
-		corrent_cnt += compare(hla, build_geno[build_oob_idx[i]].aux_hla_type);
-	}
+	GPU_MEM_MAP(M, int, mem_build_param, 5, true);
+	int corrent_cnt = build_num_oob*2 - M.ptr()[4];
 
 	return corrent_cnt;
 }

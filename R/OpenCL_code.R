@@ -28,6 +28,25 @@
 # OpenCL kernel codes
 #
 
+code_macro <- "
+#define SIZEOF_THAPLO_SHIFT    5
+#define SIZEOF_TGENOTYPE       48
+
+#define OFFSET_ALLELE_INDEX    28
+#define OFFSET_GENO_BOOTSTRAP  32
+#define OFFSET_GENO_HLA_A1     36
+#define OFFSET_GENO_HLA_A2     40
+
+#define OFFSET_NUM_HAPLO       0
+#define OFFSET_NUM_SNP         1
+#define OFFSET_START_SAMP_IDX  2
+#define OFFSET_PARAM           3
+#define OFFSET_OOB_ACC         4
+
+#define LOCAL_IWORK_MAX        64
+"
+
+
 code_atomic_add_f32 <- "
 #define HAMM_DIST_MAX        9
 #define OFFSET_HAPLO_FREQ    24
@@ -120,11 +139,6 @@ inline static int hamming_dist(int n, __global const unsigned char *g,
 ##########################################################################
 
 code_build_calc_prob <- "
-#define SIZEOF_THAPLO_SHIFT    5
-#define SIZEOF_TGENOTYPE       48
-#define OFFSET_ALLELE_INDEX    28
-#define OFFSET_PARAM           3
-
 __kernel void build_calc_prob(
 	__global numeric *outProb,
 	const int nHLA, const int num_hla_geno,
@@ -135,14 +149,14 @@ __kernel void build_calc_prob(
 {
 	const int i1 = get_global_id(1);  // first haplotype index
 	const int i2 = get_global_id(2);  // second haplotype index
-	const int n_haplo = pParam[0];    // the number of haplotypes
+	const int n_haplo = pParam[OFFSET_NUM_HAPLO];  // the number of haplotypes
 	if ((i2 < i1) || (i2 >= n_haplo)) return;
 
 	// constants
 	const int ii = get_global_id(0);  // individual index
-	const int n_snp  = pParam[1];
-	const int st_samp = pParam[2];
-	pParam += pParam[OFFSET_PARAM];  // offset pParam
+	const int n_snp  = pParam[OFFSET_NUM_SNP];
+	const int st_samp = pParam[OFFSET_START_SAMP_IDX];
+	pParam += pParam[OFFSET_PARAM];   // offset pParam
 
 	// the first haplotype
 	__global const unsigned char *p1 = pHaplo + (i1 << SIZEOF_THAPLO_SHIFT);
@@ -172,15 +186,27 @@ __kernel void build_calc_prob(
 
 
 code_build_find_maxprob <- "
-#define LOCAL_IWORK_MAX     64
+inline static int compare_allele(int P1, int P2, int T1, int T2)
+{
+	int cnt = 0;
+	if ((P1==T1) || (P1==T2))
+	{
+		cnt = 1;
+		if (P1==T1) T1 = -1; else T2 = -1;
+	}
+	if ((P2==T1) || (P2==T2)) cnt ++;
+	return cnt;
+}
 
-__kernel void build_find_maxprob(__global int *out_idx, const int num_hla_geno,
-	__global const numeric *prob)
+#pragma OPENCL EXTENSION cl_khr_global_int32_base_atomics : enable
+__kernel void build_find_maxprob(__global int *out_param, const int num_hla_geno,
+	__global const numeric *prob, __global const int *hla_idx_map,
+	__global const unsigned char *pGeno)
 {
 	__local numeric local_max[LOCAL_IWORK_MAX];
 	__local int     local_idx[LOCAL_IWORK_MAX];
-	const int localsize = get_local_size(0);
 
+	const int localsize = get_local_size(0);
 	const int i = get_local_id(0);
 	const int i_samp = get_global_id(1);
 	prob += num_hla_geno * i_samp;
@@ -210,20 +236,31 @@ __kernel void build_find_maxprob(__global int *out_idx, const int num_hla_geno,
 				max_idx = local_idx[j];
 			}
 		}
-		out_idx[i_samp] = max_idx;
+		if (max_idx >= 0)
+		{
+			// true alleles
+			const int st_samp = out_param[OFFSET_START_SAMP_IDX];
+			__global const int *p = out_param + out_param[OFFSET_PARAM];
+			__global const unsigned char *pg = pGeno +
+				(p[st_samp + i_samp] * SIZEOF_TGENOTYPE);
+			// aux_hla_type.Allele1, aux_hla_type.Allele2
+			__global const int *t = (__global const int *)(pg + OFFSET_GENO_HLA_A1);
+			// predicted alleles
+			const int ii = hla_idx_map[max_idx];
+			const int p1 = ii & 0xFFFF, p2 = ii >> 16;
+			// compare
+			int cnt = 2 - compare_allele(p1, p2, t[0], t[1]);
+			if (cnt > 0)
+				atomic_add(&out_param[OFFSET_OOB_ACC], cnt);  // error count
+		} else {
+			atomic_add(&out_param[OFFSET_OOB_ACC], 2);  // error count
+		}
 	}
 }
 "
 
 
 code_build_sum_prob <- "
-#define LOCAL_IWORK_MAX     64
-#define SIZEOF_TGENOTYPE    48
-#define OFFSET_BOOTSTRAP    32
-#define OFFSET_HLA_A1       36
-#define OFFSET_HLA_A2       40
-#define OFFSET_PARAM        3
-
 __kernel void build_sum_prob(__global numeric *out_prob,
 	const int nHLA, const int num_hla_geno,
 	__global const int *pParam, __global const unsigned char *pGeno,
@@ -252,10 +289,10 @@ __kernel void build_sum_prob(__global numeric *out_prob,
 			pParam += pParam[OFFSET_PARAM];  // offset pParam
 			__global const unsigned char *p = pGeno + (pParam[i_samp] * SIZEOF_TGENOTYPE);
 			// bootstrap count
-			int b = *(__global const int *)(p + OFFSET_BOOTSTRAP);
+			int b = *(__global const int *)(p + OFFSET_GENO_BOOTSTRAP);
 			// probability of a HLA genotype
-			int h1 = *(__global int *)(p + OFFSET_HLA_A1);  // aux_hla_type.Allele1
-			int h2 = *(__global int *)(p + OFFSET_HLA_A2);  // aux_hla_type.Allele2
+			int h1 = *(__global int *)(p + OFFSET_GENO_HLA_A1);  // aux_hla_type.Allele1
+			int h2 = *(__global int *)(p + OFFSET_GENO_HLA_A2);  // aux_hla_type.Allele2
 			int k = h2 + (h1 * ((nHLA << 1) - h1 - 1) >> 1);
 			// log likelihood
 			sum = b * log(prob[k] / sum);

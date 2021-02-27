@@ -56,6 +56,9 @@
 	.packageEnv$mem_snpgeno <- .gpu_create_mem(nsamp*sizeof_TGenotype %/% 4L,
 		"integer", FALSE)
 
+	.packageEnv$mem_build_hla_idx_map <- .gpu_create_mem(nhla*(nhla+1L) %/% 2L,
+		"integer", FALSE)
+
 	.packageEnv$mem_build_output <- .gpu_create_mem(nsamp,
 		.packageEnv$prec_build, FALSE)
 
@@ -97,11 +100,13 @@
 	HIBAG:::.hlaClearGPU()
 	.Call(gpu_free_memory, .packageEnv$mem_build_param)
 	.Call(gpu_free_memory, .packageEnv$mem_snpgeno)
+	.Call(gpu_free_memory, .packageEnv$mem_build_hla_idx_map)
 	.Call(gpu_free_memory, .packageEnv$mem_build_output)
 	.Call(gpu_free_memory, .packageEnv$mem_haplo_list)
 	.Call(gpu_free_memory, .packageEnv$mem_prob_buffer)
 	remove(
-		mem_build_param, mem_snpgeno, mem_build_output, mem_haplo_list, mem_prob_buffer,
+		mem_build_param, mem_snpgeno, mem_build_hla_idx_map,
+		mem_build_output, mem_haplo_list, mem_prob_buffer,
 		build_haplo_nmax, build_sample_nmax,
 		envir=.packageEnv)
 	invisible()
@@ -394,8 +399,8 @@ hlaPredict_gpu <- function(object, snp,
 	{
 		# also need cl_khr_int64_base_atomics : enable
 		dev_fp64 <- tryCatch({
-			k <- .new_kernel("build_calc_prob",
-				c(code_atomic_add_f64, code_hamming_dist, code_build_calc_prob), "double")
+			k <- .new_kernel("build_calc_prob", c(code_atomic_add_f64, code_macro,
+				code_hamming_dist, code_build_calc_prob), "double")
 			TRUE
 		}, error=function(e) FALSE)
 		showmsg(paste("    atom_cmpxchg (enable cl_khr_int64_base_atomics):",
@@ -449,11 +454,11 @@ hlaPredict_gpu <- function(object, snp,
 	## build kernels for constructing classifiers
 	.packageEnv$kernel_build_calc_prob <- .new_kernel("build_calc_prob",
 		c(if (f64_build) code_atomic_add_f64 else code_atomic_add_f32,
-			code_hamming_dist, code_build_calc_prob), prec_build)
+			code_macro, code_hamming_dist, code_build_calc_prob), prec_build)
 	.packageEnv$kernel_build_find_maxprob <- .new_kernel("build_find_maxprob",
-		code_build_find_maxprob, prec_build)
+		c(code_macro, code_build_find_maxprob), prec_build)
 	.packageEnv$kernel_build_sum_prob <- .new_kernel("build_sum_prob",
-		code_build_sum_prob, prec_build)
+		c(code_macro, code_build_sum_prob), prec_build)
 
 	## build kernels for prediction
 	.packageEnv$kernel_pred_calc <- .new_kernel("pred_calc_prob",
