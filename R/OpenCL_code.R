@@ -316,11 +316,6 @@ __kernel void clear_memory(const int n, __global int *p)
 ##########################################################################
 
 code_pred_calc_prob <- "
-#define SIZEOF_THAPLO_SHIFT    5
-#define SIZEOF_TGENOTYPE       48
-#define OFFSET_ALLELE_INDEX    28
-#define OFFSET_PARAM           3
-
 __kernel void pred_calc_prob(
 	__global numeric *outProb,
 	const int nHLA, const int num_hla_geno,
@@ -366,8 +361,6 @@ __kernel void pred_calc_prob(
 
 
 code_pred_calc_sumprob <- "
-#define LOCAL_IWORK_MAX     64
-
 __kernel void pred_calc_sumprob(__global numeric *out_sum, const int num_hla_geno,
 	__global const numeric *prob)
 {

@@ -474,9 +474,9 @@ hlaPredict_gpu <- function(object, snp,
 	## build kernels for prediction
 	.packageEnv$kernel_pred_calc <- .new_kernel("pred_calc_prob",
 		c(if (f64_pred) code_atomic_add_f64 else code_atomic_add_f32,
-			code_hamming_dist, code_pred_calc_prob), prec_predict)
+			code_macro, code_hamming_dist, code_pred_calc_prob), prec_predict)
 	.packageEnv$kernel_pred_sumprob <- .new_kernel("pred_calc_sumprob",
-		code_pred_calc_sumprob, prec_predict)
+		c(code_macro, code_pred_calc_sumprob), prec_predict)
 	.packageEnv$kernel_pred_addprob <- .new_kernel("pred_calc_addprob",
 		code_pred_calc_addprob, prec_predict)
 

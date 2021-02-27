@@ -159,8 +159,6 @@ namespace HLA_LIB
 	static int run_num_snp;     ///< the number of SNPs
 	static int wdim_num_haplo;  ///< global_work_size for the number of haplotypes
 
-	static vector<TGenotype> build_geno;  ///< the copy of a list of SNP genotypes
-
 
 	// ===================================================================== //
 
@@ -594,7 +592,6 @@ void build_init(int nHLA, int nSample)
 	Num_HLA = nHLA;
 	Num_Sample = nSample;
 	const int sz_hla = nHLA*(nHLA+1)/2;
-	build_geno.resize(nSample);
 
 	// 64-bit floating-point number or not?
 	gpu_f64_build_flag = Rf_asLogical(get_var_env("flag_build_f64")) == TRUE;
@@ -670,7 +667,6 @@ void build_done()
 		gpu_kl_build_calc_ib = gpu_kl_clear_mem = NULL;
 	mem_build_param = mem_snpgeno = mem_build_output =
 		mem_haplo_list = mem_build_hla_idx_map = mem_prob_buffer = NULL;
-	build_geno.clear();
 }
 
 void build_set_bootstrap(const int oob_cnt[])
@@ -704,7 +700,6 @@ void build_set_haplo_geno(const THaplotype haplo[], int n_haplo,
 
 	const size_t sz_geno = sizeof(TGenotype)*Num_Sample;
 	GPU_WRITE_MEM(mem_snpgeno, sz_geno, (void*)geno);
-	memcpy(&build_geno[0], geno, sz_geno);
 }
 
 int build_acc_oob()
