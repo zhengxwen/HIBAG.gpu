@@ -770,6 +770,7 @@ double build_acc_ib()
 	// run OpenCL (calculating probabilities)
 	{
 		int zero = 0;
+		// n_haplo (ARG4) & n_snp (ARG5) are set in build_acc_oob()
 		GPU_SETARG(gpu_kl_build_calc_prob, 6, zero);  // start_sample_idx
 		GPU_SETARG(gpu_kl_build_calc_prob, 7, mem_build_idx_ib);
 		size_t wdims[3] =
