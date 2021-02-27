@@ -926,10 +926,11 @@ void predict_avg_prob(const TGenotype geno[], const double weight[],
 	double out_prob[], double out_match[])
 {
 	const size_t num_size = Num_HLA * (Num_HLA + 1) >> 1;
+	cl_event events[4];
 
 	// initialize
-	GPU_WRITE_MEM(mem_snpgeno, sizeof(TGenotype)*Num_Classifier, geno);
-	clear_prob_buffer(msize_prob_buffer_total, NULL);
+	clear_prob_buffer(msize_prob_buffer_total, &events[0]);
+	GPU_WRITE_EVENT(events[1], mem_snpgeno, sizeof(TGenotype)*Num_Classifier, geno);
 
 	// pred_calc_prob
 	{
@@ -937,70 +938,58 @@ void predict_avg_prob(const TGenotype geno[], const double weight[],
 			{ (size_t)Num_Classifier, (size_t)wdim_num_haplo, (size_t)wdim_num_haplo };
 		size_t local_size[3] =
 			{ 1, gpu_local_size_d2, gpu_local_size_d2 };
-		GPU_RUN_KERNEL(gpu_kl_pred_calc, 3, wdims, local_size);
+		GPU_RUN_KERNEL_EVENT(gpu_kl_pred_calc, 3, wdims, local_size,
+			2, events, &events[2]);
 	}
 
 	// use host to calculate if single-precision
 	if (gpu_f64_pred_flag)
 	{
-		// using double in hosts to improve precision
-		GPU_MEM_MAP(M, double, mem_prob_buffer,
-			msize_prob_buffer_total/sizeof(double), true);
-
-		memset(out_prob, 0, sizeof(double)*num_size);
-		const double *p = M.ptr();
-		double sum_matching=0, num_matching=0;
-
-		for (int i=0; i < Num_Classifier; i++, p+=num_size)
-		{
-			if (weight[i] <= 0) continue;
-			double ss = 0;
-			for (size_t k=0; k < num_size; k++)
-				ss += p[k];
-			sum_matching += ss * weight[i];
-			num_matching += weight[i];
-			if (ss > 0)
-			{
-				double w = weight[i] / ss;
-				for (size_t k=0; k < num_size; k++)
-					out_prob[k] += p[k] * w;
-			}
-		}
-
-		*out_match = sum_matching / num_matching;
-		fmul_f64(out_prob, num_size, 1 / get_sum_f64(out_prob, num_size));
-
-/*
 		// sum up all probs for each classifier
 		{
 			// output to mem_pred_weight
 			size_t wdims[2] = { (size_t)gpu_const_local_size, (size_t)Num_Classifier };
 			size_t local_size[2] = { gpu_const_local_size, 1 };
-			GPU_RUN_KERNEL(gpu_kl_pred_sumprob, 2, wdims, local_size);
+			GPU_RUN_KERNEL_EVENT(gpu_kl_pred_sumprob, 2, wdims, local_size,
+				1, &events[2], &events[3]);
 		}
+
+		// host waits for GPU
+		gpu_finish();
+		gpu_free_events(4, events);
 
 		// mem_pred_weight
 		{
 			GPU_MEM_MAP(M, double, mem_pred_weight, Num_Classifier, false);
-			double psum = 0, *w = M.ptr();
+			double *w = M.ptr();
+			double sum_matching=0, num_matching=0;
 			for (int i=0; i < Num_Classifier; i++)
 			{
-				psum += w[i];
-				w[i] = weight[i] / w[i];
-				if (!R_FINITE(w[i])) w[i] = 0;
+				if (weight[i] <= 0) continue;
+				sum_matching += w[i] * weight[i];
+				num_matching += weight[i];
+				if (w[i] > 0)
+					w[i] = weight[i] / w[i];
 			}
 			if (out_match)
-				*out_match = psum / Num_Classifier;
+				*out_match = sum_matching / num_matching;
 		}
 
 		// sum up all probs among classifiers per HLA genotype
-		size_t wdim = wdim_pred_addprob;
-		GPU_RUN_KERNEL(gpu_kl_pred_addprob, 1, &wdim, &gpu_local_size_d1);
-		GPU_READ_MEM(mem_prob_buffer, sizeof(double)*num_size, out_prob);
+		{
+			size_t wdim = wdim_pred_addprob;
+			GPU_RUN_KERNEL(gpu_kl_pred_addprob, 1, &wdim, &gpu_local_size_d1);
+		}
+
+		GPU_READ_MEM(mem_prob_buffer, 0, sizeof(double)*num_size, out_prob);
 		// normalize out_prob
 		fmul_f64(out_prob, num_size, 1 / get_sum_f64(out_prob, num_size));
-*/
+
 	} else {
+		// host waits for GPU
+		gpu_finish();
+		gpu_free_events(3, events);
+
 		// using double in hosts to improve precision
 		GPU_MEM_MAP(M, float, mem_prob_buffer,
 			msize_prob_buffer_total/sizeof(float), true);
@@ -1008,7 +997,6 @@ void predict_avg_prob(const TGenotype geno[], const double weight[],
 		memset(out_prob, 0, sizeof(double)*num_size);
 		const float *p = M.ptr();
 		double sum_matching=0, num_matching=0;
-
 		for (int i=0; i < Num_Classifier; i++, p+=num_size)
 		{
 			if (weight[i] <= 0) continue;
@@ -1024,8 +1012,8 @@ void predict_avg_prob(const TGenotype geno[], const double weight[],
 					out_prob[k] += p[k] * w;
 			}
 		}
-
-		*out_match = sum_matching / num_matching;
+		if (out_match)
+			*out_match = sum_matching / num_matching;
 		fmul_f64(out_prob, num_size, 1 / get_sum_f64(out_prob, num_size));
 	}
 }
