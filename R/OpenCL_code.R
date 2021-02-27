@@ -174,8 +174,11 @@ __kernel void build_calc_prob(
 		if (i1 != i2) ff += ff;
 		ff *= exp_log_min_rare_freq[d];  // account for mutation and error rate
 		// update
-		int k = h2 + (h1 * ((n_hla << 1) - h1 - 1) >> 1);
-		atomic_fadd(&out_prob[num_hla_geno*ii + k], ff);
+		if (ff > 0)
+		{
+			int k = h2 + (h1 * ((n_hla << 1) - h1 - 1) >> 1);
+			atomic_fadd(&out_prob[num_hla_geno*ii + k], ff);
+		}
 	}
 }
 "
