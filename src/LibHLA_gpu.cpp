@@ -452,7 +452,7 @@ static cl_event gpu_write_mem(cl_mem buffer, bool blocking, size_t size,
 static void clear_prob_buffer(size_t size, cl_event *event)
 {
 #if defined(CL_VERSION_1_2) && 0
-	// don't know why clEnqueueFillBuffer failed with an error return on my AMD Radeon Pro 560X
+	// don't know why clEnqueueFillBuffer failed without an error return on my AMD Radeon Pro 560X
 	// so disable it
 	int zero = 0;
 	cl_int err = clEnqueueFillBuffer(gpu_command_queue, mem_prob_buffer,
