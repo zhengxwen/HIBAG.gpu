@@ -459,12 +459,15 @@ static cl_event gpu_write_mem(cl_mem buffer, bool blocking, size_t size,
 /// clear the memory buffer 'mem_prob_buffer'
 static void clear_prob_buffer(size_t size, cl_event *event)
 {
-#if defined(CL_VERSION_1_2) && 0
+#if defined(CL_VERSION_1_2)
 	int zero = 0;
 	cl_int err = clEnqueueFillBuffer(gpu_command_queue, mem_prob_buffer,
 		&zero, sizeof(zero), 0, size, 0, NULL, event);
 	if (err != CL_SUCCESS)
+	{
+		if (event) clReleaseEvent(*event);
 		throw err_text("clEnqueueFillBuffer() with mem_prob_buffer failed", err);
+	}
 	if (!event) gpu_finish();
 #else
 	if (size >= 4294967296)
