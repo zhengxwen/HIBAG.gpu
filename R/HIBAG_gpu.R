@@ -64,7 +64,9 @@
 		.packageEnv$prec_build, FALSE)
 
 	# determine max # of haplo
-	if (nsamp <= 1000L)
+	if (nsamp <= 250L)
+		build_haplo_nmax <- nsamp * 10L
+	else if (nsamp <= 1000L)
 		build_haplo_nmax <- nsamp * 5L
 	else if (nsamp <= 5000L)
 		build_haplo_nmax <- nsamp * 3L
@@ -392,6 +394,7 @@ hlaPredict_gpu <- function(object, snp,
 		"cl_khr_int64_base_atomics", "cl_khr_global_int64_base_atomics")
 	for (h in test_ext_lst)
 		showmsg(paste0("    EXTENSION ", h, ": ", .yesno(any(grepl(h, exts)))))
+	has_int64_atom <- any(grepl("cl_khr_int64_base_atomics", exts))
 
 	# support 64-bit floating-point numbers or not
 	dev_fp64 <- any(grepl("cl_khr_fp64", exts))
@@ -423,12 +426,20 @@ hlaPredict_gpu <- function(object, snp,
 		"double-precision floating-point numbers"))
 
 	# user-defined
-	if (is.na(use_double) & dev_fp64)
+	if (is.na(use_double) && dev_fp64)
 	{
 		f64_build <- FALSE
-		f64_pred  <- TRUE
-		showmsg(paste("By default, training uses 32-bit floating-point numbers in GPU",
-			"and prediction uses 64-bit floating-point numbers."))
+		f64_pred  <- has_int64_atom
+		if (f64_pred)
+		{
+			showmsg(paste("By default, training uses 32-bit floating-point numbers",
+				"in GPU and prediction uses 64-bit floating-point numbers",
+				"(since EXTENSION cl_khr_int64_base_atomics: YES)."))
+		} else {
+			showmsg(paste("By default, training and prediction both use 32-bit",
+				"floating-point numbers in GPU",
+				"(since EXTENSION cl_khr_int64_base_atomics: NO)."))
+		}
 	} else if (isTRUE(use_double))
 	{
 		if (!dev_fp64)

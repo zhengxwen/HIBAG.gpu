@@ -324,14 +324,6 @@ static const char *gpu_err_msg(const char *txt, int err)
 	return buf;
 }
 
-/// OpenCL call clWaitForEvents
-inline static void gpu_wait(cl_uint num_events, const cl_event event_list[])
-{
-	cl_int err= clWaitForEvents(num_events, event_list);
-	if (err != CL_SUCCESS)
-		throw gpu_err_msg("Failed to wait for the GPU event(s)", err);
-}
-
 /// OpenCL call clFinish
 inline static void gpu_finish()
 {
@@ -459,7 +451,9 @@ static cl_event gpu_write_mem(cl_mem buffer, bool blocking, size_t size,
 /// clear the memory buffer 'mem_prob_buffer'
 static void clear_prob_buffer(size_t size, cl_event *event)
 {
-#if defined(CL_VERSION_1_2)
+#if defined(CL_VERSION_1_2) && 0
+	// don't know why clEnqueueFillBuffer failed with an error return on my AMD Radeon Pro 560X
+	// so disable it
 	int zero = 0;
 	cl_int err = clEnqueueFillBuffer(gpu_command_queue, mem_prob_buffer,
 		&zero, sizeof(zero), 0, size, 0, NULL, event);
