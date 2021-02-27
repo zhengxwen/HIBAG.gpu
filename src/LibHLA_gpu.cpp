@@ -103,10 +103,8 @@ namespace HLA_LIB
 	// OpenCL memory objects
 
 	// parameters, int[] =
-	//   [ # of haplotypes, # of SNPs, starting sample index, offset, OOB accuracy, ... ]
-	static cl_mem mem_build_param = NULL;
-	// parameter offset
-	static const int offset_build_param = 5;
+	static cl_mem mem_build_idx_oob = NULL;
+	static cl_mem mem_build_idx_ib = NULL;
 
 	// SNP genotypes, TGenotype[]
 	static cl_mem mem_snpgeno = NULL;
@@ -612,7 +610,8 @@ void build_init(int nHLA, int nSample)
 	mem_prob_buffer = get_mem_env("mem_prob_buffer");
 	msize_prob_buffer_each = sz_hla *
 		(gpu_f64_build_flag ? sizeof(double) : sizeof(float));
-	mem_build_param = get_mem_env("mem_build_param");
+	mem_build_idx_oob = get_mem_env("mem_build_idx_oob");
+	mem_build_idx_ib = get_mem_env("mem_build_idx_ib");
 	mem_haplo_list = get_mem_env("mem_haplo_list");
 	mem_snpgeno = get_mem_env("mem_snpgeno");
 	build_haplo_nmax = Rf_asInteger(get_var_env("build_haplo_nmax"));
@@ -633,28 +632,35 @@ void build_init(int nHLA, int nSample)
 	}
 
 	// arguments for build_calc_prob
+	int zero = 0;
 	GPU_SETARG(gpu_kl_build_calc_prob, 0, mem_prob_buffer);
-	GPU_SETARG(gpu_kl_build_calc_prob, 1, nHLA);
-	GPU_SETARG(gpu_kl_build_calc_prob, 2, sz_hla);
-	GPU_SETARG(gpu_kl_build_calc_prob, 3, mem_rare_freq);
-	GPU_SETARG(gpu_kl_build_calc_prob, 4, mem_build_param);
-	GPU_SETARG(gpu_kl_build_calc_prob, 5, mem_haplo_list);
-	GPU_SETARG(gpu_kl_build_calc_prob, 6, mem_snpgeno);
+	GPU_SETARG(gpu_kl_build_calc_prob, 1, mem_rare_freq);
+	GPU_SETARG(gpu_kl_build_calc_prob, 2, nHLA);
+	GPU_SETARG(gpu_kl_build_calc_prob, 3, sz_hla);
+	GPU_SETARG(gpu_kl_build_calc_prob, 4, zero);  // n_haplo
+	GPU_SETARG(gpu_kl_build_calc_prob, 5, zero);  // n_snp
+	GPU_SETARG(gpu_kl_build_calc_prob, 6, zero);  // start_sample_idx
+	GPU_SETARG(gpu_kl_build_calc_prob, 7, mem_build_idx_oob);  // mem_build_idx_oob or mem_build_idx_ib
+	GPU_SETARG(gpu_kl_build_calc_prob, 8, mem_haplo_list);
+	GPU_SETARG(gpu_kl_build_calc_prob, 9, mem_snpgeno);
 
 	// arguments for gpu_kl_build_calc_oob (out-of-bag)
-	GPU_SETARG(gpu_kl_build_calc_oob, 0, mem_build_param);
-	GPU_SETARG(gpu_kl_build_calc_oob, 1, sz_hla);
-	GPU_SETARG(gpu_kl_build_calc_oob, 2, mem_prob_buffer);
-	GPU_SETARG(gpu_kl_build_calc_oob, 3, mem_build_hla_idx_map);
-	GPU_SETARG(gpu_kl_build_calc_oob, 4, mem_snpgeno);
+	GPU_SETARG(gpu_kl_build_calc_oob, 0, mem_build_output);
+	GPU_SETARG(gpu_kl_build_calc_oob, 1, zero);  // start_sample_idx
+	GPU_SETARG(gpu_kl_build_calc_oob, 2, sz_hla);
+	GPU_SETARG(gpu_kl_build_calc_oob, 3, mem_prob_buffer);
+	GPU_SETARG(gpu_kl_build_calc_oob, 4, mem_build_hla_idx_map);
+	GPU_SETARG(gpu_kl_build_calc_oob, 5, mem_build_idx_oob);
+	GPU_SETARG(gpu_kl_build_calc_oob, 6, mem_snpgeno);
 
 	// arguments for gpu_kl_build_calc_ib (in-bag)
 	GPU_SETARG(gpu_kl_build_calc_ib, 0, mem_build_output);
-	GPU_SETARG(gpu_kl_build_calc_ib, 1, nHLA);
-	GPU_SETARG(gpu_kl_build_calc_ib, 2, sz_hla);
-	GPU_SETARG(gpu_kl_build_calc_ib, 3, mem_build_param);
-	GPU_SETARG(gpu_kl_build_calc_ib, 4, mem_snpgeno);
-	GPU_SETARG(gpu_kl_build_calc_ib, 5, mem_prob_buffer);
+	GPU_SETARG(gpu_kl_build_calc_ib, 1, zero);  // start_sample_idx
+	GPU_SETARG(gpu_kl_build_calc_ib, 2, nHLA);
+	GPU_SETARG(gpu_kl_build_calc_ib, 3, sz_hla);
+	GPU_SETARG(gpu_kl_build_calc_ib, 4, mem_prob_buffer);
+	GPU_SETARG(gpu_kl_build_calc_ib, 5, mem_build_idx_ib);
+	GPU_SETARG(gpu_kl_build_calc_ib, 6, mem_snpgeno);
 
 	// arguments for gpu_kl_build_clear_mem
 	GPU_SETARG(gpu_kl_clear_mem, 1, mem_prob_buffer);
@@ -665,16 +671,17 @@ void build_done()
 {
 	gpu_kl_build_calc_prob = gpu_kl_build_calc_oob =
 		gpu_kl_build_calc_ib = gpu_kl_clear_mem = NULL;
-	mem_build_param = mem_snpgeno = mem_build_output =
+	mem_build_idx_oob = mem_build_idx_ib = mem_snpgeno = mem_build_output =
 		mem_haplo_list = mem_build_hla_idx_map = mem_prob_buffer = NULL;
 }
 
 void build_set_bootstrap(const int oob_cnt[])
 {
-	GPU_MEM_MAP(M, int, mem_build_param, offset_build_param + 2*Num_Sample, false);
-	int *p_oob = M.ptr() + offset_build_param;
-	int *p_ib  = p_oob + Num_Sample;
-	build_num_oob = build_num_ib  = 0;
+	GPU_MEM_MAP(Moob, int, mem_build_idx_oob, Num_Sample, false);
+	GPU_MEM_MAP(Mib, int, mem_build_idx_ib, Num_Sample, false);
+	int *p_oob = Moob.ptr();
+	int *p_ib  = Mib.ptr();
+	build_num_oob = build_num_ib = 0;
 	for (int i=0; i < Num_Sample; i++)
 	{
 		if (oob_cnt[i] <= 0)
@@ -708,30 +715,35 @@ int build_acc_oob()
 	if (build_num_oob > mem_sample_nmax)
 		throw "Too many sample out of the limit of GPU memory, please contact the package author.";
 
-	cl_event events[4];
 	// initialize
-	{
-		clear_prob_buffer(msize_prob_buffer_each * build_num_oob, &events[0]);
-		int param[5] = { run_num_haplo, run_num_snp, 0, offset_build_param, 0 };
-		GPU_WRITE_EVENT(events[1], mem_build_param, sizeof(param), param);
-	}
+	cl_event events[4];
+	clear_prob_buffer(msize_prob_buffer_each * build_num_oob, &events[0]);
 
-	// run OpenCL (calculating probabilities)
+	// calculate probabilities
 	{
+		int zero = 0;
+		GPU_SETARG(gpu_kl_build_calc_prob, 4, run_num_haplo);  // n_haplo
+		GPU_SETARG(gpu_kl_build_calc_prob, 5, run_num_snp);    // n_snp
+		GPU_SETARG(gpu_kl_build_calc_prob, 6, zero);           // start_sample_idx
+		GPU_SETARG(gpu_kl_build_calc_prob, 7, mem_build_idx_oob);
 		size_t wdims[3] =
 			{ (size_t)build_num_oob, (size_t)wdim_num_haplo, (size_t)wdim_num_haplo };
 		size_t local_size[3] =
 			{ 1, gpu_local_size_d2, gpu_local_size_d2 };
 		GPU_RUN_KERNEL_EVENT(gpu_kl_build_calc_prob, 3, wdims, local_size,
-			2, events, &events[2]);
+			1, events, &events[1]);
 	}
 
-	// find max index
+	// calculate OOB error count
 	{
+		int zero = 0;  // initialize total error count
+		GPU_WRITE_EVENT(events[2], mem_build_output, sizeof(zero), &zero);
+
+		GPU_SETARG(gpu_kl_build_calc_oob, 1, zero);  // start_sample_idx
 		size_t wdims[2] = { gpu_const_local_size, (size_t)build_num_oob };
 		size_t local_size[2] = { gpu_const_local_size, 1 };
 		GPU_RUN_KERNEL_EVENT(gpu_kl_build_calc_oob, 2, wdims, local_size,
-			1, &events[2], &events[3]);
+			2, &events[1], &events[3]);
 	}
 
 	// host waits for GPU
@@ -740,7 +752,7 @@ int build_acc_oob()
 
 	// read output
 	int err_cnt;
-	GPU_READ_MEM(mem_build_param, sizeof(int)*4, sizeof(int), &err_cnt);
+	GPU_READ_MEM(mem_build_output, 0, sizeof(int), &err_cnt);
 	return build_num_oob*2 - err_cnt;
 }
 
@@ -751,22 +763,21 @@ double build_acc_ib()
 	if (build_num_ib > mem_sample_nmax)
 		throw "Too many sample out of the limit of GPU memory, please contact the package author.";
 
-	cl_event events[4];
 	// initialize
-	{
-		clear_prob_buffer(msize_prob_buffer_each * build_num_ib, &events[0]);
-		int param[4] = { run_num_haplo, run_num_snp, 0, offset_build_param+Num_Sample };
-		GPU_WRITE_EVENT(events[1], mem_build_param, sizeof(param), param);
-	}
+	cl_event events[3];
+	clear_prob_buffer(msize_prob_buffer_each * build_num_ib, &events[0]);
 
 	// run OpenCL (calculating probabilities)
 	{
+		int zero = 0;
+		GPU_SETARG(gpu_kl_build_calc_prob, 6, zero);  // start_sample_idx
+		GPU_SETARG(gpu_kl_build_calc_prob, 7, mem_build_idx_ib);
 		size_t wdims[3] =
 			{ (size_t)build_num_ib, (size_t)wdim_num_haplo, (size_t)wdim_num_haplo };
 		size_t local_size[3] =
 			{ 1, gpu_local_size_d2, gpu_local_size_d2 };
 		GPU_RUN_KERNEL_EVENT(gpu_kl_build_calc_prob, 3, wdims, local_size,
-			2, events, &events[2]);
+			1, events, &events[1]);
 	}
 
 	// get sum of prob for each sample
@@ -774,12 +785,12 @@ double build_acc_ib()
 		size_t wdims[2] = { gpu_const_local_size, (size_t)build_num_ib };
 		size_t local_size[2] = { gpu_const_local_size, 1 };
 		GPU_RUN_KERNEL_EVENT(gpu_kl_build_calc_ib, 2, wdims, local_size,
-			1, &events[2], &events[3]);
+			1, &events[1], &events[2]);
 	}
 
 	// host waits for GPU
 	gpu_finish();
-	gpu_free_events(4, events);
+	gpu_free_events(3, events);
 
 	// sum of log likelihood
 	double LogLik = 0;

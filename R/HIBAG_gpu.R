@@ -51,15 +51,12 @@
 	size_hla <- nhla * (nhla+1L) / 2L
 	
 	# allocate
-	.packageEnv$mem_build_param <- .gpu_create_mem(offset_param + 2L*nsamp,
-		"integer", TRUE)
-
+	.packageEnv$mem_build_idx_oob <- .gpu_create_mem(nsamp, "integer", TRUE)
+	.packageEnv$mem_build_idx_ib  <- .gpu_create_mem(nsamp, "integer", TRUE)
 	.packageEnv$mem_snpgeno <- .gpu_create_mem(nsamp*sizeof_TGenotype / 4L,
 		"integer", TRUE)
-
 	.packageEnv$mem_build_hla_idx_map <- .gpu_create_mem(size_hla,
 		"integer", TRUE)
-
 	.packageEnv$mem_build_output <- .gpu_create_mem(nsamp,
 		.packageEnv$prec_build, FALSE)
 
@@ -100,14 +97,15 @@
 .gpu_build_free_memory <- function()
 {
 	HIBAG:::.hlaClearGPU()
-	.Call(gpu_free_memory, .packageEnv$mem_build_param)
+	.Call(gpu_free_memory, .packageEnv$mem_build_idx_oob)
+	.Call(gpu_free_memory, .packageEnv$mem_build_idx_ib)
 	.Call(gpu_free_memory, .packageEnv$mem_snpgeno)
 	.Call(gpu_free_memory, .packageEnv$mem_build_hla_idx_map)
 	.Call(gpu_free_memory, .packageEnv$mem_build_output)
 	.Call(gpu_free_memory, .packageEnv$mem_haplo_list)
 	.Call(gpu_free_memory, .packageEnv$mem_prob_buffer)
 	remove(
-		mem_build_param, mem_snpgeno, mem_build_hla_idx_map,
+		mem_build_idx_oob, mem_build_idx_ib, mem_snpgeno, mem_build_hla_idx_map,
 		mem_build_output, mem_haplo_list, mem_prob_buffer,
 		build_haplo_nmax, build_sample_nmax,
 		envir=.packageEnv)
