@@ -142,7 +142,8 @@ namespace HLA_LIB
 
 
 	// used for work-group size (1-dim and 2-dim)
-	static size_t gpu_const_local_size = 64;
+	static size_t GPU_LOCAL_IWORK_MAX = 64;
+	static size_t gpu_const_local_size = GPU_LOCAL_IWORK_MAX;
 	static size_t gpu_local_size_d1 = 64;  // will be determined automatically
 	static size_t gpu_local_size_d2 = 8;   // will be determined automatically
 
