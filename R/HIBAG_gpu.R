@@ -424,7 +424,7 @@ hlaPredict_gpu <- function(object, snp,
 		"double-precision floating-point numbers"))
 
 	# user-defined precision in training
-	if (train_prec == "auto") train_prec <- "single"
+	if (train_prec == "auto") train_prec <- "mixed"
 	if (train_prec == "double")
 	{
 		if (!dev_fp64)
