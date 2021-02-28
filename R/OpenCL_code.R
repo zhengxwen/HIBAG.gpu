@@ -47,8 +47,14 @@ code_macro <- "
 "
 
 
+code_hamm_dist_max <- c(
+	`double` = "#define HAMM_DIST_MAX    64",
+	`single` = "#define HAMM_DIST_MAX    9",
+	`mixed`  = "#define HAMM_DIST_MAX    5",
+	`half`   = "#define HAMM_DIST_MAX    2")
+
+
 code_atomic_add_f32 <- "
-#define HAMM_DIST_MAX        9
 #define OFFSET_HAPLO_FREQ    24
 
 #pragma OPENCL EXTENSION cl_khr_global_int32_base_atomics : enable
@@ -69,7 +75,6 @@ inline static void atomic_fadd(volatile __global float *addr, float val)
 "
 
 code_atomic_add_f64 <- "
-#define HAMM_DIST_MAX        64
 #define OFFSET_HAPLO_FREQ    16
 
 #pragma OPENCL EXTENSION cl_khr_int64_base_atomics : enable

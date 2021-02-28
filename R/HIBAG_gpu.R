@@ -261,7 +261,7 @@ hlaAttrBagging_gpu <- function(hla, snp, nclassifier=100,
 		cat("# of SNPs: ", n.snp, ", # of samples: ", n.samp, "\n", sep="")
         s <- ifelse(!grepl("^KIR", hla$locus), "HLA", "KIR")
         cat("# of unique ", s, " alleles: ", n.hla, "\n", sep="")
-		cat("using ", .packageEnv$prec_build,
+		cat("using ", .packageEnv$prec_build_d,
 			"-precision floating-point numbers in GPU computing\n", sep="")
 	}
 
@@ -365,7 +365,7 @@ hlaPredict_gpu <- function(object, snp,
 }
 
 # initialize GPU device
-.gpu_init <- function(device, use_double, force, dev_idx, showmsg)
+.gpu_init <- function(device, train_prec, predict_prec, dev_idx, showmsg)
 {
 	# show information
 	info <- oclInfo(device)
@@ -399,7 +399,8 @@ hlaPredict_gpu <- function(object, snp,
 	{
 		# also need cl_khr_int64_base_atomics : enable
 		dev_fp64 <- tryCatch({
-			k <- .new_kernel("build_calc_prob", c(code_atomic_add_f64, code_macro,
+			k <- .new_kernel("build_calc_prob", c(
+				code_macro, code_hamm_dist_max["double"], code_atomic_add_f64,
 				code_hamming_dist, code_build_calc_prob), "double")
 			TRUE
 		}, error=function(e) FALSE)
@@ -422,47 +423,78 @@ hlaPredict_gpu <- function(object, snp,
 	showmsg(paste("GPU device", ifelse(dev_fp64, "supports", "does not support"),
 		"double-precision floating-point numbers"))
 
-	# user-defined
-	if (is.na(use_double) && dev_fp64)
-	{
-		f64_build <- FALSE
-		f64_pred  <- has_int64_atom
-		if (f64_pred)
-		{
-			showmsg(paste("By default, training uses 32-bit floating-point numbers",
-				"in GPU and prediction uses 64-bit floating-point numbers",
-				"(since EXTENSION cl_khr_int64_base_atomics: YES)."))
-		} else {
-			showmsg(paste("By default, training and prediction both use 32-bit",
-				"floating-point numbers in GPU",
-				"(since EXTENSION cl_khr_int64_base_atomics: NO)."))
-		}
-	} else if (isTRUE(use_double))
+	# user-defined precision in training
+	if (train_prec == "auto") train_prec <- "single"
+	if (train_prec == "double")
 	{
 		if (!dev_fp64)
 		{
 			stop("Unable to use 64-bit floating-point numbers in GPU computing.",
 				call.=FALSE)
 		}
-		f64_build <- f64_pred <- TRUE
-		showmsg("Training and prediction both use 64-bit floating-point numbers in GPU.")
-	} else {
+		f64_build <- TRUE
+		showmsg("Training uses 64-bit floating-point numbers in GPU")
+	} else if (train_prec == "single")
+	{
 		f64_build <- FALSE
-		f64_pred  <- FALSE
-		showmsg("Training and prediction both use 32-bit floating-point numbers in GPU.")
-	}
+		showmsg("Training uses 32-bit floating-point numbers in GPU")
+	} else if (train_prec == "mixed")
+	{
+		f64_build <- FALSE
+		showmsg("Training uses a mixed precision between half and float in GPU")
+	} else if (train_prec == "half")
+	{
+		f64_build <- FALSE
+		showmsg("Training uses half precision in GPU")
+	} else
+		stop("Invalid 'train_prec'.")
+
+	# user-defined precision in prediction
+	if (predict_prec == "auto")
+	{
+		if (has_int64_atom)
+		{
+			predict_prec <- "double"
+			f64_pred <- TRUE
+			showmsg(paste(
+				"By default, prediction uses 64-bit floating-point numbers",
+				"(since EXTENSION cl_khr_int64_base_atomics: YES)."))
+		} else {
+			predict_prec <- "single"
+			f64_pred <- FALSE
+			showmsg(paste(
+				"By default, prediction uses 32-bit floating-point numbers in GPU",
+				"(since EXTENSION cl_khr_int64_base_atomics: NO)."))
+		}
+	} else if (predict_prec == "double")
+	{
+		if (!dev_fp64)
+		{
+			stop("Unable to use 64-bit floating-point numbers in GPU computing.",
+				call.=FALSE)
+		}
+		f64_pred <- TRUE
+		showmsg("Prediction uses 64-bit floating-point numbers in GPU.")
+	} else if (predict_prec == "single")
+	{
+		f64_pred <- FALSE
+		showmsg("Prediction uses 32-bit floating-point numbers in GPU.")
+	} else
+		stop("Invalid 'predict_prec'.")
 
 	## build OpenCL kernels ##
 
 	.packageEnv$flag_build_f64 <- f64_build
 	.packageEnv$flag_pred_f64  <- f64_pred
 	.packageEnv$prec_build   <- prec_build   <- ifelse(f64_build, "double", "single")
+	.packageEnv$prec_build_d <- train_prec
 	.packageEnv$prec_predict <- prec_predict <- ifelse(f64_pred,  "double", "single")
 
 	## build kernels for constructing classifiers
 	.packageEnv$kernel_build_calc_prob <- .new_kernel("build_calc_prob",
-		c(if (f64_build) code_atomic_add_f64 else code_atomic_add_f32,
-			code_macro, code_hamming_dist, code_build_calc_prob), prec_build)
+		c(code_macro, code_hamm_dist_max[train_prec],
+		if (f64_build) code_atomic_add_f64 else code_atomic_add_f32,
+		code_hamming_dist, code_build_calc_prob), prec_build)
 	.packageEnv$kernel_build_calc_oob <- .new_kernel("build_calc_oob",
 		c(code_macro, code_build_calc_oob), prec_build)
 	.packageEnv$kernel_build_calc_ib <- .new_kernel("build_calc_ib",
@@ -470,8 +502,9 @@ hlaPredict_gpu <- function(object, snp,
 
 	## build kernels for prediction
 	.packageEnv$kernel_pred_calc <- .new_kernel("pred_calc_prob",
-		c(if (f64_pred) code_atomic_add_f64 else code_atomic_add_f32,
-			code_macro, code_hamming_dist, code_pred_calc_prob), prec_predict)
+		c(code_macro, code_hamm_dist_max[predict_prec],
+		if (f64_pred) code_atomic_add_f64 else code_atomic_add_f32,
+		code_hamming_dist, code_pred_calc_prob), prec_predict)
 	.packageEnv$kernel_pred_sumprob <- .new_kernel("pred_calc_sumprob",
 		c(code_macro, code_pred_calc_sumprob), prec_predict)
 	.packageEnv$kernel_pred_addprob <- .new_kernel("pred_calc_addprob",
@@ -486,17 +519,20 @@ hlaPredict_gpu <- function(object, snp,
 	x[] <- fq
 	.packageEnv$mem_exp_log_min_rare_freq32 <- x
 
+	showmsg("")
 	invisible()
 }
 
 
 # initialize the internal GPU methods
-hlaGPU_Init <- function(device=NA_integer_, use_double=NA, force=FALSE, verbose=TRUE)
+hlaGPU_Init <- function(device=NA_integer_,
+	train_prec=c("auto", "half", "mixed", "single", "double"),
+	predict_prec=c("auto", "single", "double"), verbose=TRUE)
 {
 	# check
 	stopifnot(is.numeric(device) | inherits(device, "clDeviceID"))
-	stopifnot(is.logical(use_double), length(use_double)==1L)
-	stopifnot(is.logical(force), length(force)==1L)
+	train_prec <- match.arg(train_prec)
+	predict_prec <- match.arg(predict_prec)
 	stopifnot(is.logical(verbose), length(verbose)==1L)
 
 	if (is.na(device))
@@ -519,7 +555,7 @@ hlaGPU_Init <- function(device=NA_integer_, use_double=NA, force=FALSE, verbose=
 		num <- 0L
 	}
 
-	.gpu_init(device, use_double, force, num,
+	.gpu_init(device, train_prec, predict_prec, num,
 		ifelse(verbose, message, function(x) {}))
 
 	invisible()
@@ -585,7 +621,7 @@ hlaGPU_Init <- function(device=NA_integer_, use_double=NA, force=FALSE, verbose=
 				stop("Need the OpenCL extension cl_khr_global_int32_base_atomics.")
 			# initialize
 			.packageEnv$gpu_init_dev_idx <- i
-			.gpu_init(dev, NA, FALSE, i, showmsg)
+			.gpu_init(dev, "auto", "auto", i, showmsg)
 			TRUE
 		}, error=function(cond) {
 			showmsg(cond)
