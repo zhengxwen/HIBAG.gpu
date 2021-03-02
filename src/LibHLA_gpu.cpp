@@ -698,16 +698,29 @@ void build_set_haplo_geno(const THaplotype haplo[], int n_haplo,
 	if (n_haplo > build_haplo_nmax)
 		throw "Too many haplotypes out of the limit, please contact the package author.";
 
+	cl_event events[2];
+	GPU_WRITE_EVENT(events[0], mem_haplo_list, sizeof(THaplotype)*n_haplo, (void*)haplo);
+	GPU_WRITE_EVENT(events[1], mem_snpgeno, sizeof(TGenotype)*Num_Sample, (void*)geno);
+
 	run_num_snp = n_snp;
 	run_num_haplo = wdim_num_haplo = n_haplo;
 	if (wdim_num_haplo % gpu_local_size_d2)
 		wdim_num_haplo = (wdim_num_haplo/gpu_local_size_d2 + 1)*gpu_local_size_d2;
 
-	const size_t sz_haplo = sizeof(THaplotype)*n_haplo;
-	GPU_WRITE_MEM(mem_haplo_list, sz_haplo, (void*)haplo);
+	double sum = 0;
+	for (int i=0; i < n_haplo; i++) sum += haplo[i].Freq;
+	sum = sum / n_haplo;
+	double run_aux_log_freq2 = log(sum * sum);
+	if (gpu_f64_build_flag)
+	{
+		GPU_SETARG(gpu_kl_build_calc_ib, 7, run_aux_log_freq2)
+	} else {
+		float run_aux_log_freq2_f32 = run_aux_log_freq2;
+		GPU_SETARG(gpu_kl_build_calc_ib, 7, run_aux_log_freq2_f32)
+	}
 
-	const size_t sz_geno = sizeof(TGenotype)*Num_Sample;
-	GPU_WRITE_MEM(mem_snpgeno, sz_geno, (void*)geno);
+	gpu_finish();
+	gpu_free_events(2, events);
 }
 
 int build_acc_oob()

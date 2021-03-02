@@ -498,7 +498,7 @@ hlaPredict_gpu <- function(object, snp,
 	.packageEnv$kernel_build_calc_oob <- .new_kernel("build_calc_oob",
 		c(code_macro, code_build_calc_oob), prec_build)
 	.packageEnv$kernel_build_calc_ib <- .new_kernel("build_calc_ib",
-		c(code_macro, code_build_calc_ib), prec_build)
+		c(code_macro, code_hamm_dist_max[train_prec], code_build_calc_ib), prec_build)
 
 	## build kernels for prediction
 	.packageEnv$kernel_pred_calc <- .new_kernel("pred_calc_prob",

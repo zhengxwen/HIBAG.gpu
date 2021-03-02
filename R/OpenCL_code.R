@@ -268,9 +268,8 @@ code_build_calc_ib <- "
 __kernel void build_calc_ib(__global numeric *out_prob,
 	const int start_sample_idx,
 	const int n_hla, const int num_hla_geno,
-	__global const numeric *prob,
-	__global const int *p_idx,
-	__global const unsigned char *p_geno)
+	__global const numeric *prob, __global const int *p_idx,
+	__global const unsigned char *p_geno, const numeric aux_log_freq)
 {
 	__local numeric local_sum[LOCAL_IWORK_MAX];
 	const int localsize = get_local_size(0);
@@ -301,7 +300,13 @@ __kernel void build_calc_ib(__global numeric *out_prob,
 			int h2 = *(__global int *)(p + OFFSET_GENO_HLA_A2);  // aux_hla_type.Allele2
 			int k = h2 + (h1 * ((n_hla << 1) - h1 - 1) >> 1);
 			// log likelihood
-			sum = b * log(prob[k] / sum);
+			numeric pb = prob[k];
+			if (pb > 0)
+			{
+				sum = b * log(pb / sum);
+			} else {
+				sum = b * (-HAMM_DIST_MAX*10 + aux_log_freq - log(sum));
+			}
 		}
 		out_prob[i_samp] = sum;
 	}
