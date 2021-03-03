@@ -229,11 +229,11 @@ __kernel void build_calc_oob(__global int *out_err_cnt,
 		local_max[i] = max_pb;
 		local_idx[i] = max_idx;
 	}
-	barrier(CLK_LOCAL_MEM_FENCE);
 
 	// reduced, find max
 	for (int n=localsize>>1; n > 0; n >>= 1)
 	{
+		barrier(CLK_LOCAL_MEM_FENCE);
 		if (i < n)
 		{
 			if (local_max[i] < local_max[i+n])
@@ -242,7 +242,6 @@ __kernel void build_calc_oob(__global int *out_err_cnt,
 				local_idx[i] = local_idx[i+n];
 			}
 		}
-		barrier(CLK_LOCAL_MEM_FENCE);
 	}
 
 	if (i == 0)
@@ -294,13 +293,12 @@ __kernel void build_calc_ib(__global numeric *out_prob,
 	for (int k=i; k < num_hla_geno; k+=localsize)
 		sum += prob[k];
 	if (i < localsize) local_sum[i] = sum;
-	barrier(CLK_LOCAL_MEM_FENCE);
 
 	// reduced sum of local_sum
 	for (int n=localsize>>1; n > 0; n >>= 1)
 	{
-		if (i < n) local_sum[i] += local_sum[i + n];
 		barrier(CLK_LOCAL_MEM_FENCE);
+		if (i < n) local_sum[i] += local_sum[i + n];
 	}
 
 	if (i == 0)
@@ -412,13 +410,12 @@ __kernel void pred_calc_sumprob(__global numeric *out_sum, const int num_hla_gen
 	for (int k=i; k < num_hla_geno; k+=localsize)
 		sum += prob[k];
 	local_sum[i] = sum;
-	barrier(CLK_LOCAL_MEM_FENCE);
 
 	// reduced sum of local_sum
 	for (int n=localsize>>1; n > 0; n >>= 1)
 	{
-		if (i < n) local_sum[i] += local_sum[i + n];
 		barrier(CLK_LOCAL_MEM_FENCE);
+		if (i < n) local_sum[i] += local_sum[i + n];
 	}
 
 	if (i == 0)
