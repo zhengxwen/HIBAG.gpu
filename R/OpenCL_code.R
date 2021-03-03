@@ -288,12 +288,18 @@ __kernel void build_calc_ib(__global numeric *out_prob,
 	for (int k=i; k < num_hla_geno; k+=localsize)
 		sum += prob[k];
 	if (i < localsize) local_sum[i] = sum;
-
 	barrier(CLK_LOCAL_MEM_FENCE);
+
+	// reduced sum of local_sum
+	for (int n=localsize>>1; n > 0; n >>= 1)
+	{
+		if (i < n) local_sum[i] += local_sum[i + n];
+		barrier(CLK_LOCAL_MEM_FENCE);
+	}
+
 	if (i == 0)
 	{
-		sum = 0;
-		for (int j=0; j < localsize; j++) sum += local_sum[j];
+		sum = local_sum[0];
 		if (sum > 0)
 		{
 			// TGenotype
