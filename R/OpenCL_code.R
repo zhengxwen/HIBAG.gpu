@@ -400,7 +400,7 @@ __kernel void pred_calc_sumprob(__global numeric *out_sum, const int num_hla_gen
 	__global const numeric *prob)
 {
 	__local TFLOAT local_sum[LOCAL_IWORK_MAX];
-	const int localsize = get_local_size(0);
+	const int localsize = get_local_size(0);  // localsize <= LOCAL_IWORK_MAX
 
 	const int i = get_local_id(0);
 	if (i >= localsize) return;
@@ -412,14 +412,17 @@ __kernel void pred_calc_sumprob(__global numeric *out_sum, const int num_hla_gen
 	for (int k=i; k < num_hla_geno; k+=localsize)
 		sum += prob[k];
 	local_sum[i] = sum;
-
 	barrier(CLK_LOCAL_MEM_FENCE);
-	if (i == 0)
+
+	// reduced sum of local_sum
+	for (int n=localsize>>1; n > 0; n >>= 1)
 	{
-		sum = 0;
-		for (int i=0; i < localsize; i++) sum += local_sum[i];
-		out_sum[i_cfr] = sum;
+		if (i < n) local_sum[i] += local_sum[i + n];
+		barrier(CLK_LOCAL_MEM_FENCE);
 	}
+
+	if (i == 0)
+		out_sum[i_cfr] = local_sum[0];
 }
 "
 
