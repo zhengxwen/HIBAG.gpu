@@ -265,20 +265,26 @@ __kernel void build_calc_oob(__global int *out_err_cnt,
 
 
 code_build_calc_ib <- "
+#ifdef USE_SUM_DOUBLE
+#   define TFLOAT    double
+#else
+#   define TFLOAT    numeric
+#endif
+
 __kernel void build_calc_ib(__global numeric *out_prob,
 	const int start_sample_idx,
 	const int n_hla, const int num_hla_geno,
 	__global const numeric *prob, __global const int *p_idx,
 	__global const unsigned char *p_geno, const numeric aux_log_freq)
 {
-	__local numeric local_sum[LOCAL_IWORK_MAX];
+	__local TFLOAT local_sum[LOCAL_IWORK_MAX];
 	const int localsize = get_local_size(0);
 
 	const int i = get_local_id(0);
 	const int i_samp = get_global_id(1);
 	prob += num_hla_geno * i_samp;
 
-	numeric sum = 0;
+	TFLOAT sum = 0;
 	for (int k=i; k < num_hla_geno; k+=localsize)
 		sum += prob[k];
 	if (i < localsize) local_sum[i] = sum;

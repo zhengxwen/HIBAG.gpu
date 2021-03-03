@@ -394,7 +394,7 @@ hlaPredict_gpu <- function(object, snp,
 	has_int64_atom <- any(grepl("cl_khr_int64_base_atomics", exts))
 
 	# support 64-bit floating-point numbers or not
-	dev_fp64 <- any(grepl("cl_khr_fp64", exts))
+	dev_fp64 <- dev_fp64_ori <- any(grepl("cl_khr_fp64", exts))
 	if (dev_fp64)
 	{
 		# also need cl_khr_int64_base_atomics : enable
@@ -498,7 +498,8 @@ hlaPredict_gpu <- function(object, snp,
 	.packageEnv$kernel_build_calc_oob <- .new_kernel("build_calc_oob",
 		c(code_macro, code_build_calc_oob), prec_build)
 	.packageEnv$kernel_build_calc_ib <- .new_kernel("build_calc_ib",
-		c(code_macro, code_hamm_dist_max[train_prec], code_build_calc_ib), prec_build)
+		c(ifelse(dev_fp64_ori, "#define USE_SUM_DOUBLE", ""),
+		code_macro, code_hamm_dist_max[train_prec], code_build_calc_ib), prec_build)
 
 	## build kernels for prediction
 	.packageEnv$kernel_pred_calc <- .new_kernel("pred_calc_prob",
