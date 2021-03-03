@@ -418,8 +418,9 @@ hlaPredict_gpu <- function(object, snp,
 	showmsg(paste0("    CL_DEVICE_MAX_WORK_GROUP_SIZE: ", pm[[4L]]))
 	showmsg(paste0("    CL_DEVICE_MAX_WORK_ITEM_DIMENSIONS: ", pm[[5L]]))
 	showmsg(paste0("    CL_DEVICE_MAX_WORK_ITEM_SIZES: ", paste(pm[[6L]], collapse=",")))
-	showmsg(paste0("    CL_KERNEL_WORK_GROUP_SIZE: ", pm[[7L]]))
-	showmsg(paste0("    CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE: ", pm[[8L]]))
+	showmsg(paste0("    CL_DEVICE_ADDRESS_BITS: ", pm[[7L]]))
+	showmsg(paste0("    CL_KERNEL_WORK_GROUP_SIZE: ", pm[[8L]]))
+	showmsg(paste0("    CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE: ", pm[[9L]]))
 	showmsg(paste("GPU device", ifelse(dev_fp64, "supports", "does not support"),
 		"double-precision floating-point numbers"))
 
@@ -462,9 +463,14 @@ hlaPredict_gpu <- function(object, snp,
 		} else {
 			predict_prec <- "single"
 			f64_pred <- FALSE
-			showmsg(paste(
-				"By default, prediction uses 32-bit floating-point numbers in GPU",
-				"(since EXTENSION cl_khr_int64_base_atomics: NO)."))
+			if (dev_fp64)
+			{
+				showmsg(paste(
+					"By default, prediction uses 32-bit floating-point numbers in GPU",
+					"(since EXTENSION cl_khr_int64_base_atomics: NO)."))
+			} else {
+				showmsg("Prediction uses 32-bit floating-point numbers in GPU.")
+			}
 		}
 	} else if (predict_prec == "double")
 	{

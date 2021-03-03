@@ -1141,6 +1141,8 @@ SEXP gpu_get_param()
 	GET_DEV_INFO(size_t, CL_DEVICE_MAX_WORK_GROUP_SIZE, gl_max_worksize)
 	int gl_max_workdim = NA_INTEGER;
 	GET_DEV_INFO(cl_uint, CL_DEVICE_MAX_WORK_ITEM_DIMENSIONS, gl_max_workdim)
+	int gl_addr_bits = NA_INTEGER;
+	GET_DEV_INFO(cl_uint, CL_DEVICE_ADDRESS_BITS, gl_addr_bits)
 
 	size_t gl_max_work_item_sizes[128] =
 		{ (size_t)NA_INTEGER, (size_t)NA_INTEGER, (size_t)NA_INTEGER };
@@ -1150,7 +1152,7 @@ SEXP gpu_get_param()
 	int ws = get_kernel_param(dev, k, CL_KERNEL_WORK_GROUP_SIZE);
 	int mt = get_kernel_param(dev, k, CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE);
 
-	SEXP rv_ans = PROTECT(NEW_LIST(8));
+	SEXP rv_ans = PROTECT(NEW_LIST(9));
 	SET_ELEMENT(rv_ans, 0, Rf_ScalarReal(gl_mem_sz));
 	SET_ELEMENT(rv_ans, 1, Rf_ScalarReal(gl_mem_alloc_sz));
 	SET_ELEMENT(rv_ans, 2, Rf_ScalarInteger(gl_n_unit));
@@ -1163,8 +1165,9 @@ SEXP gpu_get_param()
 	INTEGER(p_wis)[2] = gl_max_work_item_sizes[2];
 	SET_ELEMENT(rv_ans, 5, p_wis);
 
-	SET_ELEMENT(rv_ans, 6, Rf_ScalarInteger(ws));
-	SET_ELEMENT(rv_ans, 7, Rf_ScalarInteger(mt));
+	SET_ELEMENT(rv_ans, 6, Rf_ScalarInteger(gl_addr_bits));
+	SET_ELEMENT(rv_ans, 7, Rf_ScalarInteger(ws));
+	SET_ELEMENT(rv_ans, 8, Rf_ScalarInteger(mt));
 	UNPROTECT(1);
 	return rv_ans;
 }
