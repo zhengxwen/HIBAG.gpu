@@ -212,7 +212,7 @@ __kernel void build_calc_oob(__global int *out_err_cnt,
 	__local numeric local_max[LOCAL_IWORK_MAX];
 	__local int     local_idx[LOCAL_IWORK_MAX];
 
-	const int localsize = get_local_size(0);
+	const int localsize = get_local_size(0);  // localsize <= LOCAL_IWORK_MAX
 	const int i = get_local_id(0);
 	const int i_samp = get_global_id(1);
 	prob += num_hla_geno * i_samp;
@@ -229,19 +229,25 @@ __kernel void build_calc_oob(__global int *out_err_cnt,
 		local_max[i] = max_pb;
 		local_idx[i] = max_idx;
 	}
-
 	barrier(CLK_LOCAL_MEM_FENCE);
-	if (i == 0)
+
+	// reduced, find max
+	for (int n=localsize>>1; n > 0; n >>= 1)
 	{
-		max_pb = 0; max_idx = -1;
-		for (int j=0; j < localsize; j++)
+		if (i < n)
 		{
-			if (max_pb < local_max[j])
+			if (local_max[i] < local_max[i+n])
 			{
-				max_pb = local_max[j];
-				max_idx = local_idx[j];
+				local_max[i] = local_max[i+n];
+				local_idx[i] = local_idx[i+n];
 			}
 		}
+		barrier(CLK_LOCAL_MEM_FENCE);
+	}
+
+	if (i == 0)
+	{
+		max_idx = local_idx[0];
 		if (max_idx >= 0)
 		{
 			// true alleles
@@ -278,7 +284,7 @@ __kernel void build_calc_ib(__global numeric *out_prob,
 	__global const unsigned char *p_geno, const numeric aux_log_freq)
 {
 	__local TFLOAT local_sum[LOCAL_IWORK_MAX];
-	const int localsize = get_local_size(0);
+	const int localsize = get_local_size(0);  // localsize <= LOCAL_IWORK_MAX
 
 	const int i = get_local_id(0);
 	const int i_samp = get_global_id(1);
