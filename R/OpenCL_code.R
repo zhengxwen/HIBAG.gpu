@@ -378,10 +378,16 @@ __kernel void pred_calc_prob(
 
 
 code_pred_calc_sumprob <- "
+#ifdef USE_SUM_DOUBLE
+#   define TFLOAT    double
+#else
+#   define TFLOAT    numeric
+#endif
+
 __kernel void pred_calc_sumprob(__global numeric *out_sum, const int num_hla_geno,
 	__global const numeric *prob)
 {
-	__local numeric local_sum[LOCAL_IWORK_MAX];
+	__local TFLOAT local_sum[LOCAL_IWORK_MAX];
 	const int localsize = get_local_size(0);
 
 	const int i = get_local_id(0);
@@ -390,7 +396,7 @@ __kernel void pred_calc_sumprob(__global numeric *out_sum, const int num_hla_gen
 	const int i_cfr = get_global_id(1);
 	prob += num_hla_geno * i_cfr;
 
-	numeric sum = 0;
+	TFLOAT sum = 0;
 	for (int k=i; k < num_hla_geno; k+=localsize)
 		sum += prob[k];
 	local_sum[i] = sum;
@@ -407,6 +413,12 @@ __kernel void pred_calc_sumprob(__global numeric *out_sum, const int num_hla_gen
 
 
 code_pred_calc_addprob <- "
+#ifdef USE_SUM_DOUBLE
+#   define TFLOAT    double
+#else
+#   define TFLOAT    numeric
+#endif
+
 // sum of probabilities among all classifiers
 __kernel void pred_calc_addprob(__global numeric *out_prob, const int num_hla_geno,
 	const int nClassifier, __global const numeric *weight)
@@ -415,7 +427,7 @@ __kernel void pred_calc_addprob(__global numeric *out_prob, const int num_hla_ge
 	if (i < num_hla_geno)
 	{
 		__global numeric *p = out_prob + i;
-		numeric sum = 0;
+		TFLOAT sum = 0;
 		for (int j=0; j < nClassifier; j++)
 		{
 			sum += weight[j] * (*p);

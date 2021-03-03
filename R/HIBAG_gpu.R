@@ -507,9 +507,11 @@ hlaPredict_gpu <- function(object, snp,
 		if (f64_pred) code_atomic_add_f64 else code_atomic_add_f32,
 		code_hamming_dist, code_pred_calc_prob), prec_predict)
 	.packageEnv$kernel_pred_sumprob <- .new_kernel("pred_calc_sumprob",
-		c(code_macro, code_pred_calc_sumprob), prec_predict)
+		c(ifelse(dev_fp64_ori, "#define USE_SUM_DOUBLE", ""),
+		code_macro, code_pred_calc_sumprob), prec_predict)
 	.packageEnv$kernel_pred_addprob <- .new_kernel("pred_calc_addprob",
-		code_pred_calc_addprob, prec_predict)
+		c(ifelse(dev_fp64_ori, "#define USE_SUM_DOUBLE", ""),
+		code_pred_calc_addprob), prec_predict)
 
 	## initialize GPU memory buffer
 	fq <- .Call(gpu_exp_log_min_rare_freq)
