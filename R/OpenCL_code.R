@@ -205,14 +205,12 @@ inline static int compare_allele(int P1, int P2, int T1, int T2)
 #pragma OPENCL EXTENSION cl_khr_global_int32_base_atomics : enable
 __kernel void build_calc_oob(__global int *out_err_cnt,
 	const int start_sample_idx, const int num_hla_geno,
+	__local numeric *local_max, __local int *local_idx,
 	__global const numeric *prob, __global const int *hla_idx_map,
 	__global const int *p_idx,
 	__global const unsigned char *p_geno)
 {
-	__local numeric local_max[LOCAL_IWORK_MAX];
-	__local int     local_idx[LOCAL_IWORK_MAX];
-
-	const int localsize = get_local_size(0);  // localsize <= LOCAL_IWORK_MAX
+	const int localsize = get_local_size(0);
 	const int i = get_local_id(0);
 	const int i_samp = get_global_id(1);
 	prob += num_hla_geno * i_samp;
@@ -224,11 +222,8 @@ __kernel void build_calc_oob(__global int *out_err_cnt,
 		if (max_pb < prob[k])
 			{ max_pb = prob[k]; max_idx = k; }
 	}
-	if (i < localsize)
-	{
-		local_max[i] = max_pb;
-		local_idx[i] = max_idx;
-	}
+	local_max[i] = max_pb;
+	local_idx[i] = max_idx;
 
 	// reduced, find max
 	for (int n=localsize>>1; n > 0; n >>= 1)
@@ -270,29 +265,22 @@ __kernel void build_calc_oob(__global int *out_err_cnt,
 
 
 code_build_calc_ib <- "
-#ifdef USE_SUM_DOUBLE
-#   define TFLOAT    double
-#else
-#   define TFLOAT    numeric
-#endif
-
 __kernel void build_calc_ib(__global numeric *out_prob,
-	const int start_sample_idx,
+	const int start_sample_idx, const numeric aux_log_freq,
 	const int n_hla, const int num_hla_geno,
+	__local numeric *local_sum,
 	__global const numeric *prob, __global const int *p_idx,
-	__global const unsigned char *p_geno, const numeric aux_log_freq)
+	__global const unsigned char *p_geno)
 {
-	__local TFLOAT local_sum[LOCAL_IWORK_MAX];
-	const int localsize = get_local_size(0);  // localsize <= LOCAL_IWORK_MAX
-
+	const int localsize = get_local_size(0);
 	const int i = get_local_id(0);
 	const int i_samp = get_global_id(1);
 	prob += num_hla_geno * i_samp;
 
-	TFLOAT sum = 0;
+	numeric sum = 0;
 	for (int k=i; k < num_hla_geno; k+=localsize)
 		sum += prob[k];
-	if (i < localsize) local_sum[i] = sum;
+	local_sum[i] = sum;
 
 	// reduced sum of local_sum
 	for (int n=localsize>>1; n > 0; n >>= 1)

@@ -420,6 +420,13 @@ static cl_event gpu_write_mem(cl_mem buffer, bool blocking, size_t size,
 			throw err_text("Failed to set kernel (" #kernel ") argument (" #i ")", err); \
 	}
 
+#define GPU_SETARG_LOCAL(kernel, i, sz)    \
+	{ \
+		cl_int err = clSetKernelArg(kernel, i, sz, NULL); \
+		if (err != CL_SUCCESS) \
+			throw err_text("Failed to set kernel (" #kernel ") argument (" #i ")", err); \
+	}
+
 
 // ====  GPU run kernel  ====
 
@@ -606,11 +613,11 @@ void build_init(int nHLA, int nSample)
 	gpu_kl_clear_mem       = get_kernel_env("kernel_clear_mem");
 
 	// GPU memory
+	const size_t float_size = gpu_f64_build_flag ? sizeof(double) : sizeof(float);
 	cl_mem mem_rare_freq = get_mem_env(gpu_f64_build_flag ?
 		"mem_exp_log_min_rare_freq64" : "mem_exp_log_min_rare_freq32");
 	mem_prob_buffer = get_mem_env("mem_prob_buffer");
-	msize_prob_buffer_each = sz_hla *
-		(gpu_f64_build_flag ? sizeof(double) : sizeof(float));
+	msize_prob_buffer_each = sz_hla * float_size;
 	mem_build_idx_oob = get_mem_env("mem_build_idx_oob");
 	mem_build_idx_ib = get_mem_env("mem_build_idx_ib");
 	mem_haplo_list = get_mem_env("mem_haplo_list");
@@ -649,19 +656,30 @@ void build_init(int nHLA, int nSample)
 	GPU_SETARG(gpu_kl_build_calc_oob, 0, mem_build_output);
 	GPU_SETARG(gpu_kl_build_calc_oob, 1, zero);  // start_sample_idx
 	GPU_SETARG(gpu_kl_build_calc_oob, 2, sz_hla);
-	GPU_SETARG(gpu_kl_build_calc_oob, 3, mem_prob_buffer);
-	GPU_SETARG(gpu_kl_build_calc_oob, 4, mem_build_hla_idx_map);
-	GPU_SETARG(gpu_kl_build_calc_oob, 5, mem_build_idx_oob);
-	GPU_SETARG(gpu_kl_build_calc_oob, 6, mem_snpgeno);
+	GPU_SETARG_LOCAL(gpu_kl_build_calc_oob, 3, gpu_local_size_d1*float_size);
+	GPU_SETARG_LOCAL(gpu_kl_build_calc_oob, 4, gpu_local_size_d1*sizeof(int));
+	GPU_SETARG(gpu_kl_build_calc_oob, 5, mem_prob_buffer);
+	GPU_SETARG(gpu_kl_build_calc_oob, 6, mem_build_hla_idx_map);
+	GPU_SETARG(gpu_kl_build_calc_oob, 7, mem_build_idx_oob);
+	GPU_SETARG(gpu_kl_build_calc_oob, 8, mem_snpgeno);
 
 	// arguments for gpu_kl_build_calc_ib (in-bag)
 	GPU_SETARG(gpu_kl_build_calc_ib, 0, mem_build_output);
 	GPU_SETARG(gpu_kl_build_calc_ib, 1, zero);  // start_sample_idx
-	GPU_SETARG(gpu_kl_build_calc_ib, 2, nHLA);
-	GPU_SETARG(gpu_kl_build_calc_ib, 3, sz_hla);
-	GPU_SETARG(gpu_kl_build_calc_ib, 4, mem_prob_buffer);
-	GPU_SETARG(gpu_kl_build_calc_ib, 5, mem_build_idx_ib);
-	GPU_SETARG(gpu_kl_build_calc_ib, 6, mem_snpgeno);
+	if (gpu_f64_build_flag)
+	{
+		double zero = 0;
+		GPU_SETARG(gpu_kl_build_calc_ib, 2, zero)   // aux_log_freq
+	} else {
+		float zero = 0;
+		GPU_SETARG(gpu_kl_build_calc_ib, 2, zero);  // aux_log_freq
+	}
+	GPU_SETARG(gpu_kl_build_calc_ib, 3, nHLA);
+	GPU_SETARG(gpu_kl_build_calc_ib, 4, sz_hla);
+	GPU_SETARG_LOCAL(gpu_kl_build_calc_ib, 5, gpu_local_size_d1*float_size);
+	GPU_SETARG(gpu_kl_build_calc_ib, 6, mem_prob_buffer);
+	GPU_SETARG(gpu_kl_build_calc_ib, 7, mem_build_idx_ib);
+	GPU_SETARG(gpu_kl_build_calc_ib, 8, mem_snpgeno);
 
 	// arguments for gpu_kl_build_clear_mem
 	GPU_SETARG(gpu_kl_clear_mem, 1, mem_prob_buffer);
@@ -713,10 +731,10 @@ void build_set_haplo_geno(const THaplotype haplo[], int n_haplo,
 	double run_aux_log_freq2 = log(sum * sum);
 	if (gpu_f64_build_flag)
 	{
-		GPU_SETARG(gpu_kl_build_calc_ib, 7, run_aux_log_freq2)
+		GPU_SETARG(gpu_kl_build_calc_ib, 2, run_aux_log_freq2)
 	} else {
 		float run_aux_log_freq2_f32 = run_aux_log_freq2;
-		GPU_SETARG(gpu_kl_build_calc_ib, 7, run_aux_log_freq2_f32)
+		GPU_SETARG(gpu_kl_build_calc_ib, 2, run_aux_log_freq2_f32)
 	}
 
 	gpu_finish();
