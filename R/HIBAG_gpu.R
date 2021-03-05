@@ -418,9 +418,10 @@ hlaPredict_gpu <- function(object, snp,
 	showmsg(paste0("    CL_DEVICE_MAX_WORK_GROUP_SIZE: ", pm[[4L]]))
 	showmsg(paste0("    CL_DEVICE_MAX_WORK_ITEM_DIMENSIONS: ", pm[[5L]]))
 	showmsg(paste0("    CL_DEVICE_MAX_WORK_ITEM_SIZES: ", paste(pm[[6L]], collapse=",")))
-	showmsg(paste0("    CL_DEVICE_ADDRESS_BITS: ", pm[[7L]]))
-	showmsg(paste0("    CL_KERNEL_WORK_GROUP_SIZE: ", pm[[8L]]))
-	showmsg(paste0("    CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE: ", pm[[9L]]))
+	showmsg(paste0("    CL_DEVICE_LOCAL_MEM_SIZE: ", pm[[7L]]))
+	showmsg(paste0("    CL_DEVICE_ADDRESS_BITS: ", pm[[8L]]))
+	showmsg(paste0("    CL_KERNEL_WORK_GROUP_SIZE: ", pm[[9L]]))
+	showmsg(paste0("    CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE: ", pm[[10L]]))
 	showmsg(paste("GPU device", ifelse(dev_fp64, "supports", "does not support"),
 		"double-precision floating-point numbers"))
 
