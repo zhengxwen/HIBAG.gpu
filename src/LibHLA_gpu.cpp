@@ -34,6 +34,8 @@
 #endif
 
 
+#include "LibOpenCL.h"
+
 // Defined in HIBAG/install/LibHLA_ext.h
 #define HIBAG_STRUCTURE_HEAD_ONLY
 #include <LibHLA_ext.h>
@@ -42,13 +44,6 @@
 #include <cstdlib>
 #include <cmath>
 #include <vector>
-
-#ifdef __APPLE__
-#   define CL_SILENCE_DEPRECATION
-#	include <OpenCL/opencl.h>
-#else
-#	include <CL/opencl.h>
-#endif
 
 #define USE_RINTERNALS 1
 #include <Rinternals.h>
@@ -161,94 +156,11 @@ namespace HLA_LIB
 
 	// ===================================================================== //
 
-	// return OpenCL error code
-	static const char *err_code(int err)
-	{
-		#define ERR_RET(s)    case s: return #s;
-		switch (err)
-		{
-			ERR_RET(CL_SUCCESS)
-			ERR_RET(CL_DEVICE_NOT_FOUND)
-			ERR_RET(CL_DEVICE_NOT_AVAILABLE)
-			ERR_RET(CL_COMPILER_NOT_AVAILABLE)
-			ERR_RET(CL_MEM_OBJECT_ALLOCATION_FAILURE)
-			ERR_RET(CL_OUT_OF_RESOURCES)
-			ERR_RET(CL_OUT_OF_HOST_MEMORY)
-			ERR_RET(CL_PROFILING_INFO_NOT_AVAILABLE)
-			ERR_RET(CL_MEM_COPY_OVERLAP)
-			ERR_RET(CL_IMAGE_FORMAT_MISMATCH)
-			ERR_RET(CL_IMAGE_FORMAT_NOT_SUPPORTED)
-			ERR_RET(CL_BUILD_PROGRAM_FAILURE)
-			ERR_RET(CL_MAP_FAILURE)
-			ERR_RET(CL_INVALID_VALUE)
-			ERR_RET(CL_INVALID_DEVICE_TYPE)
-			ERR_RET(CL_INVALID_PLATFORM)
-			ERR_RET(CL_INVALID_DEVICE)
-			ERR_RET(CL_INVALID_CONTEXT)
-			ERR_RET(CL_INVALID_QUEUE_PROPERTIES)
-			ERR_RET(CL_INVALID_COMMAND_QUEUE)
-			ERR_RET(CL_INVALID_HOST_PTR)
-			ERR_RET(CL_INVALID_MEM_OBJECT)
-			ERR_RET(CL_INVALID_IMAGE_FORMAT_DESCRIPTOR)
-			ERR_RET(CL_INVALID_IMAGE_SIZE)
-			ERR_RET(CL_INVALID_SAMPLER)
-			ERR_RET(CL_INVALID_BINARY)
-			ERR_RET(CL_INVALID_BUILD_OPTIONS)
-			ERR_RET(CL_INVALID_PROGRAM)
-			ERR_RET(CL_INVALID_PROGRAM_EXECUTABLE)
-			ERR_RET(CL_INVALID_KERNEL_NAME)
-			ERR_RET(CL_INVALID_KERNEL_DEFINITION)
-			ERR_RET(CL_INVALID_KERNEL)
-			ERR_RET(CL_INVALID_ARG_INDEX)
-			ERR_RET(CL_INVALID_ARG_VALUE)
-			ERR_RET(CL_INVALID_ARG_SIZE)
-			ERR_RET(CL_INVALID_KERNEL_ARGS)
-			ERR_RET(CL_INVALID_WORK_DIMENSION)
-			ERR_RET(CL_INVALID_WORK_GROUP_SIZE)
-			ERR_RET(CL_INVALID_WORK_ITEM_SIZE)
-			ERR_RET(CL_INVALID_GLOBAL_OFFSET)
-			ERR_RET(CL_INVALID_EVENT_WAIT_LIST)
-			ERR_RET(CL_INVALID_EVENT)
-			ERR_RET(CL_INVALID_OPERATION)
-			ERR_RET(CL_INVALID_GL_OBJECT)
-			ERR_RET(CL_INVALID_BUFFER_SIZE)
-			ERR_RET(CL_INVALID_MIP_LEVEL)
-			ERR_RET(CL_INVALID_GLOBAL_WORK_SIZE)
-
-		#ifdef CL_VERSION_1_1
-			ERR_RET(CL_MISALIGNED_SUB_BUFFER_OFFSET)
-			ERR_RET(CL_EXEC_STATUS_ERROR_FOR_EVENTS_IN_WAIT_LIST)
-			ERR_RET(CL_INVALID_PROPERTY)
-		#endif
-		#ifdef CL_VERSION_1_2
-			ERR_RET(CL_COMPILE_PROGRAM_FAILURE)
-			ERR_RET(CL_LINKER_NOT_AVAILABLE)
-			ERR_RET(CL_LINK_PROGRAM_FAILURE)
-			ERR_RET(CL_DEVICE_PARTITION_FAILED)
-			ERR_RET(CL_KERNEL_ARG_INFO_NOT_AVAILABLE)
-			ERR_RET(CL_INVALID_IMAGE_DESCRIPTOR)
-			ERR_RET(CL_INVALID_COMPILER_OPTIONS)
-			ERR_RET(CL_INVALID_LINKER_OPTIONS)
-			ERR_RET(CL_INVALID_DEVICE_PARTITION_COUNT)
-		#endif
-		#ifdef CL_VERSION_2_0
-			ERR_RET(CL_INVALID_PIPE_SIZE)
-			ERR_RET(CL_INVALID_DEVICE_QUEUE)
-		#endif
-		#ifdef CL_VERSION_2_2
-			ERR_RET(CL_INVALID_SPEC_ID)
-			ERR_RET(CL_MAX_SIZE_RESTRICTION_EXCEEDED)
-		#endif
-		}
-		return "Unknown";
-		#undef ERR_RET
-	}
-
 	// OpenCL error message
 	static const char *err_text(const char *txt, int err)
 	{
 		static char buf[1024];
-		sprintf(buf, "%s (error: %d, %s).", txt, err, err_code(err));
+		sprintf(buf, "%s (error: %d, %s).", txt, err, ocl_error_info(err));
 		return buf;
 	}
 
@@ -273,7 +185,7 @@ namespace HLA_LIB
 				if (fn == NULL) fn = "";
 				sprintf(buffer,
 					"Unable to map '%s' to host memory [%lld bytes] (error: %d, %s)",
-					fn, (long long)(size*sizeof(TYPE)), err, err_code(err));
+					fn, (long long)(size*sizeof(TYPE)), err, ocl_error_info(err));
 				throw buffer;
 			}
 		}
@@ -314,9 +226,9 @@ static const char *gpu_err_msg(const char *txt, int err)
 	if (gpu_debug_func_name)
 	{
 		sprintf(buf, "%s '%s' (error: %d, %s).", txt, gpu_debug_func_name,
-			err, err_code(err));
+			err, ocl_error_info(err));
 	} else {
-		sprintf(buf, "%s (error: %d, %s).", txt, err, err_code(err));
+		sprintf(buf, "%s (error: %d, %s).", txt, err, ocl_error_info(err));
 	}
 	return buf;
 }
@@ -354,10 +266,10 @@ static cl_mem gpu_create_mem(cl_mem_flags flags, size_t size, void *host_ptr)
 		if (gpu_debug_func_name)
 		{
 			sprintf(buf, "Failed to create memory buffer (%lld bytes) '%s' (error: %d, %s).",
-				(long long)size, gpu_debug_func_name, err, err_code(err));
+				(long long)size, gpu_debug_func_name, err, ocl_error_info(err));
 		} else {
 			sprintf(buf, "Failed to create memory buffer (%lld bytes) (error: %d, %s).",
-				(long long)size, err, err_code(err));
+				(long long)size, err, ocl_error_info(err));
 		}
 		throw buf;
 	}
@@ -669,7 +581,7 @@ void build_init(int nHLA, int nSample)
 	if (gpu_f64_build_flag)
 	{
 		double zero = 0;
-		GPU_SETARG(gpu_kl_build_calc_ib, 2, zero)   // aux_log_freq
+		GPU_SETARG(gpu_kl_build_calc_ib, 2, zero);   // aux_log_freq
 	} else {
 		float zero = 0;
 		GPU_SETARG(gpu_kl_build_calc_ib, 2, zero);  // aux_log_freq

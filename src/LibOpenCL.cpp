@@ -1,0 +1,120 @@
+// ===============================================================
+//
+// HIBAG.gpu R package (GPU-based implementation for the HIBAG package)
+// Copyright (C) 2021    Xiuwen Zheng (zhengx@u.washington.edu)
+// All rights reserved.
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.	 See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.	 If not, see <http://www.gnu.org/licenses/>.
+
+
+#include "LibOpenCL.h"
+
+#include <string.h>
+#include <cstdlib>
+#include <cmath>
+#include <vector>
+
+#define USE_RINTERNALS 1
+#include <Rinternals.h>
+#include <Rdefines.h>
+
+
+extern "C"
+{
+
+/// get information from an OpenCL error code
+const char *ocl_error_info(int err)
+{
+	#define ERR_RET(s)    case s: return #s;
+	switch (err)
+	{
+		ERR_RET(CL_SUCCESS)
+		ERR_RET(CL_DEVICE_NOT_FOUND)
+		ERR_RET(CL_DEVICE_NOT_AVAILABLE)
+		ERR_RET(CL_COMPILER_NOT_AVAILABLE)
+		ERR_RET(CL_MEM_OBJECT_ALLOCATION_FAILURE)
+		ERR_RET(CL_OUT_OF_RESOURCES)
+		ERR_RET(CL_OUT_OF_HOST_MEMORY)
+		ERR_RET(CL_PROFILING_INFO_NOT_AVAILABLE)
+		ERR_RET(CL_MEM_COPY_OVERLAP)
+		ERR_RET(CL_IMAGE_FORMAT_MISMATCH)
+		ERR_RET(CL_IMAGE_FORMAT_NOT_SUPPORTED)
+		ERR_RET(CL_BUILD_PROGRAM_FAILURE)
+		ERR_RET(CL_MAP_FAILURE)
+		ERR_RET(CL_INVALID_VALUE)
+		ERR_RET(CL_INVALID_DEVICE_TYPE)
+		ERR_RET(CL_INVALID_PLATFORM)
+		ERR_RET(CL_INVALID_DEVICE)
+		ERR_RET(CL_INVALID_CONTEXT)
+		ERR_RET(CL_INVALID_QUEUE_PROPERTIES)
+		ERR_RET(CL_INVALID_COMMAND_QUEUE)
+		ERR_RET(CL_INVALID_HOST_PTR)
+		ERR_RET(CL_INVALID_MEM_OBJECT)
+		ERR_RET(CL_INVALID_IMAGE_FORMAT_DESCRIPTOR)
+		ERR_RET(CL_INVALID_IMAGE_SIZE)
+		ERR_RET(CL_INVALID_SAMPLER)
+		ERR_RET(CL_INVALID_BINARY)
+		ERR_RET(CL_INVALID_BUILD_OPTIONS)
+		ERR_RET(CL_INVALID_PROGRAM)
+		ERR_RET(CL_INVALID_PROGRAM_EXECUTABLE)
+		ERR_RET(CL_INVALID_KERNEL_NAME)
+		ERR_RET(CL_INVALID_KERNEL_DEFINITION)
+		ERR_RET(CL_INVALID_KERNEL)
+		ERR_RET(CL_INVALID_ARG_INDEX)
+		ERR_RET(CL_INVALID_ARG_VALUE)
+		ERR_RET(CL_INVALID_ARG_SIZE)
+		ERR_RET(CL_INVALID_KERNEL_ARGS)
+		ERR_RET(CL_INVALID_WORK_DIMENSION)
+		ERR_RET(CL_INVALID_WORK_GROUP_SIZE)
+		ERR_RET(CL_INVALID_WORK_ITEM_SIZE)
+		ERR_RET(CL_INVALID_GLOBAL_OFFSET)
+		ERR_RET(CL_INVALID_EVENT_WAIT_LIST)
+		ERR_RET(CL_INVALID_EVENT)
+		ERR_RET(CL_INVALID_OPERATION)
+		ERR_RET(CL_INVALID_GL_OBJECT)
+		ERR_RET(CL_INVALID_BUFFER_SIZE)
+		ERR_RET(CL_INVALID_MIP_LEVEL)
+		ERR_RET(CL_INVALID_GLOBAL_WORK_SIZE)
+
+	#ifdef CL_VERSION_1_1
+		ERR_RET(CL_MISALIGNED_SUB_BUFFER_OFFSET)
+		ERR_RET(CL_EXEC_STATUS_ERROR_FOR_EVENTS_IN_WAIT_LIST)
+		ERR_RET(CL_INVALID_PROPERTY)
+	#endif
+	#ifdef CL_VERSION_1_2
+		ERR_RET(CL_COMPILE_PROGRAM_FAILURE)
+		ERR_RET(CL_LINKER_NOT_AVAILABLE)
+		ERR_RET(CL_LINK_PROGRAM_FAILURE)
+		ERR_RET(CL_DEVICE_PARTITION_FAILED)
+		ERR_RET(CL_KERNEL_ARG_INFO_NOT_AVAILABLE)
+		ERR_RET(CL_INVALID_IMAGE_DESCRIPTOR)
+		ERR_RET(CL_INVALID_COMPILER_OPTIONS)
+		ERR_RET(CL_INVALID_LINKER_OPTIONS)
+		ERR_RET(CL_INVALID_DEVICE_PARTITION_COUNT)
+	#endif
+	#ifdef CL_VERSION_2_0
+		ERR_RET(CL_INVALID_PIPE_SIZE)
+		ERR_RET(CL_INVALID_DEVICE_QUEUE)
+	#endif
+	#ifdef CL_VERSION_2_2
+		ERR_RET(CL_INVALID_SPEC_ID)
+		ERR_RET(CL_MAX_SIZE_RESTRICTION_EXCEEDED)
+	#endif
+	}
+	return "UNKNOWN";
+	#undef ERR_RET
+}
+
+
+} // extern "C"
