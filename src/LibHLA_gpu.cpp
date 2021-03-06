@@ -197,10 +197,6 @@ static const char *gpu_err_msg(const char *txt, int err)
 }
 
 
-// ====  GPU create/free memory buffer  ====
-
-
-
 // ====  GPU memory buffer writing  ====
 
 #define GPU_WRITE_MEM(x, size, ptr)    \
@@ -354,11 +350,11 @@ SEXP gpu_set_verbose(SEXP verbose)
 	}
 
 // initialize the internal structure for building a model
-SEXP ocl_build_init(SEXP nHLA, SEXP nSample, SEXP Rverbose)
+SEXP ocl_build_init(SEXP R_nHLA, SEXP R_nSample, SEXP R_verbose)
 {
-	const int n_hla  = Rf_asInteger(nHLA);
-	const int n_samp = Rf_asInteger(nSample);
-	const bool verbose = Rf_asLogical(Rverbose)==TRUE;
+	const int n_hla  = Rf_asInteger(R_nHLA);
+	const int n_samp = Rf_asInteger(R_nSample);
+	const bool verbose = Rf_asLogical(R_verbose)==TRUE;
 	if (n_hla >= 32768)
 		Rf_error("There are too many unique HLA alleles (%d).", n_hla);
 
@@ -413,7 +409,7 @@ SEXP ocl_build_init(SEXP nHLA, SEXP nSample, SEXP Rverbose)
 	int zero = 0;
 	GPU_SETARG(gpu_kl_build_calc_prob, 0, mem_prob_buffer);
 	GPU_SETARG(gpu_kl_build_calc_prob, 1, mem_rare_freq);
-	GPU_SETARG(gpu_kl_build_calc_prob, 2, nHLA);
+	GPU_SETARG(gpu_kl_build_calc_prob, 2, n_hla);
 	GPU_SETARG(gpu_kl_build_calc_prob, 3, sz_hla);
 	GPU_SETARG(gpu_kl_build_calc_prob, 4, zero);  // n_haplo
 	GPU_SETARG(gpu_kl_build_calc_prob, 5, zero);  // n_snp
@@ -444,7 +440,7 @@ SEXP ocl_build_init(SEXP nHLA, SEXP nSample, SEXP Rverbose)
 		float zero = 0;
 		GPU_SETARG(gpu_kl_build_calc_ib, 2, zero);  // aux_log_freq
 	}
-	GPU_SETARG(gpu_kl_build_calc_ib, 3, nHLA);
+	GPU_SETARG(gpu_kl_build_calc_ib, 3, n_hla);
 	GPU_SETARG(gpu_kl_build_calc_ib, 4, sz_hla);
 	GPU_SETARG_LOCAL(gpu_kl_build_calc_ib, 5, gpu_local_size_d1*float_size);
 	GPU_SETARG(gpu_kl_build_calc_ib, 6, mem_prob_buffer);
@@ -556,8 +552,8 @@ static int build_acc_oob()
 		GPU_WRITE_EVENT(events[2], mem_build_output, sizeof(zero), &zero);
 
 		GPU_SETARG(gpu_kl_build_calc_oob, 1, zero);  // start_sample_idx
-		size_t wdims[2] = { gpu_const_local_size, (size_t)build_num_oob };
-		size_t local_size[2] = { gpu_const_local_size, 1 };
+		size_t wdims[2] = { gpu_local_size_d1, (size_t)build_num_oob };
+		size_t local_size[2] = { gpu_local_size_d1, 1 };
 		GPU_RUN_KERNEL_EVENT(gpu_kl_build_calc_oob, 2, wdims, local_size,
 			2, &events[1], &events[3]);
 	}
