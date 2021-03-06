@@ -459,23 +459,21 @@ SEXP ocl_build_init(SEXP nHLA, SEXP nSample, SEXP Rverbose)
 
 SEXP ocl_build_done()
 {
-	GPU_FREE_MEM(mem_prob_buffer); mem_prob_buffer = NULL;
-	GPU_FREE_MEM(mem_haplo_list);  mem_haplo_list = NULL;
+	GPU_FREE_MEM(mem_prob_buffer);       mem_prob_buffer = NULL;
+	GPU_FREE_MEM(mem_haplo_list);        mem_haplo_list = NULL;
 	GPU_FREE_MEM(mem_build_hla_idx_map); mem_build_hla_idx_map = NULL;
-	GPU_FREE_MEM(mem_build_output);  mem_build_output = NULL;
-	GPU_FREE_MEM(mem_snpgeno);       mem_snpgeno = NULL;
-	GPU_FREE_MEM(mem_build_idx_ib);  mem_build_idx_ib = NULL;
-	GPU_FREE_MEM(mem_build_idx_oob); mem_build_idx_oob = NULL;
+	GPU_FREE_MEM(mem_build_output);      mem_build_output = NULL;
+	GPU_FREE_MEM(mem_snpgeno);           mem_snpgeno = NULL;
+	GPU_FREE_MEM(mem_build_idx_ib);      mem_build_idx_ib = NULL;
+	GPU_FREE_MEM(mem_build_idx_oob);     mem_build_idx_oob = NULL;
 	return R_NilValue;
 }
 
 
 static void build_init(int nHLA, int nSample)
 {
-	if (nHLA >= 32768)
-		throw "There are too many unique HLA alleles.";
-	Num_HLA = nHLA;
-	Num_Sample = nSample;
+	if (nHLA != Num_HLA || Num_Sample != nSample)
+		throw "Internal error in build_init()";
 }
 
 static void build_done() { }

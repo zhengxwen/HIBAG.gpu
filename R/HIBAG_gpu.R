@@ -268,7 +268,7 @@ hlaPredict_gpu <- function(object, snp,
 	on.exit({ HIBAG:::.hlaClearGPU() })
 	if (verbose)
 	{
-		cat("Using ", .packageEnv$prec_predict,
+		cat("Using ", .packageEnv$predict_prec,
 			"-precision floating-point numbers in GPU computing\n", sep="")
 	}
 	.Call(gpu_set_verbose, verbose)
@@ -427,6 +427,7 @@ hlaPredict_gpu <- function(object, snp,
 	.packageEnv$flag_build_f64 <- f64_build
 	.packageEnv$train_prec <- train_prec
 	.packageEnv$flag_pred_f64 <- f64_pred
+	.packageEnv$predict_prec <- predict_prec
 
 	.packageEnv$code_build_calc_prob <- paste(c(
 		code_macro, code_macro_prec[train_prec], code_hamm_dist_max[train_prec],
