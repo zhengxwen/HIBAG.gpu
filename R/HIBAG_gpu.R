@@ -33,81 +33,16 @@
 .yesno <- function(flag) ifelse(flag, "YES", "NO")
 
 
-.gpu_create_mem <- function(len, mode, verbose)
-{
-	sz <- switch(mode, single=4, double=8, integer=4, NA)
-	if (verbose) cat("    allocating", sz*len, "bytes in GPU ")
-	rv <- clBuffer(.packageEnv$gpu_context, len, mode)
-	if (verbose) cat("[OK]\n")
-	rv
-}
-
 .gpu_build_init_memory <- function(nhla, nsamp, verbose)
 {
-	# internal
-	sizeof_TGenotype  <- 48L
-	sizeof_THaplotype <- 32L
-	size_hla <- nhla * (nhla+1L) / 2L
-	
-	# allocate
-	.packageEnv$mem_build_idx_oob <- .gpu_create_mem(nsamp, "integer", TRUE)
-	.packageEnv$mem_build_idx_ib  <- .gpu_create_mem(nsamp, "integer", TRUE)
-	.packageEnv$mem_snpgeno <- .gpu_create_mem(nsamp*sizeof_TGenotype / 4L,
-		"integer", TRUE)
-	.packageEnv$mem_build_hla_idx_map <- .gpu_create_mem(size_hla,
-		"integer", TRUE)
-	.packageEnv$mem_build_output <- .gpu_create_mem(nsamp,
-		.packageEnv$prec_build, FALSE)
-
-	# determine max # of haplo
-	if (nsamp <= 250L)
-		build_haplo_nmax <- nsamp * 10L
-	else if (nsamp <= 1000L)
-		build_haplo_nmax <- nsamp * 5L
-	else if (nsamp <= 5000L)
-		build_haplo_nmax <- nsamp * 3L
-	else if (nsamp <= 10000L)
-		build_haplo_nmax <- round(nsamp * 1.5)
-	else
-		build_haplo_nmax <- nsamp
-	.packageEnv$build_haplo_nmax <- build_haplo_nmax
-	.packageEnv$mem_haplo_list <- .gpu_create_mem(
-		build_haplo_nmax*sizeof_THaplotype / 4L, "integer", verbose)
-
-	build_sample_nmax <- nsamp
-	while (build_sample_nmax > 0L)
-	{
-		ntry <- build_sample_nmax * size_hla
-		ok <- tryCatch({
-			buffer <- .gpu_create_mem(ntry, .packageEnv$prec_build, verbose)
-			TRUE
-		}, error=function(e) { cat("[Failed]\n"); FALSE })
-		if (ok) break
-		build_sample_nmax <- build_sample_nmax - 1000L
-		if (build_sample_nmax <= 0L)
-			stop(sprintf("Fail to allocate %s[%d] in GPU", .packageEnv$prec_build, ntry))
-	}
-	.packageEnv$build_sample_nmax <- build_sample_nmax
-	.packageEnv$mem_prob_buffer <- buffer
-
+	.Call(ocl_build_init, nhla, nsamp, verbose)
 	invisible()
 }
 
 .gpu_build_free_memory <- function()
 {
 	HIBAG:::.hlaClearGPU()
-	.Call(gpu_free_memory, .packageEnv$mem_build_idx_oob)
-	.Call(gpu_free_memory, .packageEnv$mem_build_idx_ib)
-	.Call(gpu_free_memory, .packageEnv$mem_snpgeno)
-	.Call(gpu_free_memory, .packageEnv$mem_build_hla_idx_map)
-	.Call(gpu_free_memory, .packageEnv$mem_build_output)
-	.Call(gpu_free_memory, .packageEnv$mem_haplo_list)
-	.Call(gpu_free_memory, .packageEnv$mem_prob_buffer)
-	remove(
-		mem_build_idx_oob, mem_build_idx_ib, mem_snpgeno, mem_build_hla_idx_map,
-		mem_build_output, mem_haplo_list, mem_prob_buffer,
-		build_haplo_nmax, build_sample_nmax,
-		envir=.packageEnv)
+	.Call(ocl_build_done)
 	invisible()
 }
 
@@ -269,8 +204,7 @@ hlaAttrBagging_gpu <- function(hla, snp, nclassifier=100,
 	###################################################################
 	# training ...
 
-	.Call(gpu_set_verbose, verbose)
-	.Call(gpu_set_local_size)
+	.Call(gpu_set_local_size, verbose)
 	.gpu_build_init_memory(n.hla, n.samp, verbose)
 
 	# add new individual classifers

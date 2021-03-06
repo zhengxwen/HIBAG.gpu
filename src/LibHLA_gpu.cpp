@@ -78,37 +78,24 @@ namespace HLA_LIB
 	static int Num_Classifier;
 
 
+
+
+
+
 	// OpenCL memory objects
 
-	// parameters, int[] =
-	static cl_mem mem_build_idx_oob = NULL;
-	static cl_mem mem_build_idx_ib = NULL;
+	// the max number of samples can be hold in mem_prob_buffer
+	static int mem_sample_nmax = 0;
+	// the max number of haplotypes can be hold in mem_haplo_list
+	static int build_haplo_nmax = 0;
 
-	// SNP genotypes, TGenotype[]
-	static cl_mem mem_snpgeno = NULL;
-
-	// haplotype list, THaplotype[]
-	static cl_mem mem_haplo_list = NULL;
-
-	// the buffer of probabilities
-	// double[nHLA*(nHLA+1)/2][# of samples] -- prob. for classifiers or samples
-	static cl_mem mem_prob_buffer = NULL;
 	// sizeof(double[nHLA*(nHLA+1)/2]), or sizeof(float[nHLA*(nHLA+1)/2])
 	static size_t msize_prob_buffer_each = 0;
 	// build:   msize_prob_buffer_total = msize_prob_buffer_each * num_sample
 	// predict: msize_prob_buffer_total = msize_prob_buffer_each * num_classifier
 	static size_t msize_prob_buffer_total = 0;
 
-	///< an index according to a pair of alleles
-	static cl_mem mem_build_hla_idx_map = NULL;
 
-	/// max. index or sum of prob.
-	static cl_mem mem_build_output = NULL;
-
-	// the max number of samples can be hold in mem_prob_buffer
-	static int mem_sample_nmax = 0;
-	// the max number of haplotypes can be hold in mem_haplo_list
-	static int build_haplo_nmax = 0;
 
 	// num of haplotypes and SNPs for each classifier: int[][2]
 	static cl_mem mem_pred_haplo_num = NULL;
@@ -117,13 +104,6 @@ namespace HLA_LIB
 	static cl_mem mem_pred_weight = NULL;
 
 	static int wdim_pred_addprob = 0;
-
-
-	// used for work-group size (1-dim and 2-dim)
-	static size_t GPU_LOCAL_IWORK_MAX = 64;
-	static size_t gpu_const_local_size = GPU_LOCAL_IWORK_MAX;
-	static size_t gpu_local_size_d1 = 64;  // will be determined automatically
-	static size_t gpu_local_size_d2 = 8;   // will be determined automatically
 
 
 
@@ -219,18 +199,6 @@ static const char *gpu_err_msg(const char *txt, int err)
 
 // ====  GPU create/free memory buffer  ====
 
-
-#define GPU_FREE_MEM(x)    \
-	{ \
-		gpu_debug_func_name = #x; \
-		if (x) { \
-			cl_int err = clReleaseMemObject(x); \
-			if (err != CL_SUCCESS) \
-				throw gpu_err_msg("Failed to free memory buffer", err); \
-			x = NULL; \
-		} \
-		gpu_debug_func_name = NULL; \
-	}
 
 
 // ====  GPU memory buffer writing  ====
@@ -346,75 +314,6 @@ static void clear_prob_buffer(size_t size, cl_event *event)
 
 // =========================================================================
 
-/// get the external R object
-inline static SEXP get_var_env(const char *varnm)
-{
-	SEXP rv_ans = Rf_findVarInFrame(packageEnv, Rf_install(varnm));
-	if (rv_ans == R_NilValue)
-		Rf_error("No '%s' in .packageEnv.", varnm);
-	return rv_ans;
-}
-
-/// get the OpenCL device
-inline static cl_device_id get_device_env(const char *varnm)
-{
-	SEXP dev = get_var_env(varnm);
-	if (!Rf_inherits(dev, "clDeviceID") || TYPEOF(dev) != EXTPTRSXP)
-		Rf_error("'.packageEnv$%s' is not an OpenCL device.", varnm);
-	return (cl_device_id)R_ExternalPtrAddr(dev);
-}
-
-/// get the OpenCL context
-inline static cl_context get_context_env(const char *varnm)
-{
-	SEXP ctx = get_var_env(varnm);
-	if (!Rf_inherits(ctx, "clContext") || TYPEOF(ctx) != EXTPTRSXP)
-		Rf_error("'.packageEnv$%s' is not an OpenCL context.", varnm);
-	return (cl_context)R_ExternalPtrAddr(ctx);
-}
-
-/// get the OpenCL command queue
-inline static cl_command_queue get_command_queue_env(const char *varnm)
-{
-	SEXP ctx = get_var_env(varnm);
-	if (!Rf_inherits(ctx, "clContext") || TYPEOF(ctx) != EXTPTRSXP)
-		Rf_error("'.packageEnv$%s' is not an OpenCL context.", varnm);
-	SEXP queue = Rf_getAttrib(ctx, Rf_install("queue"));
-	if (!Rf_inherits(queue, "clCommandQueue") || TYPEOF(queue) != EXTPTRSXP)
-		Rf_error("Expected OpenCL command queue");
-	return (cl_command_queue)R_ExternalPtrAddr(queue);
-}
-
-/// get the OpenCL kernel
-inline static cl_kernel get_kernel_env(const char *varnm)
-{
-	SEXP k = get_var_env(varnm);
-	if (!Rf_inherits(k, "clKernel") || TYPEOF(k) != EXTPTRSXP)
-		Rf_error("'.packageEnv$%s' is not an OpenCL kernel.", varnm);
-	return (cl_kernel)R_ExternalPtrAddr(k);
-}
-
-/// get the OpenCL kernel
-inline static cl_mem get_mem_env(const char *varnm)
-{
-	SEXP m = get_var_env(varnm);
-	if (!Rf_inherits(m, "clBuffer") || TYPEOF(m) != EXTPTRSXP)
-		Rf_error("'.packageEnv$%s' is not an OpenCL buffer.", varnm);
-	return (cl_mem)R_ExternalPtrAddr(m);
-}
-
-static int get_kernel_param(cl_device_id dev, cl_kernel kernel,
-	cl_kernel_work_group_info param)
-{
-	size_t n = 0;
-	cl_int err = clGetKernelWorkGroupInfo(kernel, dev, param, sizeof(n), &n, NULL);
-	if (err != CL_SUCCESS) return NA_INTEGER;
-	return n;
-}
-
-
-// =========================================================================
-
 /// get the sum of double array
 inline static MATH_OFAST double get_sum_f64(const double p[], size_t n)
 {
@@ -444,56 +343,71 @@ SEXP gpu_set_verbose(SEXP verbose)
 
 // ===================================================================== //
 
+#define GPU_CREATE_MEM_V(x, flags, size, host_ptr)    \
+	{ \
+		size_t sz = size; \
+		if (verbose) \
+			Rprintf("    allocating %lld bytes in GPU ", (long long)sz); \
+		x = gpu_create_mem(flags, sz, host_ptr, #x); \
+		if (verbose) \
+			Rprintf("[OK]\n"); \
+	}
+
 // initialize the internal structure for building a model
-void build_init(int nHLA, int nSample)
+SEXP ocl_build_init(SEXP nHLA, SEXP nSample, SEXP Rverbose)
 {
-	if (nHLA >= 32768)
-		throw "There are too many unique HLA alleles.";
+	const int n_hla  = Rf_asInteger(nHLA);
+	const int n_samp = Rf_asInteger(nSample);
+	const bool verbose = Rf_asLogical(Rverbose)==TRUE;
+	if (n_hla >= 32768)
+		Rf_error("There are too many unique HLA alleles (%d).", n_hla);
 
 	// initialize
-	Num_HLA = nHLA;
-	Num_Sample = nSample;
-	const int sz_hla = nHLA*(nHLA+1)/2;
-
-	// 64-bit floating-point number or not?
-	gpu_f64_build_flag = Rf_asLogical(get_var_env("flag_build_f64")) == TRUE;
-
-	// device variables
-	gpu_context = get_context_env("gpu_context");
-	gpu_command_queue = get_command_queue_env("gpu_context");
-
-	// kernels
-	gpu_kl_build_calc_prob = get_kernel_env("kernel_build_calc_prob");
-	gpu_kl_build_calc_oob  = get_kernel_env("kernel_build_calc_oob");
-	gpu_kl_build_calc_ib   = get_kernel_env("kernel_build_calc_ib");
-	gpu_kl_clear_mem       = get_kernel_env("kernel_clear_mem");
+	Num_HLA = n_hla;
+	Num_Sample = n_samp;
+	const int sz_hla = n_hla*(n_hla+1)/2;
 
 	// GPU memory
 	const size_t float_size = gpu_f64_build_flag ? sizeof(double) : sizeof(float);
-	cl_mem mem_rare_freq = get_mem_env(gpu_f64_build_flag ?
-		"mem_exp_log_min_rare_freq64" : "mem_exp_log_min_rare_freq32");
-	mem_prob_buffer = get_mem_env("mem_prob_buffer");
-	msize_prob_buffer_each = sz_hla * float_size;
-	mem_build_idx_oob = get_mem_env("mem_build_idx_oob");
-	mem_build_idx_ib = get_mem_env("mem_build_idx_ib");
-	mem_haplo_list = get_mem_env("mem_haplo_list");
-	mem_snpgeno = get_mem_env("mem_snpgeno");
-	build_haplo_nmax = Rf_asInteger(get_var_env("build_haplo_nmax"));
-	mem_sample_nmax = Rf_asInteger(get_var_env("build_sample_nmax"));
-	msize_prob_buffer_total = msize_prob_buffer_each * mem_sample_nmax;
-	mem_build_hla_idx_map = get_mem_env("mem_build_hla_idx_map");
-	mem_build_output = get_mem_env("mem_build_output");
+	cl_mem mem_rare_freq = gpu_f64_build_flag ? mem_rare_freq_f64 : mem_rare_freq_f32;
 
+	// allocate
+	GPU_CREATE_MEM_V(mem_build_idx_oob, CL_MEM_READ_WRITE, sizeof(int)*n_samp, NULL);
+	GPU_CREATE_MEM_V(mem_build_idx_ib,  CL_MEM_READ_WRITE, sizeof(int)*n_samp, NULL);
+	GPU_CREATE_MEM_V(mem_snpgeno, CL_MEM_READ_WRITE, sizeof(TGenotype)*n_samp, NULL);
+	GPU_CREATE_MEM_V(mem_build_output, CL_MEM_READ_WRITE, float_size*n_samp, NULL);
+	GPU_CREATE_MEM_V(mem_build_hla_idx_map, CL_MEM_READ_WRITE, sizeof(int)*sz_hla, NULL);
 	{
 		// initialize mem_build_hla_idx_map
 		GPU_MEM_MAP(M, int, mem_build_hla_idx_map, sz_hla, false);
 		int *p = M.ptr();
-		for (int h1=0; h1 < nHLA; h1++)
+		for (int h1=0; h1 < n_hla; h1++)
 		{
-			for (int h2=h1; h2 < nHLA; h2++)
+			for (int h2=h1; h2 < n_hla; h2++)
 				*p++ = h1 | (h2 << 16);
 		}
 	}
+
+	// determine max # of haplo
+	if (n_samp <= 250)
+		build_haplo_nmax = n_samp * 10;
+	else if (n_samp <= 1000L)
+		build_haplo_nmax = n_samp * 5;
+	else if (n_samp <= 5000)
+		build_haplo_nmax = n_samp * 3;
+	else if (n_samp <= 10000)
+		build_haplo_nmax = (int)(n_samp * 1.5);
+	else
+		build_haplo_nmax = n_samp;
+	GPU_CREATE_MEM_V(mem_haplo_list, CL_MEM_READ_WRITE,
+		sizeof(THaplotype)*build_haplo_nmax, NULL);
+
+	// max. # of samples
+	msize_prob_buffer_each = sz_hla * float_size;
+	mem_sample_nmax = n_samp;
+	GPU_CREATE_MEM_V(mem_prob_buffer, CL_MEM_READ_WRITE,
+		msize_prob_buffer_each*mem_sample_nmax, NULL);
+	msize_prob_buffer_total = msize_prob_buffer_each * mem_sample_nmax;
 
 	// arguments for build_calc_prob
 	int zero = 0;
@@ -539,18 +453,34 @@ void build_init(int nHLA, int nSample)
 
 	// arguments for gpu_kl_build_clear_mem
 	GPU_SETARG(gpu_kl_clear_mem, 1, mem_prob_buffer);
+
+	return R_NilValue;
 }
 
-
-void build_done()
+SEXP ocl_build_done()
 {
-	gpu_kl_build_calc_prob = gpu_kl_build_calc_oob =
-		gpu_kl_build_calc_ib = gpu_kl_clear_mem = NULL;
-	mem_build_idx_oob = mem_build_idx_ib = mem_snpgeno = mem_build_output =
-		mem_haplo_list = mem_build_hla_idx_map = mem_prob_buffer = NULL;
+	GPU_FREE_MEM(mem_prob_buffer); mem_prob_buffer = NULL;
+	GPU_FREE_MEM(mem_haplo_list);  mem_haplo_list = NULL;
+	GPU_FREE_MEM(mem_build_hla_idx_map); mem_build_hla_idx_map = NULL;
+	GPU_FREE_MEM(mem_build_output);  mem_build_output = NULL;
+	GPU_FREE_MEM(mem_snpgeno);       mem_snpgeno = NULL;
+	GPU_FREE_MEM(mem_build_idx_ib);  mem_build_idx_ib = NULL;
+	GPU_FREE_MEM(mem_build_idx_oob); mem_build_idx_oob = NULL;
+	return R_NilValue;
 }
 
-void build_set_bootstrap(const int oob_cnt[])
+
+static void build_init(int nHLA, int nSample)
+{
+	if (nHLA >= 32768)
+		throw "There are too many unique HLA alleles.";
+	Num_HLA = nHLA;
+	Num_Sample = nSample;
+}
+
+static void build_done() { }
+
+static void build_set_bootstrap(const int oob_cnt[])
 {
 	GPU_MEM_MAP(Moob, int, mem_build_idx_oob, Num_Sample, false);
 	GPU_MEM_MAP(Mib, int, mem_build_idx_ib, Num_Sample, false);
@@ -566,7 +496,7 @@ void build_set_bootstrap(const int oob_cnt[])
 	}
 }
 
-void build_set_haplo_geno(const THaplotype haplo[], int n_haplo,
+static void build_set_haplo_geno(const THaplotype haplo[], int n_haplo,
 	const TGenotype geno[], int n_snp)
 {
 	if (n_haplo > build_haplo_nmax)
@@ -597,7 +527,7 @@ void build_set_haplo_geno(const THaplotype haplo[], int n_haplo,
 	gpu_free_events(2, events);
 }
 
-int build_acc_oob()
+static int build_acc_oob()
 {
 	if (build_num_oob <= 0) return 0;
 	if (build_num_oob > mem_sample_nmax)
@@ -644,7 +574,7 @@ int build_acc_oob()
 	return build_num_oob*2 - err_cnt;
 }
 
-double build_acc_ib()
+static double build_acc_ib()
 {
 	if (build_num_ib <= 0) return 0;
 	if (build_num_ib > mem_sample_nmax)
@@ -705,19 +635,6 @@ double build_acc_ib()
 void predict_init(int nHLA, int nClassifier, const THaplotype *const pHaplo[],
 	const int nHaplo[], const int nSNP[])
 {
-	// 64-bit floating-point number or not?
-	gpu_f64_pred_flag = Rf_asLogical(get_var_env("flag_pred_f64")) == TRUE;
-
-	// device variables
-	gpu_context = get_context_env("gpu_context");
-	gpu_command_queue = get_command_queue_env("gpu_context");
-
-	// kernels
-	gpu_kl_pred_calc    = get_kernel_env("kernel_pred_calc");
-	gpu_kl_pred_sumprob = get_kernel_env("kernel_pred_sumprob");
-	gpu_kl_pred_addprob = get_kernel_env("kernel_pred_addprob");
-	gpu_kl_clear_mem    = get_kernel_env("kernel_clear_mem");
-
 	// assign
 	Num_HLA = nHLA;
 	Num_Classifier = nClassifier;
@@ -736,8 +653,7 @@ void predict_init(int nHLA, int nClassifier, const THaplotype *const pHaplo[],
 		wdim_num_haplo = (wdim_num_haplo/gpu_local_size_d2 + 1)*gpu_local_size_d2;
 
 	// GPU memory
-	cl_mem mem_rare_freq = get_mem_env(gpu_f64_pred_flag ?
-		"mem_exp_log_min_rare_freq64" : "mem_exp_log_min_rare_freq32");
+	cl_mem mem_rare_freq = gpu_f64_pred_flag ? mem_rare_freq_f64 : mem_rare_freq_f32;
 
 	// memory for SNP genotypes
 	GPU_CREATE_MEM(mem_snpgeno, CL_MEM_READ_ONLY, sizeof(TGenotype)*nClassifier, NULL);
@@ -919,150 +835,6 @@ void predict_avg_prob(const TGenotype geno[], const double weight[],
 
 
 // ===================================================================== //
-
-/// release the memory buffer object
-SEXP gpu_free_memory(SEXP buffer)
-{
-	if (!Rf_inherits(buffer, "clBuffer") || TYPEOF(buffer) != EXTPTRSXP)
-		Rf_error("Not an OpenCL buffer.");
-	cl_mem mem = (cl_mem)R_ExternalPtrAddr(buffer);
-	if (mem)
-	{
-		clReleaseMemObject(mem);
-		R_ClearExternalPtr(buffer);
-		// Rprintf("Release OpenCL memory buffer (%p)\n", (void*)mem);
-	}
-	return R_NilValue;
-}
-
-
-/// automatically set the work local size for the kernel
-SEXP gpu_set_local_size()
-{
-	cl_device_id dev = get_device_env("gpu_device");
-	cl_kernel kernel = get_kernel_env("kernel_clear_mem");
-
-	cl_int err;
-	size_t max_wz[128];
-	err = clGetDeviceInfo(dev, CL_DEVICE_MAX_WORK_ITEM_SIZES, sizeof(max_wz),
-		max_wz, NULL);
-	if (err != CL_SUCCESS) max_wz[0] = max_wz[1] = max_wz[2] = 65536;
-
-	size_t mem_byte = 0;
-	err = clGetKernelWorkGroupInfo(kernel, dev, CL_KERNEL_WORK_GROUP_SIZE,
-		sizeof(mem_byte), &mem_byte, NULL);
-	if (err==CL_SUCCESS && mem_byte>64)
-	{
-		gpu_local_size_d1 = mem_byte;
-		if (mem_byte >= 4096)
-			gpu_local_size_d2 = 64;
-		else if (mem_byte >= 1024)
-			gpu_local_size_d2 = 32;
-		else if (mem_byte >= 256)
-			gpu_local_size_d2 = 16;
-		else
-			gpu_local_size_d2 = 8;
-	} else {
-		gpu_local_size_d1 = 64;
-		gpu_local_size_d2 = 8;
-	}
-
-	if (gpu_local_size_d1 > max_wz[0])
-		gpu_local_size_d1 = max_wz[0];
-	if (gpu_local_size_d2 > max_wz[1])
-		gpu_local_size_d2 = max_wz[1];
-
-	gpu_const_local_size = 64;
-	if (gpu_const_local_size > gpu_local_size_d1)
-		gpu_const_local_size = gpu_local_size_d1;
-
-	if (gpu_local_size_d2 == 1) // it is a CPU (very likely)
-	{
-		gpu_local_size_d1 = 1;
-		gpu_const_local_size = 1;
-	}
-
-	if (gpu_verbose)
-	{
-		Rprintf("    local work size: %d (D1), %dx%d (D2)\n",
-			(int)gpu_local_size_d1, (int)gpu_local_size_d2, (int)gpu_local_size_d2);
-	}
-
-	return R_NilValue;
-}
-
-
-/// get GPU internal parameters
-SEXP gpu_get_param()
-{
-	cl_int err;
-	cl_device_id dev = get_device_env("gpu_device");
-	cl_kernel k = get_kernel_env("kernel_clear_mem");
-
-	#define GET_DEV_INFO(TYPE, PARAM, VAR)    { \
-		TYPE v; \
-		err = clGetDeviceInfo(dev, PARAM, sizeof(v), &v, NULL); \
-		if (err == CL_SUCCESS) VAR = v; \
-	}
-
-	double gl_mem_sz = R_NaN;
-	GET_DEV_INFO(cl_ulong, CL_DEVICE_GLOBAL_MEM_SIZE, gl_mem_sz)
-	double gl_mem_alloc_sz = R_NaN;
-	GET_DEV_INFO(cl_ulong, CL_DEVICE_MAX_MEM_ALLOC_SIZE, gl_mem_alloc_sz)
-	int gl_n_unit = NA_INTEGER;
-	GET_DEV_INFO(cl_uint, CL_DEVICE_MAX_COMPUTE_UNITS, gl_n_unit)
-	int gl_max_worksize = NA_INTEGER;
-	GET_DEV_INFO(size_t, CL_DEVICE_MAX_WORK_GROUP_SIZE, gl_max_worksize)
-	int gl_max_workdim = NA_INTEGER;
-	GET_DEV_INFO(cl_uint, CL_DEVICE_MAX_WORK_ITEM_DIMENSIONS, gl_max_workdim)
-	int gl_local_mem_sz = NA_INTEGER;
-	GET_DEV_INFO(cl_ulong, CL_DEVICE_LOCAL_MEM_SIZE, gl_local_mem_sz)
-	int gl_addr_bits = NA_INTEGER;
-	GET_DEV_INFO(cl_uint, CL_DEVICE_ADDRESS_BITS, gl_addr_bits)
-
-	size_t gl_max_work_item_sizes[128] =
-		{ (size_t)NA_INTEGER, (size_t)NA_INTEGER, (size_t)NA_INTEGER };
-	clGetDeviceInfo(dev, CL_DEVICE_MAX_WORK_ITEM_SIZES, sizeof(gl_max_work_item_sizes),
-		gl_max_work_item_sizes, NULL);
-
-	int ws = get_kernel_param(dev, k, CL_KERNEL_WORK_GROUP_SIZE);
-	int mt = get_kernel_param(dev, k, CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE);
-
-	SEXP rv_ans = PROTECT(NEW_LIST(10));
-	SET_ELEMENT(rv_ans, 0, Rf_ScalarReal(gl_mem_sz));
-	SET_ELEMENT(rv_ans, 1, Rf_ScalarReal(gl_mem_alloc_sz));
-	SET_ELEMENT(rv_ans, 2, Rf_ScalarInteger(gl_n_unit));
-	SET_ELEMENT(rv_ans, 3, Rf_ScalarInteger(gl_max_worksize));
-	SET_ELEMENT(rv_ans, 4, Rf_ScalarInteger(gl_max_workdim));
-
-	SEXP p_wis = NEW_INTEGER(3);
-	INTEGER(p_wis)[0] = gl_max_work_item_sizes[0];
-	INTEGER(p_wis)[1] = gl_max_work_item_sizes[1];
-	INTEGER(p_wis)[2] = gl_max_work_item_sizes[2];
-	SET_ELEMENT(rv_ans, 5, p_wis);
-
-	SET_ELEMENT(rv_ans, 6, Rf_ScalarInteger(gl_local_mem_sz));
-	SET_ELEMENT(rv_ans, 7, Rf_ScalarInteger(gl_addr_bits));
-
-	SET_ELEMENT(rv_ans, 8, Rf_ScalarInteger(ws));
-	SET_ELEMENT(rv_ans, 9, Rf_ScalarInteger(mt));
-	UNPROTECT(1);
-	return rv_ans;
-}
-
-/// return EXP_LOG_MIN_RARE_FREQ
-SEXP gpu_exp_log_min_rare_freq()
-{
-	/// the minimum rare frequency to store haplotypes (defined in HIBAG)
-	const double MIN_RARE_FREQ = 1e-5;
-	const int n = 2 * HIBAG_MAXNUM_SNP_IN_CLASSIFIER + 1;
-	SEXP rv_ans = PROTECT(NEW_NUMERIC(n));
-	for (int i=0; i < n; i++)
-		REAL(rv_ans)[i] = exp(i * log(MIN_RARE_FREQ));
-	UNPROTECT(1);
-	return rv_ans;
-}
-
 
 /// initialize GPU structure and return a pointer object
 SEXP gpu_init_proc(SEXP env)

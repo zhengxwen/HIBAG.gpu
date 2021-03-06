@@ -59,14 +59,33 @@ cl_kernel gpu_kl_pred_addprob = NULL;
 
 
 // OpenCL memory buffer
-cl_mem mem_rare_freq_f32 = NULL;
-cl_mem mem_rare_freq_f64 = NULL;
+cl_mem mem_rare_freq_f32 = NULL;  // float[]
+cl_mem mem_rare_freq_f64 = NULL;  // double[]
+cl_mem mem_build_idx_oob = NULL;  // parameters, int[]
+cl_mem mem_build_idx_ib = NULL;   // parameters, int[]
+cl_mem mem_build_hla_idx_map = NULL;  // int[], an index according to a pair of alleles
+cl_mem mem_build_output = NULL;   // int[], float[], or double[]
+cl_mem mem_snpgeno = NULL;      // SNP genotypes, TGenotype[]
+cl_mem mem_haplo_list = NULL;   // haplotype list, THaplotype[]
+cl_mem mem_prob_buffer = NULL;  // double[nHLA*(nHLA+1)/2][# of samples]
+
+
+
 
 
 // flags for usage of double or single precision
 bool gpu_f64_flag = false;
 bool gpu_f64_build_flag = false;
 bool gpu_f64_pred_flag  = false;
+
+
+// used for work-group size (1-dim and 2-dim)
+static size_t GPU_LOCAL_IWORK_MAX = 64;
+size_t gpu_const_local_size = GPU_LOCAL_IWORK_MAX;
+size_t gpu_local_size_d1 = 64;  // will be determined automatically
+size_t gpu_local_size_d2 = 8;   // will be determined automatically
+
+
 
 
 // OpenCL kernel function names
@@ -189,11 +208,54 @@ void gpu_finish()
 		throw gpu_err_msg(err, "Failed to call clFinish()");
 }
 
+
 /// OpenCL call clReleaseEvent
 void gpu_free_events(size_t num_events, const cl_event event_list[])
 {
 	for (size_t i=0; i < num_events; i++)
 		clReleaseEvent(event_list[i]);
+}
+
+
+/// create memory buffer
+cl_mem gpu_create_mem(cl_mem_flags flags, size_t size, void *host_ptr,
+	const char *fc_nm)
+{
+	cl_int err;
+	cl_mem mem = clCreateBuffer(gpu_context, flags, size, host_ptr, &err);
+	if (!mem)
+	{
+		if (fc_nm)
+		{
+			Rf_error("Failed to create memory buffer (%lld bytes) '%s' (error: %d, %s).",
+				(long long)size, fc_nm, err, gpu_error_info(err));
+		} else {
+			Rf_error("Failed to create memory buffer (%lld bytes) (error: %d, %s).",
+				(long long)size, err, gpu_error_info(err));
+		}
+	}
+	return mem;
+}
+
+
+/// release memory buffer
+void gpu_free_mem(cl_mem mem, const char *fc_nm)
+{
+	if (mem)
+	{
+		cl_int err = clReleaseMemObject(mem);
+		if (err != CL_SUCCESS)
+		{
+			if (fc_nm)
+			{
+				Rf_error("Failed to free memory buffer '%s' (error: %d, %s).",
+					fc_nm, err, gpu_error_info(err));
+			} else {
+				Rf_error("Failed to free memory buffer (error: %d, %s)",
+					err, gpu_error_info(err));
+			}
+		}
+	}
 }
 
 
@@ -259,26 +321,6 @@ static int get_kernel_param(cl_device_id dev, cl_kernel kernel,
 	cl_int err = clGetKernelWorkGroupInfo(kernel, dev, param, sizeof(n), &n, NULL);
 	if (err != CL_SUCCESS) return NA_INTEGER;
 	return n;
-}
-
-
-cl_mem gpu_create_mem(cl_mem_flags flags, size_t size, void *host_ptr,
-	const char *fc_nm)
-{
-	cl_int err;
-	cl_mem mem = clCreateBuffer(gpu_context, flags, size, host_ptr, &err);
-	if (!mem)
-	{
-		if (fc_nm)
-		{
-			Rf_error("Failed to create memory buffer (%lld bytes) '%s' (error: %d, %s).",
-				(long long)size, fc_nm, err, gpu_error_info(err));
-		} else {
-			Rf_error("Failed to create memory buffer (%lld bytes) (error: %d, %s).",
-				(long long)size, err, gpu_error_info(err));
-		}
-	}
-	return mem;
 }
 
 
@@ -498,12 +540,11 @@ SEXP ocl_select_dev(SEXP dev_idx)
 	gpu_command_queue = queue;
 
 	// initialize mem_rare_freq_f32 and mem_rare_freq_f64
-	const double MIN_RARE_FREQ = 1e-5;  // the minimum rare frequency to store haplotypes (defined in HIBAG)
 	const int n = 2 * HLA_LIB::HIBAG_MAXNUM_SNP_IN_CLASSIFIER + 1;
 	float  mfreq32[n];
 	double mfreq64[n];
 	for (int i=0; i < n; i++)
-		mfreq32[i] = mfreq64[i] = exp(i * log(MIN_RARE_FREQ));
+		mfreq32[i] = mfreq64[i] = exp(i * log(HLA_LIB::MIN_RARE_FREQ));
 	GPU_CREATE_MEM(mem_rare_freq_f32, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
 		sizeof(mfreq32), mfreq32);
 	GPU_CREATE_MEM(mem_rare_freq_f64, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
@@ -597,6 +638,60 @@ SEXP ocl_set_kl_predict(SEXP f64_pred, SEXP code_calc, SEXP code_sum, SEXP code_
 	gpu_kl_pred_addprob = build_kernel(code_add, kl_nm_pred_calc_addprob);
 	return R_NilValue;
 }
+
+
+/// automatically set the work local size for the kernel
+SEXP ocl_set_local_size(SEXP Rverbose)
+{
+	const bool verbose = Rf_asLogical(Rverbose)==TRUE;
+
+	size_t max_wz[128];
+	cl_int err = clGetDeviceInfo(gpu_device, CL_DEVICE_MAX_WORK_ITEM_SIZES,
+		sizeof(max_wz), max_wz, NULL);
+	if (err != CL_SUCCESS)
+		max_wz[0] = max_wz[1] = max_wz[2] = 65536;
+
+	size_t mem_byte = 0;
+	err = clGetKernelWorkGroupInfo(gpu_kl_clear_mem, gpu_device,
+		CL_KERNEL_WORK_GROUP_SIZE, sizeof(mem_byte), &mem_byte, NULL);
+	if (err==CL_SUCCESS && mem_byte>64)
+	{
+		gpu_local_size_d1 = mem_byte;
+		if (mem_byte >= 4096)
+			gpu_local_size_d2 = 64;
+		else if (mem_byte >= 1024)
+			gpu_local_size_d2 = 32;
+		else if (mem_byte >= 256)
+			gpu_local_size_d2 = 16;
+		else
+			gpu_local_size_d2 = 8;
+	} else {
+		gpu_local_size_d1 = 64;
+		gpu_local_size_d2 = 8;
+	}
+
+	if (gpu_local_size_d1 > max_wz[0]) gpu_local_size_d1 = max_wz[0];
+	if (gpu_local_size_d2 > max_wz[1]) gpu_local_size_d2 = max_wz[1];
+
+	gpu_const_local_size = 64;
+	if (gpu_const_local_size > gpu_local_size_d1)
+		gpu_const_local_size = gpu_local_size_d1;
+
+	if (gpu_local_size_d2 == 1) // it is a CPU (very likely)
+	{
+		gpu_local_size_d1 = 1;
+		gpu_const_local_size = 1;
+	}
+
+	if (verbose)
+	{
+		Rprintf("    local work size: %d (D1), %dx%d (D2)\n",
+			(int)gpu_local_size_d1, (int)gpu_local_size_d2, (int)gpu_local_size_d2);
+	}
+
+	return R_NilValue;
+}
+
 
 
 } // extern "C"
