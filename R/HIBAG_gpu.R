@@ -365,64 +365,61 @@ hlaPredict_gpu <- function(object, snp,
 }
 
 # initialize GPU device
-.gpu_init <- function(device, train_prec, predict_prec, dev_idx, showmsg)
+.gpu_init <- function(dev_idx, train_prec, predict_prec, showmsg)
 {
 	# show information
-	info <- oclInfo(device)
-	if (!is.na(dev_idx) && (dev_idx > 0L))
-		s <- paste0("Using Device #", dev_idx, ": ", info$vendor, ", ", info$name)
-	else
-		s <- paste("Using", info$vendor, info$name)
+	info <- .get_dev_info(dev_idx)
+	s <- paste0("Using Device #", dev_idx, ": ", info[[1L]], ", ", info[[2L]])
 	showmsg(s)
 
-	# set env variables and need a kernel function
-	.packageEnv$gpu_device  <- device
+	# set env variables
 	.packageEnv$gpu_dev_idx <- dev_idx
-	.packageEnv$gpu_context <- suppressWarnings(oclContext(device))
-	.packageEnv$kernel_clear_mem <- .new_kernel("clear_memory",
-		code_clear_memory, "integer")
-
-	if (!is.null(info$driver.ver))
-		showmsg(paste("    Driver Version:", info$driver.ver))
+	.Call(ocl_select_dev, dev_idx)
+	msg <- paste("    Driver Version:", info[6L])
+	on.exit(showmsg(paste(msg, collapse="\n")))
 
 	# OpenCL extension
-	exts <- info$exts
-	test_ext_lst <- c("cl_khr_fp64", "cl_khr_global_int32_base_atomics",
+	exts <- info[4L]
+	test_ext_lst <- c("cl_khr_global_int32_base_atomics", "cl_khr_fp64",
 		"cl_khr_int64_base_atomics", "cl_khr_global_int64_base_atomics")
 	for (h in test_ext_lst)
-		showmsg(paste0("    EXTENSION ", h, ": ", .yesno(any(grepl(h, exts)))))
-	has_int64_atom <- any(grepl("cl_khr_int64_base_atomics", exts))
+		msg <- c(msg, paste0("    EXTENSION ", h, ": ", .yesno(grepl(h, exts))))
+	has_int64_atom <- grepl("cl_khr_int64_base_atomics", exts)
+
+	pm <- .Call(ocl_get_dev_param)
+	msg <- c(msg, paste0("    CL_DEVICE_GLOBAL_MEM_SIZE: ",
+		prettyNum(pm[[1L]], big.mark=",", scientific=FALSE)))
+	msg <- c(msg, paste0("    CL_DEVICE_MAX_MEM_ALLOC_SIZE: ",
+		prettyNum(pm[[2L]], big.mark=",", scientific=FALSE)))
+	msg <- c(msg, paste0("    CL_DEVICE_MAX_COMPUTE_UNITS: ", pm[[3L]]))
+	msg <- c(msg, paste0("    CL_DEVICE_MAX_WORK_GROUP_SIZE: ", pm[[4L]]))
+	msg <- c(msg, paste0("    CL_DEVICE_MAX_WORK_ITEM_DIMENSIONS: ", pm[[5L]]))
+	msg <- c(msg, paste0("    CL_DEVICE_MAX_WORK_ITEM_SIZES: ",
+		paste(pm[[6L]], collapse=",")))
+	msg <- c(msg, paste0("    CL_DEVICE_LOCAL_MEM_SIZE: ", pm[[7L]]))
+	msg <- c(msg, paste0("    CL_DEVICE_ADDRESS_BITS: ", pm[[8L]]))
+
+	.packageEnv$code_clear_memory <- code_clear_memory
+	pm <- .Call(ocl_set_kl_clearmem, code_clear_memory)
+	msg <- c(msg, paste0("    CL_KERNEL_WORK_GROUP_SIZE: ", pm[1L]))
+	msg <- c(msg, paste0("    CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE: ", pm[2L]))
 
 	# support 64-bit floating-point numbers or not
 	dev_fp64 <- dev_fp64_ori <- any(grepl("cl_khr_fp64", exts))
 	if (dev_fp64)
 	{
+		.packageEnv$code_attempt_f64 <- paste(c(code_macro, code_macro_prec["double"],
+			code_hamm_dist_max["double"], code_atomic_add_f64, code_hamming_dist,
+			code_build_calc_prob), collapse="\n")
 		# also need cl_khr_int64_base_atomics : enable
 		dev_fp64 <- tryCatch({
-			k <- .new_kernel("build_calc_prob", c(
-				code_macro, code_hamm_dist_max["double"], code_atomic_add_f64,
-				code_hamming_dist, code_build_calc_prob), "double")
-			TRUE
+			.Call(ocl_set_kl_attempt, "build_calc_prob", .packageEnv$code_attempt_f64)
 		}, error=function(e) FALSE)
-		showmsg(paste("    atom_cmpxchg (enable cl_khr_int64_base_atomics):",
+		msg <- c(msg, paste("    atom_cmpxchg (enable cl_khr_int64_base_atomics):",
 			ifelse(dev_fp64, "OK", "Failed")))
 	}
 
-	# parameters
-	pm <- .Call(gpu_get_param)
-	showmsg(paste0("    CL_DEVICE_GLOBAL_MEM_SIZE: ",
-		prettyNum(pm[[1L]], big.mark=",", scientific=FALSE)))
-	showmsg(paste0("    CL_DEVICE_MAX_MEM_ALLOC_SIZE: ",
-		prettyNum(pm[[2L]], big.mark=",", scientific=FALSE)))
-	showmsg(paste0("    CL_DEVICE_MAX_COMPUTE_UNITS: ", pm[[3L]]))
-	showmsg(paste0("    CL_DEVICE_MAX_WORK_GROUP_SIZE: ", pm[[4L]]))
-	showmsg(paste0("    CL_DEVICE_MAX_WORK_ITEM_DIMENSIONS: ", pm[[5L]]))
-	showmsg(paste0("    CL_DEVICE_MAX_WORK_ITEM_SIZES: ", paste(pm[[6L]], collapse=",")))
-	showmsg(paste0("    CL_DEVICE_LOCAL_MEM_SIZE: ", pm[[7L]]))
-	showmsg(paste0("    CL_DEVICE_ADDRESS_BITS: ", pm[[8L]]))
-	showmsg(paste0("    CL_KERNEL_WORK_GROUP_SIZE: ", pm[[9L]]))
-	showmsg(paste0("    CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE: ", pm[[10L]]))
-	showmsg(paste("GPU device", ifelse(dev_fp64, "supports", "does not support"),
+	msg <- c(msg, paste("GPU device", ifelse(dev_fp64, "supports", "does not support"),
 		"double-precision floating-point numbers"))
 
 	# user-defined precision in training
@@ -435,19 +432,19 @@ hlaPredict_gpu <- function(object, snp,
 				call.=FALSE)
 		}
 		f64_build <- TRUE
-		showmsg("Training uses 64-bit floating-point numbers in GPU")
+		msg <- c(msg, "Training uses 64-bit floating-point numbers in GPU")
 	} else if (train_prec == "single")
 	{
 		f64_build <- FALSE
-		showmsg("Training uses 32-bit floating-point numbers in GPU")
+		msg <- c(msg, "Training uses 32-bit floating-point numbers in GPU")
 	} else if (train_prec == "mixed")
 	{
 		f64_build <- FALSE
-		showmsg("Training uses a mixed precision between half and float in GPU")
+		msg <- c(msg, "Training uses a mixed precision between half and float in GPU")
 	} else if (train_prec == "half")
 	{
 		f64_build <- FALSE
-		showmsg("Training uses half precision in GPU")
+		msg <- c(msg, "Training uses half precision in GPU")
 	} else
 		stop("Invalid 'train_prec'.")
 
@@ -458,7 +455,7 @@ hlaPredict_gpu <- function(object, snp,
 		{
 			predict_prec <- "double"
 			f64_pred <- TRUE
-			showmsg(paste(
+			msg <- c(msg, paste(
 				"By default, prediction uses 64-bit floating-point numbers",
 				"(since EXTENSION cl_khr_int64_base_atomics: YES)."))
 		} else {
@@ -466,11 +463,11 @@ hlaPredict_gpu <- function(object, snp,
 			f64_pred <- FALSE
 			if (dev_fp64)
 			{
-				showmsg(paste(
+				msg <- c(msg, paste(
 					"By default, prediction uses 32-bit floating-point numbers in GPU",
 					"(since EXTENSION cl_khr_int64_base_atomics: NO)."))
 			} else {
-				showmsg("Prediction uses 32-bit floating-point numbers in GPU.")
+				msg <- c(msg, "Prediction uses 32-bit floating-point numbers in GPU.")
 			}
 		}
 	} else if (predict_prec == "double")
@@ -481,55 +478,49 @@ hlaPredict_gpu <- function(object, snp,
 				call.=FALSE)
 		}
 		f64_pred <- TRUE
-		showmsg("Prediction uses 64-bit floating-point numbers in GPU.")
+		msg <- c(msg, "Prediction uses 64-bit floating-point numbers in GPU.")
 	} else if (predict_prec == "single")
 	{
 		f64_pred <- FALSE
-		showmsg("Prediction uses 32-bit floating-point numbers in GPU.")
+		msg <- c(msg, "Prediction uses 32-bit floating-point numbers in GPU.")
 	} else
 		stop("Invalid 'predict_prec'.")
+
+
 
 	## build OpenCL kernels ##
 
 	.packageEnv$flag_build_f64 <- f64_build
-	.packageEnv$flag_pred_f64  <- f64_pred
-	.packageEnv$prec_build   <- prec_build   <- ifelse(f64_build, "double", "single")
-	.packageEnv$prec_build_d <- train_prec
-	.packageEnv$prec_predict <- prec_predict <- ifelse(f64_pred,  "double", "single")
+	.packageEnv$flag_pred_f64 <- f64_pred
 
-	## build kernels for constructing classifiers
-	.packageEnv$kernel_build_calc_prob <- .new_kernel("build_calc_prob",
-		c(code_macro, code_hamm_dist_max[train_prec],
+	.packageEnv$code_build_calc_prob <- paste(c(
+		code_macro, code_macro_prec[train_prec], code_hamm_dist_max[train_prec],
 		if (f64_build) code_atomic_add_f64 else code_atomic_add_f32,
-		code_hamming_dist, code_build_calc_prob), prec_build)
-	.packageEnv$kernel_build_calc_oob <- .new_kernel("build_calc_oob",
-		c(code_macro, code_build_calc_oob), prec_build)
-	.packageEnv$kernel_build_calc_ib <- .new_kernel("build_calc_ib",
-		c(ifelse(dev_fp64_ori, "#define USE_SUM_DOUBLE", ""),
-		code_macro, code_hamm_dist_max[train_prec], code_build_calc_ib), prec_build)
+		code_hamming_dist, code_build_calc_prob), collapse="\n")
+	.packageEnv$code_build_calc_oob <- paste(c(
+		c(code_macro, code_macro_prec[train_prec], code_build_calc_oob)), collapse="\n")
+	.packageEnv$code_build_calc_ib <- paste(c(
+		code_macro, code_macro_prec[train_prec], code_hamm_dist_max[train_prec],
+		code_build_calc_ib), collapse="\n")
+	.Call(ocl_set_kl_build, dev_fp64_ori, f64_build, .packageEnv$code_build_calc_prob,
+		.packageEnv$code_build_calc_oob, .packageEnv$code_build_calc_ib)
 
-	## build kernels for prediction
-	.packageEnv$kernel_pred_calc <- .new_kernel("pred_calc_prob",
-		c(code_macro, code_hamm_dist_max[predict_prec],
+	prec_predict <- ifelse(f64_pred,  "double", "single")
+	.packageEnv$code_pred_calc <- paste(c(
+		code_macro, code_macro_prec[predict_prec], code_hamm_dist_max[predict_prec],
 		if (f64_pred) code_atomic_add_f64 else code_atomic_add_f32,
-		code_hamming_dist, code_pred_calc_prob), prec_predict)
-	.packageEnv$kernel_pred_sumprob <- .new_kernel("pred_calc_sumprob",
-		c(ifelse(dev_fp64_ori, "#define USE_SUM_DOUBLE", ""),
-		code_macro, code_pred_calc_sumprob), prec_predict)
-	.packageEnv$kernel_pred_addprob <- .new_kernel("pred_calc_addprob",
-		c(ifelse(dev_fp64_ori, "#define USE_SUM_DOUBLE", ""),
-		code_pred_calc_addprob), prec_predict)
+		code_hamming_dist, code_pred_calc_prob), collapse="\n")
+	.packageEnv$code_pred_sumprob <- paste(c(
+		ifelse(dev_fp64_ori, "#define USE_SUM_DOUBLE", ""),
+		code_macro, code_macro_prec[predict_prec], code_pred_calc_sumprob), collapse="\n")
+	.packageEnv$kernel_pred_addprob <- paste(c(
+		ifelse(dev_fp64_ori, "#define USE_SUM_DOUBLE", ""),
+		code_macro_prec[predict_prec], code_pred_calc_addprob), collapse="\n")
+	.Call(ocl_set_kl_predict, f64_pred, .packageEnv$code_pred_calc,
+		.packageEnv$code_pred_sumprob, .packageEnv$kernel_pred_addprob)
 
-	## initialize GPU memory buffer
-	fq <- .Call(gpu_exp_log_min_rare_freq)
-	x <- clBuffer(.packageEnv$gpu_context, length(fq), "double")
-	x[] <- fq
-	.packageEnv$mem_exp_log_min_rare_freq64 <- x
-	x <- clBuffer(.packageEnv$gpu_context, length(fq), "single")
-	x[] <- fq
-	.packageEnv$mem_exp_log_min_rare_freq32 <- x
-
-	showmsg("")
+	on.exit()
+	showmsg(paste(msg, collapse="\n"))
 	invisible()
 }
 
@@ -540,7 +531,7 @@ hlaGPU_Init <- function(device=NA_integer_,
 	predict_prec=c("auto", "single", "double"), verbose=TRUE)
 {
 	# check
-	stopifnot(is.numeric(device) | inherits(device, "clDeviceID"))
+	stopifnot(is.numeric(device), length(device)==1L)
 	train_prec <- match.arg(train_prec)
 	predict_prec <- match.arg(predict_prec)
 	stopifnot(is.logical(verbose), length(verbose)==1L)
@@ -550,22 +541,8 @@ hlaGPU_Init <- function(device=NA_integer_,
 		device <- .packageEnv$gpu_dev_idx
 		if (is.null(device)) device <- NA_integer_
 	}
-	if (is.na(device))
-		device <- .packageEnv$gpu_init_dev_idx
 
-	if (is.numeric(device))
-	{
-		if (is.null(.packageEnv$opencl_dev_list))
-			.get_dev_list(verbose=FALSE)
-		num <- device
-		if (num < 1L || num > length(.packageEnv$opencl_dev_list))
-			stop("No existing device #", num, ".")
-		device <- .packageEnv$opencl_dev_list[[num]]
-	} else {
-		num <- 0L
-	}
-
-	.gpu_init(device, train_prec, predict_prec, num,
+	.gpu_init(device, train_prec, predict_prec,
 		ifelse(verbose, message, function(x) {}))
 
 	invisible()
@@ -578,41 +555,26 @@ hlaGPU_Init <- function(device=NA_integer_,
 #######################################################################
 
 # get a list of OpenCL devices
-.get_dev_list <- function(showmsg=message, verbose=TRUE)
+.init_dev_list <- function()
 {
-	.packageEnv$opencl_dev_list <- list()
-	# enumate
-	i <- 1L
-	dev_lst <- list()
-	for (pm in oclPlatforms())
-	{
-		dev <- oclDevices(pm)
-		if (length(dev))
-		{
-			if (verbose)
-			{
-				for (d in dev)
-				{
-					m <- oclInfo(d)
-					s <- sprintf("Device #%d: %s, %s", i, m$vendor, m$name)
-					i <- i + 1L
-					showmsg(s)
-				}
-			}
-			dev_lst <- c(dev_lst, dev)
-		}
-	}
-	# set
-	.packageEnv$opencl_dev_list <- dev_lst
+	.packageEnv$opencl_dev_num <- 0L
+	.packageEnv$opencl_dev_num <- .Call(ocl_init_dev_list)
 }
+
+# get device information
+.get_dev_info <- function(dev_idx) .Call(ocl_dev_info, dev_idx)
 
 
 # return device index if found
 .search_dev <- function(showmsg=message)
 {
+	# get device info
+	info <- vapply(seq_len(.packageEnv$opencl_dev_num), function(idx) {
+		s <- .get_dev_info(idx)
+		paste0(s[1L], ", ", s[2L])
+	}, "")
+
 	# find NVIDIA, AMD and Intel Graphics cards
-	info <- vapply(.packageEnv$opencl_dev_list, function(dev)
-		with(oclInfo(dev), paste(vendor, name)), "")
 	i1 <- grep("NVIDIA", info, ignore.case=TRUE)
 	i2 <- grep("AMD", info, ignore.case=TRUE)
 	i3 <- grep("Intel.*Graphics", info, ignore.case=TRUE)
@@ -623,15 +585,14 @@ hlaGPU_Init <- function(device=NA_integer_,
 	# build OpenCL kernels
 	for (i in ii)
 	{
-		dev <- .packageEnv$opencl_dev_list[[i]]
 		ok <- tryCatch({
 			# check extension
-			exts <- oclInfo(dev)$exts
-			if (!any(grepl("cl_khr_global_int32_base_atomics", exts)))
+			exts <- .get_dev_info(i)[4L]
+			if (!grepl("cl_khr_global_int32_base_atomics", exts))
 				stop("Need the OpenCL extension cl_khr_global_int32_base_atomics.")
 			# initialize
 			.packageEnv$gpu_init_dev_idx <- i
-			.gpu_init(dev, "auto", "auto", i, showmsg)
+			.gpu_init(i, "auto", "auto", showmsg)
 			TRUE
 		}, error=function(cond) {
 			showmsg(cond)
@@ -648,12 +609,17 @@ hlaGPU_Init <- function(device=NA_integer_,
 .onAttach <- function(libname, pkgname)
 {
 	# get devices
-	packageStartupMessage("")
-	packageStartupMessage("Available OpenCL device(s):")
-	.get_dev_list(packageStartupMessage, TRUE)
+	num <- .packageEnv$opencl_dev_num
+	msg <- c("", "Available OpenCL device(s):")
+	for (i in seq_len(num))
+	{
+		s <- .get_dev_info(i)
+		msg <- c(msg, paste0("    Dev #", i, ": ", s[1L], ", ", s[2L], ", ", s[3L]))
+	}
+	msg <- c(msg, "")
+	packageStartupMessage(paste(msg, collapse="\n"))
 
 	# find NVIDIA, AMD and Intel Graphics cards
-	packageStartupMessage("")
 	i <- .search_dev(packageStartupMessage)
 	if (is.na(i))
 		packageStartupMessage("No device supports!")
@@ -663,7 +629,14 @@ hlaGPU_Init <- function(device=NA_integer_,
 
 .onLoad <- function(libname, pkgname)
 {
+	# initialize device list
+	.init_dev_list()
 	# set procedure pointer
 	.packageEnv$gpu_proc_ptr <- .Call(gpu_init_proc, .packageEnv)
 	TRUE
+}
+
+.onUnload <- function(libpath)
+{
+	.Call(ocl_release_dev)
 }

@@ -46,6 +46,11 @@ code_macro <- "
 #define LOCAL_IWORK_MAX        64
 "
 
+code_macro_prec <- c(
+	`double` = "#define numeric    double",
+	`single` = "#define numeric    float",
+	`mixed`  = "#define numeric    float",
+	`half`   = "#define numeric    float")
 
 code_hamm_dist_max <- c(
 	`double` = "#define HAMM_DIST_MAX    64",
@@ -320,9 +325,9 @@ __kernel void build_calc_ib(__global numeric *out_prob,
 
 code_clear_memory <- "
 // if version < 1.2 or clEnqueueFillBuffer is not available
-__kernel void clear_memory(const int n, __global int *p)
+__kernel void clear_memory(const uint n, __global int *p)
 {
-	const int i = get_global_id(0);
+	const uint i = get_global_id(0);
 	if (i < n) p[i] = 0;
 }
 "

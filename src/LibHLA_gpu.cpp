@@ -78,20 +78,6 @@ namespace HLA_LIB
 	static int Num_Classifier;
 
 
-	// flags for usage of double or single precision
-	static bool gpu_f64_build_flag = false;
-	static bool gpu_f64_pred_flag  = false;
-
-
-	// OpenCL kernel functions
-	static cl_kernel gpu_kl_build_calc_prob	 = NULL;
-	static cl_kernel gpu_kl_build_calc_oob = NULL;
-	static cl_kernel gpu_kl_build_calc_ib = NULL;
-	static cl_kernel gpu_kl_pred_calc = NULL;
-	static cl_kernel gpu_kl_pred_sumprob = NULL;
-	static cl_kernel gpu_kl_pred_addprob = NULL;
-	static cl_kernel gpu_kl_clear_mem = NULL;
-
 	// OpenCL memory objects
 
 	// parameters, int[] =
@@ -233,30 +219,6 @@ static const char *gpu_err_msg(const char *txt, int err)
 
 // ====  GPU create/free memory buffer  ====
 
-#define GPU_CREATE_MEM(x, flags, size, host_ptr)    \
-	gpu_debug_func_name = #x; \
-	x = gpu_create_mem(flags, size, host_ptr); \
-	gpu_debug_func_name = NULL;
-
-static cl_mem gpu_create_mem(cl_mem_flags flags, size_t size, void *host_ptr)
-{
-	cl_int err;
-	cl_mem mem = clCreateBuffer(gpu_context, flags, size, host_ptr, &err);
-	if (!mem)
-	{
-		static char buf[1024];
-		if (gpu_debug_func_name)
-		{
-			sprintf(buf, "Failed to create memory buffer (%lld bytes) '%s' (error: %d, %s).",
-				(long long)size, gpu_debug_func_name, err, gpu_error_info(err));
-		} else {
-			sprintf(buf, "Failed to create memory buffer (%lld bytes) (error: %d, %s).",
-				(long long)size, err, gpu_error_info(err));
-		}
-		throw buf;
-	}
-	return mem;
-}
 
 #define GPU_FREE_MEM(x)    \
 	{ \
