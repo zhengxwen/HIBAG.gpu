@@ -196,7 +196,7 @@ hlaAttrBagging_gpu <- function(hla, snp, nclassifier=100,
 		cat("# of SNPs: ", n.snp, ", # of samples: ", n.samp, "\n", sep="")
         s <- ifelse(!grepl("^KIR", hla$locus), "HLA", "KIR")
         cat("# of unique ", s, " alleles: ", n.hla, "\n", sep="")
-		cat("using ", .packageEnv$prec_build_d,
+		cat("using ", .packageEnv$train_prec,
 			"-precision floating-point numbers in GPU computing\n", sep="")
 	}
 
@@ -204,7 +204,7 @@ hlaAttrBagging_gpu <- function(hla, snp, nclassifier=100,
 	###################################################################
 	# training ...
 
-	.Call(gpu_set_local_size, verbose)
+	.Call(ocl_set_local_size, verbose)
 	.gpu_build_init_memory(n.hla, n.samp, verbose)
 
 	# add new individual classifers
@@ -272,7 +272,7 @@ hlaPredict_gpu <- function(object, snp,
 			"-precision floating-point numbers in GPU computing\n", sep="")
 	}
 	.Call(gpu_set_verbose, verbose)
-	.Call(gpu_set_local_size)
+	.Call(ocl_set_local_size, verbose)
 
 	# GPU proc pointer
 	cl <- FALSE
@@ -425,6 +425,7 @@ hlaPredict_gpu <- function(object, snp,
 	## build OpenCL kernels ##
 
 	.packageEnv$flag_build_f64 <- f64_build
+	.packageEnv$train_prec <- train_prec
 	.packageEnv$flag_pred_f64 <- f64_pred
 
 	.packageEnv$code_build_calc_prob <- paste(c(
