@@ -28,14 +28,33 @@
 #	include <CL/opencl.h>
 #endif
 
+#include <Rdefines.h>
+
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 
-/// get information from an OpenCL error code
-const char *ocl_error_info(int err);
+// OpenCL device variables
+extern cl_context gpu_context;
+extern cl_command_queue gpu_command_queue;
 
+
+/// get information from an OpenCL error code
+const char *gpu_error_info(int err);
+
+/// OpenCL call clFinish
+void gpu_finish();
+
+/// OpenCL call clReleaseEvent
+void gpu_free_events(size_t num_events, const cl_event event_list[]);
+
+
+
+// export R functions
+
+extern SEXP ocl_get_dev_list(SEXP Rverbose);
 
 
 #ifdef __cplusplus

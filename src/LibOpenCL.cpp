@@ -27,14 +27,26 @@
 
 #define USE_RINTERNALS 1
 #include <Rinternals.h>
-#include <Rdefines.h>
+#include <R_ext/Rdynload.h>
 
 
 extern "C"
 {
+// OpenCL device list
+
+
+
+// OpenCL device variables
+
+cl_context gpu_context = NULL;
+cl_command_queue gpu_command_queue = NULL;
+
+
+
+// ===================================================================== //
 
 /// get information from an OpenCL error code
-const char *ocl_error_info(int err)
+const char *gpu_error_info(int err)
 {
 	#define ERR_RET(s)    case s: return #s;
 	switch (err)
@@ -116,5 +128,164 @@ const char *ocl_error_info(int err)
 	#undef ERR_RET
 }
 
+
+/// OpenCL error message
+static const char *gpu_err_msg(int err, const char *txt, const char *var=NULL)
+{
+	static char buf[1024];
+	const char *info = gpu_error_info(err);
+	if (var)
+	{
+		sprintf(buf, "%s '%s' (error: %d, %s).", txt, var, err, info);
+	} else {
+		sprintf(buf, "%s (error: %d, %s).", txt, err, info);
+	}
+	return buf;
+}
+
+
+/// OpenCL call clFinish
+void gpu_finish()
+{
+	cl_int err = clFinish(gpu_command_queue);
+	if (err != CL_SUCCESS)
+		throw gpu_err_msg(err, "Failed to call clFinish()");
+}
+
+/// OpenCL call clReleaseEvent
+void gpu_free_events(size_t num_events, const cl_event event_list[])
+{
+	for (size_t i=0; i < num_events; i++)
+		clReleaseEvent(event_list[i]);
+}
+
+
+
+// ===================================================================== //
+
+std::vector<cl_device_id> gpu_dev_list;
+
+
+SEXP ocl_get_dev_list(SEXP Rverbose)
+{
+	static const char *fc_get_platform      = "clGetPlatformIDs";
+	static const char *fc_get_platform_info = "clGetPlatformInfo";
+	static const char *fc_get_device      = "clGetDeviceIDs";
+	static const char *fc_get_device_info = "clGetDeviceInfo";
+	static const char *err_info = "It failed to get a list of devices";
+
+	// show information or not
+	const bool verbose = Rf_asLogical(Rverbose) == TRUE;
+
+	// clear the list
+	gpu_dev_list.clear();
+
+	// get a list of platforms
+	cl_uint num_platforms = 0;
+	cl_int err = clGetPlatformIDs(0, NULL, &num_platforms);
+	if (err != CL_SUCCESS)
+		error(gpu_err_msg(err, err_info, fc_get_platform));
+	cl_platform_id *platforms =
+		(cl_platform_id*)malloc(num_platforms*sizeof(cl_platform_id));
+	err = clGetPlatformIDs(num_platforms, platforms, NULL);
+	if (err != CL_SUCCESS)
+	{
+		free(platforms);
+		error(gpu_err_msg(err, err_info, fc_get_platform));
+	}
+
+	// get a list of devices for each platform
+	for (cl_uint i=0; i < num_platforms; i++)
+	{
+		cl_platform_id platform = platforms[i];
+		if (verbose)
+		{
+			// get platform information
+			char ss[1024];
+			// platform name
+			err = clGetPlatformInfo(platform, CL_PLATFORM_NAME, sizeof(ss), &ss, NULL);
+			if (err != CL_SUCCESS)
+			{
+				free(platforms);
+				error(gpu_err_msg(err, err_info, fc_get_platform_info));
+			}
+			Rprintf("%s, ", ss);
+			// platform version
+			err = clGetPlatformInfo(platform, CL_PLATFORM_VERSION, sizeof(ss), &ss, NULL);
+			if (err != CL_SUCCESS)
+			{
+				free(platforms);
+				error(gpu_err_msg(err, err_info, fc_get_platform_info));
+			}
+			Rprintf("%s:\n", ss);
+		}
+		// get devices using this platform
+		cl_uint num_dev = 0;
+		err = clGetDeviceIDs(platform, CL_DEVICE_TYPE_ALL, 0, NULL, &num_dev);
+		if (err!=CL_SUCCESS && err!=CL_DEVICE_NOT_FOUND)
+		{
+			free(platforms);
+			error(gpu_err_msg(err, err_info, fc_get_device));
+		}
+		if (num_dev > 0)
+		{
+			cl_device_id *dev = (cl_device_id*)malloc(sizeof(cl_device_id)*num_dev);
+			err = clGetDeviceIDs(platform, CL_DEVICE_TYPE_ALL, num_dev, dev, NULL);
+			if (err != CL_SUCCESS)
+			{
+				free(dev);
+				free(platforms);
+				error(gpu_err_msg(err, err_info, fc_get_device));
+			}
+			for (cl_uint j=0; j < num_dev; j++)
+			{
+				gpu_dev_list.push_back(dev[j]);
+				if (verbose)
+				{
+					Rprintf("    Dev #%d: ", (int)gpu_dev_list.size());
+					// get device information
+					char vendor[1024], name[1024], version[1024];
+					err = clGetDeviceInfo(dev[j], CL_DEVICE_VENDOR, sizeof(vendor), &vendor, NULL);
+					if (err != CL_SUCCESS)
+					{
+						free(dev); free(platforms);
+						error(gpu_err_msg(err, err_info, fc_get_device_info));
+					}
+					err = clGetDeviceInfo(dev[j], CL_DEVICE_NAME, sizeof(name), &name, NULL);
+					if (err != CL_SUCCESS)
+					{
+						free(dev); free(platforms);
+						error(gpu_err_msg(err, err_info, fc_get_device_info));
+					}
+					err = clGetDeviceInfo(dev[j], CL_DEVICE_VERSION, sizeof(version), &version, NULL);
+					if (err != CL_SUCCESS)
+					{
+						free(dev); free(platforms);
+						error(gpu_err_msg(err, err_info, fc_get_device_info));
+					}
+					Rprintf("%s, %s, %s\n", vendor, name, version);
+				}
+			}
+			free(dev);
+		}
+	}
+
+	// finally
+	free(platforms);
+	return R_NilValue;
+}
+
+
+/*
+void R_init_HIBAG_gpu(DllInfo *info)
+{
+	Rprintf("sjsjs\n");
+}
+
+void R_unload_HIBAG_gpu(DllInfo *info)
+{
+	Rprintf("osksks\n");
+}
+*/
 
 } // extern "C"

@@ -82,9 +82,6 @@ namespace HLA_LIB
 	static bool gpu_f64_build_flag = false;
 	static bool gpu_f64_pred_flag  = false;
 
-	// OpenCL device variables
-	static cl_context gpu_context = NULL;
-	static cl_command_queue gpu_command_queue = NULL;
 
 	// OpenCL kernel functions
 	static cl_kernel gpu_kl_build_calc_prob	 = NULL;
@@ -160,7 +157,7 @@ namespace HLA_LIB
 	static const char *err_text(const char *txt, int err)
 	{
 		static char buf[1024];
-		sprintf(buf, "%s (error: %d, %s).", txt, err, ocl_error_info(err));
+		sprintf(buf, "%s (error: %d, %s).", txt, err, gpu_error_info(err));
 		return buf;
 	}
 
@@ -185,7 +182,7 @@ namespace HLA_LIB
 				if (fn == NULL) fn = "";
 				sprintf(buffer,
 					"Unable to map '%s' to host memory [%lld bytes] (error: %d, %s)",
-					fn, (long long)(size*sizeof(TYPE)), err, ocl_error_info(err));
+					fn, (long long)(size*sizeof(TYPE)), err, gpu_error_info(err));
 				throw buffer;
 			}
 		}
@@ -226,26 +223,11 @@ static const char *gpu_err_msg(const char *txt, int err)
 	if (gpu_debug_func_name)
 	{
 		sprintf(buf, "%s '%s' (error: %d, %s).", txt, gpu_debug_func_name,
-			err, ocl_error_info(err));
+			err, gpu_error_info(err));
 	} else {
-		sprintf(buf, "%s (error: %d, %s).", txt, err, ocl_error_info(err));
+		sprintf(buf, "%s (error: %d, %s).", txt, err, gpu_error_info(err));
 	}
 	return buf;
-}
-
-/// OpenCL call clFinish
-inline static void gpu_finish()
-{
-	cl_int err = clFinish(gpu_command_queue);
-	if (err != CL_SUCCESS)
-		throw gpu_err_msg("Failed to call clFinish()", err);
-}
-
-/// OpenCL call clReleaseEvent
-inline static void gpu_free_events(cl_uint num_events, const cl_event event_list[])
-{
-	for (cl_uint i=0; i < num_events; i++)
-		clReleaseEvent(event_list[i]);
 }
 
 
@@ -266,10 +248,10 @@ static cl_mem gpu_create_mem(cl_mem_flags flags, size_t size, void *host_ptr)
 		if (gpu_debug_func_name)
 		{
 			sprintf(buf, "Failed to create memory buffer (%lld bytes) '%s' (error: %d, %s).",
-				(long long)size, gpu_debug_func_name, err, ocl_error_info(err));
+				(long long)size, gpu_debug_func_name, err, gpu_error_info(err));
 		} else {
 			sprintf(buf, "Failed to create memory buffer (%lld bytes) (error: %d, %s).",
-				(long long)size, err, ocl_error_info(err));
+				(long long)size, err, gpu_error_info(err));
 		}
 		throw buf;
 	}
