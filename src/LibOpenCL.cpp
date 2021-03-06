@@ -623,8 +623,8 @@ SEXP ocl_set_kl_build(SEXP f64, SEXP f64_build, SEXP code_prob, SEXP code_oob,
 	gpu_f64_flag = (Rf_asLogical(f64) == TRUE);
 	gpu_f64_build_flag = (Rf_asLogical(f64_build) == TRUE);
 	gpu_kl_build_calc_prob = build_kernel(code_prob, kl_nm_build_calc_prob);
-	gpu_kl_build_calc_oob  = build_kernel(code_oob, kl_nm_build_calc_oob);
-	gpu_kl_build_calc_ib   = build_kernel(code_ib, kl_nm_build_calc_ib);
+	gpu_kl_build_calc_oob  = build_kernel(code_oob,  kl_nm_build_calc_oob);
+	gpu_kl_build_calc_ib   = build_kernel(code_ib,   kl_nm_build_calc_ib);
 	return R_NilValue;
 }
 
@@ -633,9 +633,9 @@ SEXP ocl_set_kl_build(SEXP f64, SEXP f64_build, SEXP code_prob, SEXP code_oob,
 SEXP ocl_set_kl_predict(SEXP f64_pred, SEXP code_calc, SEXP code_sum, SEXP code_add)
 {
 	gpu_f64_pred_flag = (Rf_asLogical(f64_pred) == TRUE);
-	gpu_kl_pred_calc = build_kernel(code_calc, kl_nm_pred_calc_prob);
-	gpu_kl_pred_sumprob = build_kernel(code_sum, kl_nm_pred_calc_sumprob);
-	gpu_kl_pred_addprob = build_kernel(code_add, kl_nm_pred_calc_addprob);
+	gpu_kl_pred_calc    = build_kernel(code_calc, kl_nm_pred_calc_prob);
+	gpu_kl_pred_sumprob = build_kernel(code_sum,  kl_nm_pred_calc_sumprob);
+	gpu_kl_pred_addprob = build_kernel(code_add,  kl_nm_pred_calc_addprob);
 	return R_NilValue;
 }
 
