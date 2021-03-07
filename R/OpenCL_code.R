@@ -36,14 +36,6 @@ code_macro <- "
 #define OFFSET_GENO_BOOTSTRAP  32
 #define OFFSET_GENO_HLA_A1     36
 #define OFFSET_GENO_HLA_A2     40
-
-#define OFFSET_NUM_HAPLO       0
-#define OFFSET_NUM_SNP         1
-#define OFFSET_START_SAMP_IDX  2
-#define OFFSET_PARAM           3
-#define OFFSET_OOB_ACC         4
-
-#define LOCAL_IWORK_MAX        64
 "
 
 code_macro_prec <- c(
@@ -388,14 +380,10 @@ code_pred_calc_sumprob <- "
 #endif
 
 __kernel void pred_calc_sumprob(__global numeric *out_sum, const int num_hla_geno,
-	__global const numeric *prob)
+	__global const numeric *prob, __local TFLOAT *local_sum)
 {
-	__local TFLOAT local_sum[LOCAL_IWORK_MAX];
-	const int localsize = get_local_size(0);  // localsize <= LOCAL_IWORK_MAX
-
+	const int localsize = get_local_size(0);
 	const int i = get_local_id(0);
-	if (i >= localsize) return;
-
 	const int i_cfr = get_global_id(1);
 	prob += num_hla_geno * i_cfr;
 

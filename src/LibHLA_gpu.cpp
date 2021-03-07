@@ -600,6 +600,7 @@ static void predict_init(int n_hla, int nClassifier, const THaplotype *const pHa
 	GPU_SETARG(gpu_kl_pred_sumprob, 0, mem_pred_weight);
 	GPU_SETARG(gpu_kl_pred_sumprob, 1, sz_hla);
 	GPU_SETARG(gpu_kl_pred_sumprob, 2, mem_prob_buffer);
+	GPU_SETARG_LOCAL(gpu_kl_pred_sumprob, 3, sizeof(double)*gpu_local_size_d1);
 
 	// arguments for gpu_kl_pred_addprob, pred_calc_addprob
 	GPU_SETARG(gpu_kl_pred_addprob, 0, mem_prob_buffer);
