@@ -303,13 +303,12 @@ hlaPredict_gpu <- function(object, snp,
 {
 	# show information
 	info <- .get_dev_info(dev_idx)
-	s <- paste0("Using Device #", dev_idx, ": ", info[[1L]], ", ", info[[2L]])
-	showmsg(s)
+	msg <- paste0("Using Device #", dev_idx, ": ", info[[1L]], ", ", info[[2L]])
 
 	# set env variables
 	.packageEnv$gpu_dev_idx <- dev_idx
 	.Call(ocl_select_dev, dev_idx)
-	msg <- paste("    Driver Version:", info[6L])
+	msg <- c(msg, paste("    Driver Version:", info[6L]))
 	on.exit(showmsg(paste(msg, collapse="\n")))
 
 	# OpenCL extension
