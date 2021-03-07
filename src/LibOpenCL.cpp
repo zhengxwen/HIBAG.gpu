@@ -395,7 +395,7 @@ static std::vector<std::string> tmp_ss;
 
 static void check_dev_idx(int idx)
 {
-	if (idx < 1 || idx > gpu_dev_list.size())
+	if (idx < 1 || idx > (int)gpu_dev_list.size())
 	{
 		Rf_error("The selected device index should be between 1 and %d.",
 			(int)gpu_dev_list.size());
