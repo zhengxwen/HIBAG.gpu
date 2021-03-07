@@ -30,7 +30,7 @@
 #include <Rinternals.h>
 #include <R_ext/Rdynload.h>
 
-// Defined in HIBAG/install/LibHLA_ext.h
+// Defined in HIBAG/install/LibHLA_ext.h, need HLA_LIB::MIN_RARE_FREQ
 #define HIBAG_STRUCTURE_HEAD_ONLY
 #include <LibHLA_ext.h>
 
@@ -68,6 +68,8 @@ cl_mem mem_build_output = NULL;   // int[], float[], or double[]
 cl_mem mem_snpgeno = NULL;      // SNP genotypes, TGenotype[]
 cl_mem mem_haplo_list = NULL;   // haplotype list, THaplotype[]
 cl_mem mem_prob_buffer = NULL;  // double[nHLA*(nHLA+1)/2][# of samples]
+cl_mem mem_pred_haplo_num = NULL;  // num of haplotypes and SNPs for each classifier: int[][2]
+cl_mem mem_pred_weight = NULL;     // classifier weight, double[nClassifier]
 
 
 
@@ -85,6 +87,8 @@ size_t gpu_const_local_size = GPU_LOCAL_IWORK_MAX;
 size_t gpu_local_size_d1 = 64;  // will be determined automatically
 size_t gpu_local_size_d2 = 8;   // will be determined automatically
 
+// verbose in OpenCL implementation
+bool ocl_verbose = false;
 
 
 
@@ -353,6 +357,14 @@ static std::string get_dev_info_str(cl_device_id dev, cl_device_info p)
 	if (err != CL_SUCCESS)
 		Rf_error(gpu_err_msg(err, err_info, fc_get_device_info));
 	return s;
+}
+
+
+/// set verbose
+SEXP ocl_set_verbose(SEXP verbose)
+{
+	ocl_verbose = (Rf_asLogical(verbose)==TRUE);
+	return R_NilValue;
 }
 
 

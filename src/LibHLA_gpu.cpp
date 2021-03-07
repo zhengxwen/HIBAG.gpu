@@ -78,10 +78,6 @@ namespace HLA_LIB
 	static int Num_Classifier;
 
 
-
-
-
-
 	// OpenCL memory objects
 
 	// the max number of samples can be hold in mem_prob_buffer
@@ -95,13 +91,6 @@ namespace HLA_LIB
 	// predict: msize_prob_buffer_total = msize_prob_buffer_each * num_classifier
 	static size_t msize_prob_buffer_total = 0;
 
-
-
-	// num of haplotypes and SNPs for each classifier: int[][2]
-	static cl_mem mem_pred_haplo_num = NULL;
-
-	// classifier weight
-	static cl_mem mem_pred_weight = NULL;
 
 	static int wdim_pred_addprob = 0;
 
@@ -327,34 +316,12 @@ inline static MATH_OFAST void fmul_f64(double p[], size_t n, double scalar)
 
 // ===================================================================== //
 
-static bool gpu_verbose = false;
-
-/// release the memory buffer object
-SEXP gpu_set_verbose(SEXP verbose)
-{
-	gpu_verbose = (Rf_asLogical(verbose)==TRUE);
-	return R_NilValue;
-}
-
-
-// ===================================================================== //
-
-#define GPU_CREATE_MEM_V(x, flags, size, host_ptr)    \
-	{ \
-		size_t sz = size; \
-		if (verbose) \
-			Rprintf("    allocating %lld bytes in GPU ", (long long)sz); \
-		x = gpu_create_mem(flags, sz, host_ptr, #x); \
-		if (verbose) \
-			Rprintf("[OK]\n"); \
-	}
-
 // initialize the internal structure for building a model
 SEXP ocl_build_init(SEXP R_nHLA, SEXP R_nSample, SEXP R_verbose)
 {
 	const int n_hla  = Rf_asInteger(R_nHLA);
 	const int n_samp = Rf_asInteger(R_nSample);
-	const bool verbose = Rf_asLogical(R_verbose)==TRUE;
+	ocl_verbose = (Rf_asLogical(R_verbose) == TRUE);
 	if (n_hla >= 32768)
 		Rf_error("There are too many unique HLA alleles (%d).", n_hla);
 
@@ -465,6 +432,7 @@ SEXP ocl_build_done()
 	return R_NilValue;
 }
 
+// ========
 
 static void build_init(int nHLA, int nSample)
 {
@@ -626,13 +594,13 @@ static double build_acc_ib()
 // ===================================================================== //
 
 /// initialize the internal structure for predicting
-void predict_init(int nHLA, int nClassifier, const THaplotype *const pHaplo[],
+static void predict_init(int n_hla, int nClassifier, const THaplotype *const pHaplo[],
 	const int nHaplo[], const int nSNP[])
 {
 	// assign
-	Num_HLA = nHLA;
+	Num_HLA = n_hla;
 	Num_Classifier = nClassifier;
-	const size_t size_hla = nHLA * (nHLA+1) >> 1;
+	const size_t size_hla = n_hla * (n_hla+1) >> 1;
 
 	// the number of haplotypes among all classifiers in total
 	size_t sum_n_haplo=0, max_n_haplo=0;
@@ -650,15 +618,12 @@ void predict_init(int nHLA, int nClassifier, const THaplotype *const pHaplo[],
 	cl_mem mem_rare_freq = gpu_f64_pred_flag ? mem_rare_freq_f64 : mem_rare_freq_f32;
 
 	// memory for SNP genotypes
-	GPU_CREATE_MEM(mem_snpgeno, CL_MEM_READ_ONLY, sizeof(TGenotype)*nClassifier, NULL);
+	GPU_CREATE_MEM_V(mem_snpgeno, CL_MEM_READ_ONLY, sizeof(TGenotype)*nClassifier, NULL);
 
 	// haplotype lists for all classifiers
 	vector<int> nhaplo_buf(4*nClassifier);
 	const size_t msize_haplo = sizeof(THaplotype)*sum_n_haplo;
-	if (gpu_verbose)
-		Rprintf("    allocating %lld bytes in GPU ", (long long)msize_haplo);
-	GPU_CREATE_MEM(mem_haplo_list, CL_MEM_READ_ONLY, msize_haplo, NULL);
-	if (gpu_verbose) Rprintf("[OK]\n");
+	GPU_CREATE_MEM_V(mem_haplo_list, CL_MEM_READ_ONLY, msize_haplo, NULL);
 	{
 		GPU_MEM_MAP(M, THaplotype, mem_haplo_list, sum_n_haplo, false);
 		THaplotype *p = M.ptr();
@@ -674,26 +639,26 @@ void predict_init(int nHLA, int nClassifier, const THaplotype *const pHaplo[],
 	}
 
 	// the numbers of haplotypes
-	GPU_CREATE_MEM(mem_pred_haplo_num, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
+	GPU_CREATE_MEM_V(mem_pred_haplo_num, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
 		sizeof(int)*nhaplo_buf.size(), (void*)&nhaplo_buf[0]);
 
 	// pred_calc_prob -- out_prob
 	msize_prob_buffer_each = size_hla *
 		(gpu_f64_pred_flag ? sizeof(double) : sizeof(float));
 	msize_prob_buffer_total = msize_prob_buffer_each * nClassifier;
-	if (gpu_verbose)
+	if (ocl_verbose)
 		Rprintf("    allocating %lld bytes in GPU ", (long long)msize_prob_buffer_total);
-	GPU_CREATE_MEM(mem_prob_buffer, CL_MEM_READ_WRITE, msize_prob_buffer_total, NULL);
-	if (gpu_verbose) Rprintf("[OK]\n");
+	GPU_CREATE_MEM_V(mem_prob_buffer, CL_MEM_READ_WRITE, msize_prob_buffer_total, NULL);
+	if (ocl_verbose) Rprintf("[OK]\n");
 
 	// pred_calc_addprob -- weight
-	GPU_CREATE_MEM(mem_pred_weight, CL_MEM_READ_WRITE,
-		sizeof(double)*nClassifier, NULL);
+	GPU_CREATE_MEM_V(mem_pred_weight, CL_MEM_READ_WRITE, sizeof(double)*nClassifier,
+		NULL);
 
 	// arguments for gpu_kl_pred_calc, pred_calc_prob
 	int sz_hla = size_hla;
 	GPU_SETARG(gpu_kl_pred_calc, 0, mem_prob_buffer);
-	GPU_SETARG(gpu_kl_pred_calc, 1, nHLA);
+	GPU_SETARG(gpu_kl_pred_calc, 1, n_hla);
 	GPU_SETARG(gpu_kl_pred_calc, 2, sz_hla);
 	GPU_SETARG(gpu_kl_pred_calc, 3, mem_rare_freq);
 	GPU_SETARG(gpu_kl_pred_calc, 4, mem_haplo_list);
@@ -722,11 +687,11 @@ void predict_init(int nHLA, int nClassifier, const THaplotype *const pHaplo[],
 /// finalize the structure for predicting
 void predict_done()
 {
-	GPU_FREE_MEM(mem_haplo_list);
-	GPU_FREE_MEM(mem_pred_haplo_num);
-	GPU_FREE_MEM(mem_snpgeno);
-	GPU_FREE_MEM(mem_prob_buffer);
-	GPU_FREE_MEM(mem_pred_weight);
+	GPU_FREE_MEM(mem_haplo_list);     mem_haplo_list = NULL;
+	GPU_FREE_MEM(mem_pred_haplo_num); mem_pred_haplo_num = NULL;
+	GPU_FREE_MEM(mem_snpgeno);        mem_snpgeno = NULL;
+	GPU_FREE_MEM(mem_prob_buffer);    mem_prob_buffer = NULL;
+	GPU_FREE_MEM(mem_pred_weight);    mem_pred_weight = NULL;
 }
 
 

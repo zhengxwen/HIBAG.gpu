@@ -271,7 +271,7 @@ hlaPredict_gpu <- function(object, snp,
 		cat("Using ", .packageEnv$predict_prec,
 			"-precision floating-point numbers in GPU computing\n", sep="")
 	}
-	.Call(gpu_set_verbose, verbose)
+	.Call(ocl_set_verbose, verbose)
 	.Call(ocl_set_local_size, verbose)
 
 	# GPU proc pointer
