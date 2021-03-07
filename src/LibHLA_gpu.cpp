@@ -186,23 +186,6 @@ static const char *gpu_err_msg(const char *txt, int err)
 }
 
 
-// ====  GPU set arguments  ====
-
-#define GPU_SETARG(kernel, i, x)    \
-	{ \
-		cl_int err = clSetKernelArg(kernel, i, sizeof(x), &x); \
-		if (err != CL_SUCCESS) \
-			throw err_text("Failed to set kernel (" #kernel ") argument (" #i ")", err); \
-	}
-
-#define GPU_SETARG_LOCAL(kernel, i, sz)    \
-	{ \
-		cl_int err = clSetKernelArg(kernel, i, sz, NULL); \
-		if (err != CL_SUCCESS) \
-			throw err_text("Failed to set kernel (" #kernel ") argument (" #i ")", err); \
-	}
-
-
 // ====  GPU run kernel  ====
 
 #define GPU_RUN_KERNEL(kernel, ndim, wdims, lsize)    \
@@ -445,10 +428,10 @@ static void build_set_haplo_geno(const THaplotype haplo[], int n_haplo,
 	double run_aux_log_freq2 = log(sum * sum);
 	if (gpu_f64_build_flag)
 	{
-		GPU_SETARG(gpu_kl_build_calc_ib, 2, run_aux_log_freq2)
+		GPU_SETARG(gpu_kl_build_calc_ib, 2, run_aux_log_freq2);
 	} else {
 		float run_aux_log_freq2_f32 = run_aux_log_freq2;
-		GPU_SETARG(gpu_kl_build_calc_ib, 2, run_aux_log_freq2_f32)
+		GPU_SETARG(gpu_kl_build_calc_ib, 2, run_aux_log_freq2_f32);
 	}
 
 	gpu_finish();
@@ -612,10 +595,7 @@ static void predict_init(int n_hla, int nClassifier, const THaplotype *const pHa
 	msize_prob_buffer_each = size_hla *
 		(gpu_f64_pred_flag ? sizeof(double) : sizeof(float));
 	msize_prob_buffer_total = msize_prob_buffer_each * nClassifier;
-	if (ocl_verbose)
-		Rprintf("    allocating %lld bytes in GPU ", (long long)msize_prob_buffer_total);
 	GPU_CREATE_MEM_V(mem_prob_buffer, CL_MEM_READ_WRITE, msize_prob_buffer_total, NULL);
-	if (ocl_verbose) Rprintf("[OK]\n");
 
 	// pred_calc_addprob -- weight
 	GPU_CREATE_MEM_V(mem_pred_weight, CL_MEM_READ_WRITE, sizeof(double)*nClassifier,

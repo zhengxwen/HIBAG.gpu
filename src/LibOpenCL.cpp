@@ -303,6 +303,25 @@ void gpu_read_mem(cl_mem buffer, size_t offset, size_t size, void *ptr,
 }
 
 
+/// set kernel argument
+void gpu_setarg(cl_kernel kernel, int arg_idx, size_t arg_size,
+	const void *arg_value, const char *fc_nm)
+{
+	cl_int err = clSetKernelArg(kernel, arg_idx, arg_size, arg_value);
+	if (err != CL_SUCCESS)
+	{
+		if (fc_nm)
+		{
+			Rf_error("Failed to set the kernel '%s' argument[%d] (error: %d, %s).",
+				fc_nm, arg_idx, err, gpu_error_info(err));
+		} else {
+			Rf_error("Failed to set the kernel argument[%d] (error: %d, %s).",
+				arg_idx, err, gpu_error_info(err));
+		}
+	}
+}
+
+
 
 // ===================================================================== //
 
