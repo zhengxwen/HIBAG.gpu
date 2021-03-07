@@ -74,7 +74,6 @@ extern bool gpu_f64_pred_flag;
 
 
 // used for work-group size (1-dim and 2-dim)
-extern size_t gpu_const_local_size;
 extern size_t gpu_local_size_d1;
 extern size_t gpu_local_size_d2;
 

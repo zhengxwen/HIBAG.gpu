@@ -496,8 +496,8 @@ static double build_acc_ib()
 
 	// get sum of prob for each sample
 	{
-		size_t wdims[2] = { gpu_const_local_size, (size_t)build_num_ib };
-		size_t local_size[2] = { gpu_const_local_size, 1 };
+		size_t wdims[2] = { gpu_local_size_d1, (size_t)build_num_ib };
+		size_t local_size[2] = { gpu_local_size_d1, 1 };
 		GPU_RUN_KERNEL_EVENT(gpu_kl_build_calc_ib, 2, wdims, local_size,
 			1, &events[1], &events[2]);
 	}
@@ -654,8 +654,8 @@ void predict_avg_prob(const TGenotype geno[], const double weight[],
 		// sum up all probs for each classifier
 		{
 			// output to mem_pred_weight
-			size_t wdims[2] = { (size_t)gpu_const_local_size, (size_t)Num_Classifier };
-			size_t local_size[2] = { gpu_const_local_size, 1 };
+			size_t wdims[2] = { gpu_local_size_d1, (size_t)Num_Classifier };
+			size_t local_size[2] = { gpu_local_size_d1, 1 };
 			GPU_RUN_KERNEL_EVENT(gpu_kl_pred_sumprob, 2, wdims, local_size,
 				1, &events[2], &events[3]);
 		}

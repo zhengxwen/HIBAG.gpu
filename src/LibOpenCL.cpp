@@ -79,8 +79,6 @@ bool gpu_f64_pred_flag  = false;
 
 
 // used for work-group size (1-dim and 2-dim)
-static size_t GPU_LOCAL_IWORK_MAX = 64;
-size_t gpu_const_local_size = GPU_LOCAL_IWORK_MAX;
 size_t gpu_local_size_d1 = 64;  // will be determined automatically
 size_t gpu_local_size_d2 = 8;   // will be determined automatically
 
@@ -747,15 +745,8 @@ SEXP ocl_set_local_size(SEXP Rverbose)
 	if (gpu_local_size_d1 > max_wz[0]) gpu_local_size_d1 = max_wz[0];
 	if (gpu_local_size_d2 > max_wz[1]) gpu_local_size_d2 = max_wz[1];
 
-	gpu_const_local_size = 64;
-	if (gpu_const_local_size > gpu_local_size_d1)
-		gpu_const_local_size = gpu_local_size_d1;
-
 	if (gpu_local_size_d2 == 1) // it is a CPU (very likely)
-	{
 		gpu_local_size_d1 = 1;
-		gpu_const_local_size = 1;
-	}
 
 	if (verbose)
 	{
