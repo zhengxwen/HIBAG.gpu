@@ -102,8 +102,12 @@ extern cl_mem gpu_create_mem(cl_mem_flags flags, size_t size, void *host_ptr,
 /// release memory buffer
 extern void gpu_free_mem(cl_mem mem, const char *fc_nm);
 
+/// write memory buffer
+extern cl_event gpu_write_mem(cl_mem buffer, bool blocking, size_t size, const void *ptr,
+	const char *fc_nm);
 
 
+// define MARCO
 
 #define GPU_CREATE_MEM(x, flags, size, p)    \
 	x = gpu_create_mem(flags, size, p, #x)
@@ -118,6 +122,10 @@ extern void gpu_free_mem(cl_mem mem, const char *fc_nm);
 	}
 #define GPU_FREE_MEM(x)    gpu_free_mem(x, #x)
 
+#define GPU_WRITE_MEM(x, size, ptr)    \
+	gpu_write_mem(x, true, size, ptr, #x)
+#define GPU_WRITE_EVENT(v, x, size, ptr)    \
+	v = gpu_write_mem(x, false, size, ptr, #x)
 
 
 

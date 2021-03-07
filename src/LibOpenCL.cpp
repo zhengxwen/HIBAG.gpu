@@ -72,9 +72,6 @@ cl_mem mem_pred_haplo_num = NULL;  // num of haplotypes and SNPs for each classi
 cl_mem mem_pred_weight = NULL;     // classifier weight, double[nClassifier]
 
 
-
-
-
 // flags for usage of double or single precision
 bool gpu_f64_flag = false;
 bool gpu_f64_build_flag = false;
@@ -262,6 +259,32 @@ void gpu_free_mem(cl_mem mem, const char *fc_nm)
 	}
 }
 
+
+/// write memory buffer
+cl_event gpu_write_mem(cl_mem buffer, bool blocking, size_t size, const void *ptr,
+	const char *fc_nm)
+{
+	cl_event event = NULL;
+	cl_int err = clEnqueueWriteBuffer(gpu_command_queue, buffer,
+		blocking ? CL_TRUE : CL_FALSE, 0, size, ptr, 0, NULL,
+		blocking ? NULL : &event);
+	if (err != CL_SUCCESS)
+	{
+		if (fc_nm)
+		{
+			Rf_error("Failed to write memory buffer '%s' (error: %d, %s).",
+				fc_nm, err, gpu_error_info(err));
+		} else {
+			Rf_error("Failed to write memory buffer (error: %d, %s)",
+				err, gpu_error_info(err));
+		}
+	}
+	return event;
+}
+
+
+
+// ===================================================================== //
 
 static cl_kernel build_kernel(SEXP code, const char *name)
 {

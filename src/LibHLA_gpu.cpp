@@ -188,29 +188,6 @@ static const char *gpu_err_msg(const char *txt, int err)
 
 // ====  GPU memory buffer writing  ====
 
-#define GPU_WRITE_MEM(x, size, ptr)    \
-	gpu_debug_func_name = #x; \
-	gpu_write_mem(x, true, size, ptr); \
-	gpu_debug_func_name = NULL;
-
-#define GPU_WRITE_EVENT(v, x, size, ptr)    \
-	gpu_debug_func_name = #x; \
-	v = gpu_write_mem(x, false, size, ptr); \
-	gpu_debug_func_name = NULL;
-
-static cl_event gpu_write_mem(cl_mem buffer, bool blocking, size_t size,
-	const void *ptr)
-{
-	cl_event event = NULL;
-	cl_int err = clEnqueueWriteBuffer(gpu_command_queue, buffer,
-		blocking ? CL_TRUE : CL_FALSE, 0, size, ptr, 0, NULL,
-		blocking ? NULL : &event);
-	if (err != CL_SUCCESS)
-		throw gpu_err_msg("Failed to write memory buffer", err);
-	return event;
-}
-
-
 #define GPU_READ_MEM(x, offset, size, ptr)    \
 	{ \
 		cl_int err = clEnqueueReadBuffer(gpu_command_queue, x, CL_TRUE, offset, size, \
