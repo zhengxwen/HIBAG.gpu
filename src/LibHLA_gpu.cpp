@@ -168,23 +168,6 @@ using namespace HLA_LIB;
 
 extern "C"
 {
-/// GPU debug information with function name
-static const char *gpu_debug_func_name = NULL;
-
-/// OpenCL error message
-static const char *gpu_err_msg(const char *txt, int err)
-{
-	static char buf[1024];
-	if (gpu_debug_func_name)
-	{
-		sprintf(buf, "%s '%s' (error: %d, %s).", txt, gpu_debug_func_name,
-			err, gpu_error_info(err));
-	} else {
-		sprintf(buf, "%s (error: %d, %s).", txt, err, gpu_error_info(err));
-	}
-	return buf;
-}
-
 
 // ====  GPU run kernel  ====
 
@@ -235,12 +218,14 @@ static void clear_prob_buffer(size_t size, cl_event *event)
 	if (n % gpu_local_size_d1) wdim++;
 	wdim *= gpu_local_size_d1;
 	// run the kernel
-	gpu_debug_func_name = "gpu_kl_clear_mem";
 	cl_int err = clEnqueueNDRangeKernel(gpu_command_queue, gpu_kl_clear_mem, 1, NULL,
 		&wdim, &gpu_local_size_d1, 0, NULL, event);
 	if (err != CL_SUCCESS)
-		throw gpu_err_msg("Failed to run clEnqueueNDRangeKernel() on", err);
-	gpu_debug_func_name = NULL;
+	{
+		Rf_error(
+			"Failed to run clEnqueueNDRangeKernel() on 'gpu_kl_clear_mem' (error: %d, %s)",
+			err, gpu_error_info(err));
+	}
 	if (!event) gpu_finish();
 #endif
 }
@@ -414,8 +399,8 @@ static void build_set_haplo_geno(const THaplotype haplo[], int n_haplo,
 		throw "Too many haplotypes out of the limit, please contact the package author.";
 
 	cl_event events[2];
-	GPU_WRITE_EVENT(events[0], mem_haplo_list, sizeof(THaplotype)*n_haplo, (void*)haplo);
-	GPU_WRITE_EVENT(events[1], mem_snpgeno, sizeof(TGenotype)*Num_Sample, (void*)geno);
+	events[0] = GPU_WRITE_EVENT(mem_haplo_list, sizeof(THaplotype)*n_haplo, (void*)haplo);
+	events[1] = GPU_WRITE_EVENT(mem_snpgeno, sizeof(TGenotype)*Num_Sample, (void*)geno);
 
 	run_num_snp = n_snp;
 	run_num_haplo = wdim_num_haplo = n_haplo;
@@ -466,7 +451,7 @@ static int build_acc_oob()
 	// calculate OOB error count
 	{
 		int zero = 0;  // initialize total error count
-		GPU_WRITE_EVENT(events[2], mem_build_output, sizeof(zero), &zero);
+		events[2] = GPU_WRITE_EVENT(mem_build_output, sizeof(zero), &zero);
 
 		GPU_SETARG(gpu_kl_build_calc_oob, 1, zero);  // start_sample_idx
 		size_t wdims[2] = { gpu_local_size_d1, (size_t)build_num_oob };
@@ -650,7 +635,7 @@ void predict_avg_prob(const TGenotype geno[], const double weight[],
 
 	// initialize
 	clear_prob_buffer(msize_prob_buffer_total, &events[0]);
-	GPU_WRITE_EVENT(events[1], mem_snpgeno, sizeof(TGenotype)*Num_Classifier, geno);
+	events[1] = GPU_WRITE_EVENT(mem_snpgeno, sizeof(TGenotype)*Num_Classifier, geno);
 
 	// pred_calc_prob
 	{

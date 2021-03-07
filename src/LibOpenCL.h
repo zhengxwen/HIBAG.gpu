@@ -130,8 +130,8 @@ extern void gpu_setarg(cl_kernel kernel, int arg_idx, size_t arg_size,
 	}
 #define GPU_FREE_MEM(x)    gpu_free_mem(x, #x)
 
-#define GPU_WRITE_MEM(x, size, ptr)         gpu_write_mem(x, true, size, ptr, #x)
-#define GPU_WRITE_EVENT(v, x, size, ptr)    v = gpu_write_mem(x, false, size, ptr, #x)
+#define GPU_WRITE_MEM(x, size, ptr)      gpu_write_mem(x, true, size, ptr, #x)
+#define GPU_WRITE_EVENT(x, size, ptr)    gpu_write_mem(x, false, size, ptr, #x)
 
 #define GPU_READ_MEM(x, offset, size, ptr)  gpu_read_mem(x, offset, size, ptr, #x)
 
