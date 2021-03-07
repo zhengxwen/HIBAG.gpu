@@ -106,6 +106,10 @@ extern void gpu_free_mem(cl_mem mem, const char *fc_nm);
 extern cl_event gpu_write_mem(cl_mem buffer, bool blocking, size_t size, const void *ptr,
 	const char *fc_nm);
 
+/// read memory buffer
+extern void gpu_read_mem(cl_mem buffer, size_t offset, size_t size, void *ptr,
+	const char *fc_nm);
+
 
 // define MARCO
 
@@ -126,6 +130,10 @@ extern cl_event gpu_write_mem(cl_mem buffer, bool blocking, size_t size, const v
 	gpu_write_mem(x, true, size, ptr, #x)
 #define GPU_WRITE_EVENT(v, x, size, ptr)    \
 	v = gpu_write_mem(x, false, size, ptr, #x)
+
+#define GPU_READ_MEM(x, offset, size, ptr)    \
+	gpu_read_mem(x, offset, size, ptr, #x)
+
 
 
 

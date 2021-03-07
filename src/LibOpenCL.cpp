@@ -283,6 +283,26 @@ cl_event gpu_write_mem(cl_mem buffer, bool blocking, size_t size, const void *pt
 }
 
 
+/// read memory buffer
+void gpu_read_mem(cl_mem buffer, size_t offset, size_t size, void *ptr,
+	const char *fc_nm)
+{
+	cl_int err = clEnqueueReadBuffer(gpu_command_queue, buffer, CL_TRUE, offset, size,
+		ptr, 0, NULL, NULL);
+	if (err != CL_SUCCESS)
+	{
+		if (fc_nm)
+		{
+			Rf_error("Failed to read memory buffer '%s' (error: %d, %s).",
+				fc_nm, err, gpu_error_info(err));
+		} else {
+			Rf_error("Failed to read memory buffer (error: %d, %s)",
+				err, gpu_error_info(err));
+		}
+	}
+}
+
+
 
 // ===================================================================== //
 

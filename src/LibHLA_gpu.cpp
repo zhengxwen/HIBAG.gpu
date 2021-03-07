@@ -186,17 +186,6 @@ static const char *gpu_err_msg(const char *txt, int err)
 }
 
 
-// ====  GPU memory buffer writing  ====
-
-#define GPU_READ_MEM(x, offset, size, ptr)    \
-	{ \
-		cl_int err = clEnqueueReadBuffer(gpu_command_queue, x, CL_TRUE, offset, size, \
-			ptr, 0, NULL, NULL); \
-		if (err != CL_SUCCESS) \
-			throw err_text("Failed to read memory buffer " #x, err); \
-	}
-
-
 // ====  GPU set arguments  ====
 
 #define GPU_SETARG(kernel, i, x)    \
@@ -508,7 +497,7 @@ static int build_acc_oob()
 	gpu_free_events(4, events);
 
 	// read output
-	int err_cnt;
+	int err_cnt = 0;
 	GPU_READ_MEM(mem_build_output, 0, sizeof(int), &err_cnt);
 	return build_num_oob*2 - err_cnt;
 }
