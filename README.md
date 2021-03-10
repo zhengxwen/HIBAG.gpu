@@ -8,7 +8,7 @@ R package -- a GPU-based extension for the [HIBAG](https://github.com/zhengxwen/
 
 ## Requirements
 
-* [OpenCL](https://cran.r-project.org/web/packages/OpenCL/index.html)
+* [OpenCL](https://www.khronos.org) C library and header files
 
 * [HIBAG](https://github.com/zhengxwen/HIBAG) R package (>= v1.27.3)
 
@@ -139,8 +139,10 @@ summary(model)
 ##     avg. out-of-bag accuracy: 93.00%
 ##         (sd: 4.94%, min: 78.95%, max: 100.00%, median: 93.48%)
 ## Matching proportion:
-##         Min.     0.1% Qu.       1% Qu.      1st Qu.       Median      3rd Qu.         Max.         Mean           SD
-## 0.0004657777 0.0004773751 0.0005817518 0.0040887403 0.0112166087 0.0282807795 0.4263384035 0.0393261556 0.0919757944
+##         Min.     0.1% Qu.       1% Qu.      1st Qu.       Median      3rd Qu.
+## 0.0004657777 0.0004773751 0.0005817518 0.0040887403 0.0112166087 0.0282807795
+##          Max.         Mean           SD
+##  0.4263384035 0.0393261556 0.0919757944
 ## Genome assembly: hg19
 ```
 
@@ -154,6 +156,8 @@ summary(pred)
 ```
 
 ```
-## total.num.ind crt.num.ind crt.num.haplo   acc.ind acc.haplo call.threshold n.call call.rate
-##            60          59           119 0.9833333 0.9916667              0     60         1
+## total.num.ind crt.num.ind crt.num.haplo   acc.ind acc.haplo call.threshold
+##            60          59           119 0.9833333 0.9916667              0
+##  n.call call.rate
+##      60         1
 ```
