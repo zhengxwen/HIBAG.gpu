@@ -15,17 +15,17 @@ R package -- a GPU-based extension for the [HIBAG](https://github.com/zhengxwen/
 
 ## Benchmarks
 
-### 1) Speedup factor using small training sets (~1,000 samples)
+### 1) Speedup factors using small training sets (~1,000 samples)
 
 **Speed-up factors for training HIBAG models:**
 
-| CPU (AVX2, 1 thread) | CPU (AVX2, 40 threads) |
-|:--------------------:|:----------------------:|
-| 1                    |                        |
+| CPU / GPU              | Precision | Factor |
+|:----------------------:|:---------:|:------:|
+| CPU (AVX2, 1 thread)   | double    | 1      |
+| CPU (AVX2, 40 threads) | double    |        |
+| 1x NVIDIA Tesla T4     |        |        |
+| 1x NVIDIA Tesla V100   |        |        |
 
-| 1x NVIDIA Tesla K80 | 1x NVIDIA Tesla M60 | 1x NVIDIA GTX 1080Ti | 1x NVIDIA Tesla P100 | 1x NVIDIA Tesla V100 |
-|:-------------------:|:-------------------:|:--------------------:|:--------------------:|:--------------------:|
-| 46.5 x              | 57.5 x              | 93.7 x               | 209.1 x              | 246.3 x              |
 
 *using HIBAG v1.26.1 and HIBAG.gpu v0.99.0*
 
