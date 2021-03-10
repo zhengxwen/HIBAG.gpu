@@ -18,7 +18,7 @@ R package -- a GPU-based extension for the [HIBAG](https://github.com/zhengxwen/
 ### 1) Speedup factors using small training sets (~1,000 samples)
 
 | CPU / GPU              | Precision | Factor |
-|:-----------------------|:----------|-------:|
+|:-----------------------|:----------|:-------|
 | CPU (AVX2, 1 thread)   | double    | 1      |
 | CPU (AVX2, 40 threads) | double    |        |
 | 1x NVIDIA Tesla T4     |        |        |
@@ -27,7 +27,7 @@ R package -- a GPU-based extension for the [HIBAG](https://github.com/zhengxwen/
 
 *† model built on HLA-A, -B, -C, -DRB1 using HIBAG v1.26.1 and HIBAG.gpu v0.99.0*
 
-*† CPU (AVX2, 1/40 threads), optimization with Intel AVX2 instruction, using Intel(R) Xeon(R) Gold 6248 2.50GHz (Cascade Lake)*
+*† CPU (AVX2, 1/40 threads), optimization with Intel AVX2 instruction, using Intel(R) Xeon(R) Gold 6248 2.50GHz, 20 cores (Cascade Lake)*
 
 *† This work was made possible, in part, through HPC time donated by Microway, Inc. We gratefully acknowledge Microway for providing access to their GPU-accelerated compute cluster (http://www.microway.com/gpu-test-drive/).*
 
