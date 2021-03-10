@@ -27,11 +27,11 @@ R package -- a GPU-based extension for the [HIBAG](https://github.com/zhengxwen/
 | 1x NVIDIA Tesla V100   |        |        |
 
 
-*using HIBAG v1.26.1 and HIBAG.gpu v0.99.0*
+*† using HIBAG v1.26.1 and HIBAG.gpu v0.99.0*
 
-*CPU (AVX2, 1/40 threads), optimization with Intel AVX2 instruction, using Intel(R) Xeon(R) Gold 6248 CPU@2.50GHz (Cascade Lake)*
+*† CPU (AVX2, 1/40 threads), optimization with Intel AVX2 instruction, using Intel(R) Xeon(R) Gold 6248 CPU@2.50GHz (Cascade Lake)*
 
-*This work was made possible, in part, through HPC time donated by Microway, Inc. We gratefully acknowledge Microway for providing access to their GPU-accelerated compute cluster (http://www.microway.com/gpu-test-drive/).*
+*† This work was made possible, in part, through HPC time donated by Microway, Inc. We gratefully acknowledge Microway for providing access to their GPU-accelerated compute cluster (http://www.microway.com/gpu-test-drive/).*
 
 
 **Floating-point Precision**
