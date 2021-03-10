@@ -8,7 +8,7 @@ R package -- a GPU-based extension for the [HIBAG](https://github.com/zhengxwen/
 
 ## Requirements
 
-* [OpenCL](https://www.khronos.org) C library and header files
+* OpenCL C library and header files ([https://www.khronos.org](https://www.khronos.org))
 
 * [HIBAG](https://github.com/zhengxwen/HIBAG) R package (>= v1.27.3)
 
@@ -20,7 +20,7 @@ R package -- a GPU-based extension for the [HIBAG](https://github.com/zhengxwen/
 **Speed-up factors for training HIBAG models:**
 
 | CPU / GPU              | Precision | Factor |
-|:----------------------:|:---------:|:------:|
+|:-----------------------|:----------|-------:|
 | CPU (AVX2, 1 thread)   | double    | 1      |
 | CPU (AVX2, 40 threads) | double    |        |
 | 1x NVIDIA Tesla T4     |        |        |
