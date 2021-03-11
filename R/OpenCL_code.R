@@ -140,6 +140,14 @@ inline static int hamming_dist(int n, __global const unsigned char *g,
 
 ##########################################################################
 
+code_haplo_match_init <- "
+__kernel void build_haplo_match_init(const uint n, __global int *p)
+{
+	const uint i = get_global_id(0);
+	if (i < n) p[i] = INT_MAX;
+}
+"
+
 code_build_haplo_match1 <- "
 #pragma OPENCL EXTENSION cl_khr_global_int32_base_atomics : enable
 __kernel void build_haplo_match1(
@@ -149,14 +157,14 @@ __kernel void build_haplo_match1(
 	__global const unsigned char *p_haplo,
 	__global const unsigned char *p_geno)
 {
-	__local uint nlocal;
+	__local uint nlocal, copy_st;
 	__local int  dmin;
 
 	const size_t l_ii = get_local_id(1) + get_local_id(2)*get_local_size(1);
 	if (l_ii == 0)
 	{
 		nlocal = 0;
-		dmin = 2147483647;
+		dmin = INT_MAX;
 	}
 	barrier(CLK_LOCAL_MEM_FENCE);
 
@@ -172,7 +180,7 @@ __kernel void build_haplo_match1(
 		if (h1 != h2)
 		{
 			const size_t st2 = p_haplo_st[h2];
-			const size_t n2 = p_haplo_st[h2+1] - p_haplo_st[h2];
+			const size_t n2 = p_haplo_st[h2+1] - st2;
 			const size_t i2 = get_global_id(2);
 			if (i2 < n2)
 			{
@@ -202,14 +210,21 @@ __kernel void build_haplo_match1(
 	}
 
 	barrier(CLK_LOCAL_MEM_FENCE);
-	__local uint copy_st;
 	if (l_ii == 0)
 	{
 		atomic_min(out_mindiff+ii, dmin);
 		if (nlocal > 0)
 		{
-			copy_st = atomic_add(out_buffer, nlocal);
-			if (copy_st >= nmax_buffer) nlocal = 0;
+			uint m = nlocal + 2;
+			uint st = atomic_add(out_buffer, m);  // allocate uint[m]
+			if (st < nmax_buffer-m)
+			{
+				out_buffer[st] = ii;
+				out_buffer[st+1] = nlocal;
+				copy_st = st + 2;
+			} else {
+				nlocal = 0;
+			}
 		}
 	}
 
@@ -229,7 +244,7 @@ __kernel void build_haplo_match2(
 	__global const unsigned char *p_haplo,
 	__global const unsigned char *p_geno)
 {
-	__local uint nlocal;
+	__local uint nlocal, copy_st;
 
 	const size_t l_ii = get_local_id(1) + get_local_id(2)*get_local_size(1);
 	if (l_ii == 0) nlocal = 0;
@@ -250,7 +265,7 @@ __kernel void build_haplo_match2(
 			if (h1 != h2)
 			{
 				const size_t st2 = p_haplo_st[h2];
-				const size_t n2 = p_haplo_st[h2+1] - p_haplo_st[h2];
+				const size_t n2 = p_haplo_st[h2+1] - st2;
 				const size_t i2 = get_global_id(2);
 				if (i2 < n2)
 				{
@@ -279,11 +294,18 @@ __kernel void build_haplo_match2(
 	}
 
 	barrier(CLK_LOCAL_MEM_FENCE);
-	__local uint copy_st;
 	if (l_ii == 0 && nlocal > 0)
 	{
-		copy_st = atomic_add(out_buffer, nlocal);
-		if (copy_st >= nmax_buffer) nlocal = 0;
+		uint m = nlocal + 2;
+		uint st = atomic_add(out_buffer, m);  // allocate uint[m]
+		if (st < nmax_buffer-m)
+		{
+			out_buffer[st] = ii;
+			out_buffer[st+1] = nlocal;
+			copy_st = st + 2;
+		} else {
+			nlocal = 0;
+		}
 	}
 
 	barrier(CLK_LOCAL_MEM_FENCE);

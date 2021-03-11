@@ -50,6 +50,7 @@ cl_command_queue gpu_command_queue = NULL;
 cl_kernel gpu_kl_clear_mem = NULL;
 
 // OpenCL kernel functions
+cl_kernel gpu_kl_build_haplo_match_init = NULL;
 cl_kernel gpu_kl_build_haplo_match1 = NULL;
 cl_kernel gpu_kl_build_haplo_match2 = NULL;
 cl_kernel gpu_kl_build_calc_prob = NULL;
@@ -92,6 +93,7 @@ bool ocl_verbose = false;
 
 // OpenCL kernel function names
 static const char *kl_nm_clear_mem = "clear_memory";
+static const char *kl_nm_build_haplo_match_init = "build_haplo_match_init";
 static const char *kl_nm_build_haplo_match1 = "build_haplo_match1";
 static const char *kl_nm_build_haplo_match2 = "build_haplo_match2";
 static const char *kl_nm_build_calc_prob = "build_calc_prob";
@@ -636,11 +638,16 @@ SEXP ocl_select_dev(SEXP dev_idx)
 SEXP ocl_release_dev()
 {
 	// release kernels
-	const int kl_num = 7;
+	const int kl_num = 10;
 	static cl_kernel *kl_lst[kl_num] = {
-		&gpu_kl_clear_mem, &gpu_kl_build_calc_prob, &gpu_kl_build_calc_oob,
-		&gpu_kl_build_calc_ib, &gpu_kl_pred_calc, &gpu_kl_pred_sumprob,
-		&gpu_kl_pred_addprob };
+		&gpu_kl_clear_mem,
+		&gpu_kl_build_haplo_match_init,
+		&gpu_kl_build_haplo_match1, &gpu_kl_build_haplo_match2,
+		&gpu_kl_build_calc_prob,
+		&gpu_kl_build_calc_oob, &gpu_kl_build_calc_ib,
+		&gpu_kl_pred_calc,
+		&gpu_kl_pred_sumprob, &gpu_kl_pred_addprob
+	};
 	for (int i=0; i < kl_num; i++)
 	{
 		if (*kl_lst[i])
@@ -698,11 +705,15 @@ SEXP ocl_set_kl_build(SEXP f64, SEXP f64_build, SEXP codes)
 {
 	gpu_f64_flag = (Rf_asLogical(f64) == TRUE);
 	gpu_f64_build_flag = (Rf_asLogical(f64_build) == TRUE);
-	gpu_kl_build_haplo_match1 = build_kernel(VECTOR_ELT(codes,0), kl_nm_build_haplo_match1);
-	gpu_kl_build_haplo_match2 = build_kernel(VECTOR_ELT(codes,1), kl_nm_build_haplo_match2);
-	gpu_kl_build_calc_prob = build_kernel(VECTOR_ELT(codes,2), kl_nm_build_calc_prob);
-	gpu_kl_build_calc_oob  = build_kernel(VECTOR_ELT(codes,3), kl_nm_build_calc_oob);
-	gpu_kl_build_calc_ib   = build_kernel(VECTOR_ELT(codes,4), kl_nm_build_calc_ib);
+	gpu_kl_build_haplo_match_init =
+		build_kernel(VECTOR_ELT(codes, 0), kl_nm_build_haplo_match_init);
+	gpu_kl_build_haplo_match1 =
+		build_kernel(VECTOR_ELT(codes, 1), kl_nm_build_haplo_match1);
+	gpu_kl_build_haplo_match2 =
+		build_kernel(VECTOR_ELT(codes, 2), kl_nm_build_haplo_match2);
+	gpu_kl_build_calc_prob = build_kernel(VECTOR_ELT(codes, 3), kl_nm_build_calc_prob);
+	gpu_kl_build_calc_oob  = build_kernel(VECTOR_ELT(codes, 4), kl_nm_build_calc_oob);
+	gpu_kl_build_calc_ib   = build_kernel(VECTOR_ELT(codes, 5), kl_nm_build_calc_ib);
 	return R_NilValue;
 }
 

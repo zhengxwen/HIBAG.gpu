@@ -44,6 +44,7 @@ extern cl_command_queue gpu_command_queue;
 
 // OpenCL kernel functions
 extern cl_kernel gpu_kl_clear_mem;
+extern cl_kernel gpu_kl_build_haplo_match_init;
 extern cl_kernel gpu_kl_build_haplo_match1;
 extern cl_kernel gpu_kl_build_haplo_match2;
 extern cl_kernel gpu_kl_build_calc_prob;
