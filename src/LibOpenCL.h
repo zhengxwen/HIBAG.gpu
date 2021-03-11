@@ -44,6 +44,8 @@ extern cl_command_queue gpu_command_queue;
 
 // OpenCL kernel functions
 extern cl_kernel gpu_kl_clear_mem;
+extern cl_kernel gpu_kl_build_haplo_match1;
+extern cl_kernel gpu_kl_build_haplo_match2;
 extern cl_kernel gpu_kl_build_calc_prob;
 extern cl_kernel gpu_kl_build_calc_oob;
 extern cl_kernel gpu_kl_build_calc_ib;
@@ -53,15 +55,16 @@ extern cl_kernel gpu_kl_pred_addprob;
 
 
 // OpenCL memory buffer
-extern cl_mem mem_rare_freq_f32;  // float[]
-extern cl_mem mem_rare_freq_f64;  // double[]
-extern cl_mem mem_build_idx_oob;  // parameters, int[]
-extern cl_mem mem_build_idx_ib;   // parameters, int[]
+extern cl_mem mem_rare_freq_f32;   // float[]
+extern cl_mem mem_rare_freq_f64;   // double[]
 extern cl_mem mem_build_hla_idx_map;  // int[], an index according to a pair of alleles
-extern cl_mem mem_build_output;   // int[], float[], or double[]
-extern cl_mem mem_snpgeno;      // SNP genotypes, TGenotype[]
-extern cl_mem mem_haplo_list;   // haplotype list, THaplotype[]
-extern cl_mem mem_prob_buffer;  // double[nHLA*(nHLA+1)/2][# of samples]
+extern cl_mem mem_build_idx_oob;   // parameters, int[]
+extern cl_mem mem_build_idx_ib;    // parameters, int[]
+extern cl_mem mem_build_haplo_idx; // parameters, int[NumHLA+1]
+extern cl_mem mem_build_output;    // int[], float[], or double[]
+extern cl_mem mem_snpgeno;         // SNP genotypes, TGenotype[]
+extern cl_mem mem_haplo_list;      // haplotype list, THaplotype[]
+extern cl_mem mem_prob_buffer;     // double[nHLA*(nHLA+1)/2][# of samples]
 extern cl_mem mem_pred_haplo_num;  // num of haplotypes and SNPs for each classifier: int[][4]
 extern cl_mem mem_pred_weight;     // classifier weight
 
@@ -164,8 +167,7 @@ extern SEXP ocl_set_kl_attempt(SEXP name, SEXP code);
 extern SEXP ocl_set_kl_clearmem(SEXP code);
 
 /// set kernels for building the model
-extern SEXP ocl_set_kl_build(SEXP f64, SEXP f64_build, SEXP code_prob, SEXP code_oob,
-	SEXP code_ib);
+extern SEXP ocl_set_kl_build(SEXP f64, SEXP f64_build, SEXP codes);
 
 /// set kernels for prediction
 extern SEXP ocl_set_kl_predict(SEXP f64_pred, SEXP code_calc, SEXP code_sum,

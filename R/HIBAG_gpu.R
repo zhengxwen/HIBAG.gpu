@@ -428,6 +428,10 @@ hlaPredict_gpu <- function(object, snp,
 	.packageEnv$flag_pred_f64 <- f64_pred
 	.packageEnv$predict_prec <- predict_prec
 
+	.packageEnv$code_build_haplo_match1 <- paste(c(
+		code_macro, code_hamming_dist, code_build_haplo_match1), collapse="\n")
+	.packageEnv$code_build_haplo_match2 <- paste(c(
+		code_macro, code_hamming_dist, code_build_haplo_match2), collapse="\n")
 	.packageEnv$code_build_calc_prob <- paste(c(
 		code_macro, code_macro_prec[train_prec], code_hamm_dist_max[train_prec],
 		if (f64_build) code_atomic_add_f64 else code_atomic_add_f32,
@@ -437,8 +441,10 @@ hlaPredict_gpu <- function(object, snp,
 	.packageEnv$code_build_calc_ib <- paste(c(
 		code_macro, code_macro_prec[train_prec], code_hamm_dist_max[train_prec],
 		code_build_calc_ib), collapse="\n")
-	.Call(ocl_set_kl_build, dev_fp64_ori, f64_build, .packageEnv$code_build_calc_prob,
-		.packageEnv$code_build_calc_oob, .packageEnv$code_build_calc_ib)
+	.Call(ocl_set_kl_build, dev_fp64_ori, f64_build, list(
+		.packageEnv$code_build_haplo_match1, .packageEnv$code_build_haplo_match2,
+		.packageEnv$code_build_calc_prob,
+		.packageEnv$code_build_calc_oob, .packageEnv$code_build_calc_ib))
 
 	prec_predict <- ifelse(f64_pred,  "double", "single")
 	.packageEnv$code_pred_calc <- paste(c(

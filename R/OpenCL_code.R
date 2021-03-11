@@ -140,6 +140,159 @@ inline static int hamming_dist(int n, __global const unsigned char *g,
 
 ##########################################################################
 
+code_build_haplo_match1 <- "
+#pragma OPENCL EXTENSION cl_khr_global_int32_base_atomics : enable
+__kernel void build_haplo_match1(
+	__global int *out_mindiff, __global uint *out_buffer,
+	const int n_snp, __local uint *local_i, const uint nmax_buffer,
+	__global const int *p_samp_idx, __global const int *p_haplo_st,
+	__global const unsigned char *p_haplo,
+	__global const unsigned char *p_geno)
+{
+	__local uint nlocal;
+	__local int  dmin;
+
+	const size_t l_ii = get_local_id(1) + get_local_id(2)*get_local_size(1);
+	if (l_ii == 0)
+	{
+		nlocal = 0;
+		dmin = 2147483647;
+	}
+	barrier(CLK_LOCAL_MEM_FENCE);
+
+	const size_t ii = get_global_id(0);  // individual index
+	__global const unsigned char *pg = p_geno + (p_samp_idx[ii] * SIZEOF_TGENOTYPE);
+	__global const int *h = (__global const int *)(pg + OFFSET_GENO_HLA_A1);
+	const size_t h1 = h[0], h2 = h[1];
+	const size_t st1 = p_haplo_st[h1];
+	const size_t n1 = p_haplo_st[h1+1] - st1;
+	const size_t i1 = get_global_id(1);
+	if (i1 < n1)
+	{
+		if (h1 != h2)
+		{
+			const size_t st2 = p_haplo_st[h2];
+			const size_t n2 = p_haplo_st[h2+1] - p_haplo_st[h2];
+			const size_t i2 = get_global_id(2);
+			if (i2 < n2)
+			{
+				// a pair of haplotypes
+				__global const unsigned char *p1 = p_haplo + ((st1 + i1) << SIZEOF_THAPLO_SHIFT);
+				__global const unsigned char *p2 = p_haplo + ((st2 + i2) << SIZEOF_THAPLO_SHIFT);
+				// distance
+				int d = hamming_dist(n_snp, pg, p1, p2);
+				if (d == 0)
+					local_i[atomic_inc(&nlocal)] = i1 | (i2 << 16);
+				atomic_min(&dmin, d);
+			}
+		} else {
+			const size_t i2 = get_global_id(2);
+			if (i2 <= i1)
+			{
+				// a pair of haplotypes
+				__global const unsigned char *p1 = p_haplo + ((st1 + i1) << SIZEOF_THAPLO_SHIFT);
+				__global const unsigned char *p2 = p_haplo + ((st1 + i2) << SIZEOF_THAPLO_SHIFT);
+				// distance
+				int d = hamming_dist(n_snp, pg, p1, p2);
+				if (d == 0)
+					local_i[atomic_inc(&nlocal)] = i1 | (i2 << 16);
+				atomic_min(&dmin, d);
+			}
+		}
+	}
+
+	barrier(CLK_LOCAL_MEM_FENCE);
+	__local uint copy_st;
+	if (l_ii == 0)
+	{
+		atomic_min(out_mindiff+ii, dmin);
+		if (nlocal > 0)
+		{
+			copy_st = atomic_add(out_buffer, nlocal);
+			if (copy_st >= nmax_buffer) nlocal = 0;
+		}
+	}
+
+	barrier(CLK_LOCAL_MEM_FENCE);
+	if (l_ii < nlocal)
+		out_buffer[copy_st + l_ii] = local_i[l_ii];
+}
+"
+
+
+code_build_haplo_match2 <- "
+#pragma OPENCL EXTENSION cl_khr_global_int32_base_atomics : enable
+__kernel void build_haplo_match2(
+	__global int *out_mindiff, __global uint *out_buffer,
+	const int n_snp, __local uint *local_i, const uint nmax_buffer,
+	__global const int *p_samp_idx, __global const int *p_haplo_st,
+	__global const unsigned char *p_haplo,
+	__global const unsigned char *p_geno)
+{
+	__local uint nlocal;
+
+	const size_t l_ii = get_local_id(1) + get_local_id(2)*get_local_size(1);
+	if (l_ii == 0) nlocal = 0;
+	barrier(CLK_LOCAL_MEM_FENCE);
+
+	const size_t ii = get_global_id(0);  // individual index
+	int dmin = out_mindiff[ii];
+	if (dmin > 0)
+	{
+		__global const unsigned char *pg = p_geno + (p_samp_idx[ii] * SIZEOF_TGENOTYPE);
+		__global const int *h = (__global const int *)(pg + OFFSET_GENO_HLA_A1);
+		const size_t h1 = h[0], h2 = h[1];
+		const size_t st1 = p_haplo_st[h1];
+		const size_t n1 = p_haplo_st[h1+1] - st1;
+		const size_t i1 = get_global_id(1);
+		if (i1 < n1)
+		{
+			if (h1 != h2)
+			{
+				const size_t st2 = p_haplo_st[h2];
+				const size_t n2 = p_haplo_st[h2+1] - p_haplo_st[h2];
+				const size_t i2 = get_global_id(2);
+				if (i2 < n2)
+				{
+					// a pair of haplotypes
+					__global const unsigned char *p1 = p_haplo + ((st1 + i1) << SIZEOF_THAPLO_SHIFT);
+					__global const unsigned char *p2 = p_haplo + ((st2 + i2) << SIZEOF_THAPLO_SHIFT);
+					// distance
+					int d = hamming_dist(n_snp, pg, p1, p2);
+					if (d == dmin)
+						local_i[atomic_inc(&nlocal)] = i1 | (i2 << 16);
+				}
+			} else {
+				const size_t i2 = get_global_id(2);
+				if (i2 <= i1)
+				{
+					// a pair of haplotypes
+					__global const unsigned char *p1 = p_haplo + ((st1 + i1) << SIZEOF_THAPLO_SHIFT);
+					__global const unsigned char *p2 = p_haplo + ((st1 + i2) << SIZEOF_THAPLO_SHIFT);
+					// distance
+					int d = hamming_dist(n_snp, pg, p1, p2);
+					if (d == dmin)
+						local_i[atomic_inc(&nlocal)] = i1 | (i2 << 16);
+				}
+			}
+		}
+	}
+
+	barrier(CLK_LOCAL_MEM_FENCE);
+	__local uint copy_st;
+	if (l_ii == 0 && nlocal > 0)
+	{
+		copy_st = atomic_add(out_buffer, nlocal);
+		if (copy_st >= nmax_buffer) nlocal = 0;
+	}
+
+	barrier(CLK_LOCAL_MEM_FENCE);
+	if (l_ii < nlocal)
+		out_buffer[copy_st + l_ii] = local_i[l_ii];
+}
+"
+
+
 code_build_calc_prob <- "
 __kernel void build_calc_prob(
 	__global numeric *out_prob,
