@@ -317,18 +317,20 @@ SEXP ocl_build_init(SEXP R_nHLA, SEXP R_nSample, SEXP R_verbose)
 	GPU_SETARG(gpu_kl_build_haplo_match1, 0, mem_build_output);
 	GPU_SETARG(gpu_kl_build_haplo_match1, 1, mem_prob_buffer);
 	GPU_SETARG(gpu_kl_build_haplo_match1, 2, zero);
-	GPU_SETARG_LOCAL(gpu_kl_build_haplo_match1, 3, gpu_local_size_d1*sizeof(cl_uint));
-	GPU_SETARG(gpu_kl_build_haplo_match1, 4, nmax_buf);
-	GPU_SETARG(gpu_kl_build_haplo_match1, 5, mem_build_idx_ib);
-	GPU_SETARG(gpu_kl_build_haplo_match1, 6, mem_build_haplo_idx);
-	GPU_SETARG(gpu_kl_build_haplo_match1, 7, mem_haplo_list);
-	GPU_SETARG(gpu_kl_build_haplo_match1, 8, mem_snpgeno);
+	const size_t local_n = gpu_local_size_d2*gpu_local_size_d2;
+	GPU_SETARG_LOCAL(gpu_kl_build_haplo_match1, 3, local_n*sizeof(cl_uint));
+	GPU_SETARG_LOCAL(gpu_kl_build_haplo_match1, 4, local_n*sizeof(cl_int));
+	GPU_SETARG(gpu_kl_build_haplo_match1, 5, nmax_buf);
+	GPU_SETARG(gpu_kl_build_haplo_match1, 6, mem_build_idx_ib);
+	GPU_SETARG(gpu_kl_build_haplo_match1, 7, mem_build_haplo_idx);
+	GPU_SETARG(gpu_kl_build_haplo_match1, 8, mem_haplo_list);
+	GPU_SETARG(gpu_kl_build_haplo_match1, 9, mem_snpgeno);
 
 	// arguments for build_haplo_match2
 	GPU_SETARG(gpu_kl_build_haplo_match2, 0, mem_build_output);
 	GPU_SETARG(gpu_kl_build_haplo_match2, 1, mem_prob_buffer);
 	GPU_SETARG(gpu_kl_build_haplo_match2, 2, zero);  // n_snp
-	GPU_SETARG_LOCAL(gpu_kl_build_haplo_match2, 3, gpu_local_size_d1*sizeof(cl_uint));
+	GPU_SETARG_LOCAL(gpu_kl_build_haplo_match2, 3, local_n*sizeof(cl_uint));
 	GPU_SETARG(gpu_kl_build_haplo_match2, 4, nmax_buf);
 	GPU_SETARG(gpu_kl_build_haplo_match2, 5, mem_build_idx_ib);
 	GPU_SETARG(gpu_kl_build_haplo_match2, 6, mem_build_haplo_idx);

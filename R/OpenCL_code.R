@@ -151,21 +151,17 @@ __kernel void build_haplo_match_init(const uint n, __global int *p)
 code_build_haplo_match1 <- "
 #pragma OPENCL EXTENSION cl_khr_global_int32_base_atomics : enable
 __kernel void build_haplo_match1(
-	__global int *out_mindiff, __global uint *out_buffer,
-	const int n_snp, __local uint *local_i, const uint nmax_buffer,
+	__global int *out_mindiff, __global uint *out_buffer, const int n_snp,
+	__local uint *local_i, __local int *local_d, const uint nmax_buffer,
 	__global const int *p_samp_idx, __global const int *p_haplo_st,
 	__global const unsigned char *p_haplo,
 	__global const unsigned char *p_geno)
 {
 	__local uint nlocal, copy_st;
-	__local int  dmin;
 
 	const size_t l_ii = get_local_id(1) + get_local_id(2)*get_local_size(1);
-	if (l_ii == 0)
-	{
-		nlocal = 0;
-		dmin = INT_MAX;
-	}
+	local_d[l_ii] = INT_MAX;
+	if (l_ii == 0) nlocal = 0;
 	barrier(CLK_LOCAL_MEM_FENCE);
 
 	const size_t ii = get_global_id(0);  // individual index
@@ -177,11 +173,11 @@ __kernel void build_haplo_match1(
 	const size_t i1 = get_global_id(1);
 	if (i1 < n1)
 	{
+		const size_t i2 = get_global_id(2);
 		if (h1 != h2)
 		{
 			const size_t st2 = p_haplo_st[h2];
 			const size_t n2 = p_haplo_st[h2+1] - st2;
-			const size_t i2 = get_global_id(2);
 			if (i2 < n2)
 			{
 				// a pair of haplotypes
@@ -189,12 +185,11 @@ __kernel void build_haplo_match1(
 				__global const unsigned char *p2 = p_haplo + ((st2 + i2) << SIZEOF_THAPLO_SHIFT);
 				// distance
 				int d = hamming_dist(n_snp, pg, p1, p2);
+				local_d[l_ii] = d;
 				if (d == 0)
-					local_i[atomic_inc(&nlocal)] = i1 | (i2 << 16);
-				atomic_min(&dmin, d);
+					local_i[atomic_inc(&nlocal)] = i2 | (i1 << 16);
 			}
 		} else {
-			const size_t i2 = get_global_id(2);
 			if (i2 <= i1)
 			{
 				// a pair of haplotypes
@@ -202,17 +197,29 @@ __kernel void build_haplo_match1(
 				__global const unsigned char *p2 = p_haplo + ((st1 + i2) << SIZEOF_THAPLO_SHIFT);
 				// distance
 				int d = hamming_dist(n_snp, pg, p1, p2);
+				local_d[l_ii] = d;
 				if (d == 0)
 					local_i[atomic_inc(&nlocal)] = i1 | (i2 << 16);
-				atomic_min(&dmin, d);
 			}
 		}
 	}
 
+	// reduced, find min	
+	for (size_t n = get_local_size(1)*get_local_size(2) >> 1; n > 0; n >>= 1)
+	{
+		barrier(CLK_LOCAL_MEM_FENCE);
+		if (l_ii < n)
+		{
+			if (local_d[l_ii] > local_d[l_ii + n])
+				local_d[l_ii] = local_d[l_ii + n];
+		}
+	}
+
+	// store min
 	barrier(CLK_LOCAL_MEM_FENCE);
 	if (l_ii == 0)
 	{
-		atomic_min(out_mindiff+ii, dmin);
+		atomic_min(out_mindiff+ii, local_d[0]);
 		if (nlocal > 0)
 		{
 			uint m = nlocal + 2;
@@ -262,11 +269,11 @@ __kernel void build_haplo_match2(
 		const size_t i1 = get_global_id(1);
 		if (i1 < n1)
 		{
+			const size_t i2 = get_global_id(2);
 			if (h1 != h2)
 			{
 				const size_t st2 = p_haplo_st[h2];
 				const size_t n2 = p_haplo_st[h2+1] - st2;
-				const size_t i2 = get_global_id(2);
 				if (i2 < n2)
 				{
 					// a pair of haplotypes
@@ -274,11 +281,10 @@ __kernel void build_haplo_match2(
 					__global const unsigned char *p2 = p_haplo + ((st2 + i2) << SIZEOF_THAPLO_SHIFT);
 					// distance
 					int d = hamming_dist(n_snp, pg, p1, p2);
-					if (d == dmin)
-						local_i[atomic_inc(&nlocal)] = i1 | (i2 << 16);
+					if (d <= dmin)
+						local_i[atomic_inc(&nlocal)] = i2 | (i1 << 16);
 				}
 			} else {
-				const size_t i2 = get_global_id(2);
 				if (i2 <= i1)
 				{
 					// a pair of haplotypes
@@ -286,7 +292,7 @@ __kernel void build_haplo_match2(
 					__global const unsigned char *p2 = p_haplo + ((st1 + i2) << SIZEOF_THAPLO_SHIFT);
 					// distance
 					int d = hamming_dist(n_snp, pg, p1, p2);
-					if (d == dmin)
+					if (d <= dmin)
 						local_i[atomic_inc(&nlocal)] = i1 | (i2 << 16);
 				}
 			}
