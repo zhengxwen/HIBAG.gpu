@@ -884,9 +884,9 @@ SEXP gpu_init_proc(SEXP env)
 	GPU_Proc.build_done = build_done;
 	GPU_Proc.build_set_bootstrap = build_set_bootstrap;
 	GPU_Proc.build_haplomatch = build_haplomatch;
-	// GPU_Proc.build_set_haplo_geno = build_set_haplo_geno;
-	// GPU_Proc.build_acc_oob = build_acc_oob;
-	// GPU_Proc.build_acc_ib = build_acc_ib;
+	GPU_Proc.build_set_haplo_geno = build_set_haplo_geno;
+	GPU_Proc.build_acc_oob = build_acc_oob;
+	GPU_Proc.build_acc_ib = build_acc_ib;
 	GPU_Proc.predict_init = predict_init;
 	GPU_Proc.predict_done = predict_done;
 	GPU_Proc.predict_avg_prob = predict_avg_prob;
