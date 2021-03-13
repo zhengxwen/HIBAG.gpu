@@ -398,6 +398,8 @@ SEXP ocl_build_done()
 
 // ========
 
+static vector<int> samp_ib_idx;
+
 static void build_init(int nHLA, int nSample)
 {
 	if (nHLA != Num_HLA || Num_Sample != nSample)
@@ -413,12 +415,16 @@ static void build_set_bootstrap(const int oob_cnt[])
 	int *p_oob = Moob.ptr();
 	int *p_ib  = Mib.ptr();
 	build_num_oob = build_num_ib = 0;
+	samp_ib_idx.clear();
 	for (int i=0; i < Num_Sample; i++)
 	{
 		if (oob_cnt[i] <= 0)
+		{
 			p_oob[build_num_oob++] = i;
-		else
+		} else {
 			p_ib[build_num_ib++] = i;
+			samp_ib_idx.push_back(i);
+		}
 	}
 }
 
@@ -450,12 +456,10 @@ static UINT32 *build_haplomatch(const THaplotype haplo[], const size_t nHaplo[],
 			0, NULL, &events[2]);
 	}
 	{ // events[3]
-		GPU_MEM_MAP(Mib, int, mem_build_idx_ib, Num_Sample, false);
-		int *pib = Mib.ptr();
-		vector<cl_uint> b(build_num_ib + Num_HLA);
+		vector<unsigned int> b(build_num_ib + Num_HLA);
 		for (int i=0; i < build_num_ib; i++)
 		{
-			const THLAType &H = geno[pib[i]].aux_hla_type;
+			const THLAType &H = geno[samp_ib_idx[i]].aux_hla_type;
 			b[i] = nHaplo[H.Allele1] | (nHaplo[H.Allele2] << 16);
 		}
 		size_t st = 0;
