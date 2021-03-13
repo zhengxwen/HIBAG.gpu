@@ -269,10 +269,10 @@ SEXP ocl_build_init(SEXP R_nHLA, SEXP R_nSample, SEXP R_verbose)
 	cl_mem mem_rare_freq = gpu_f64_build_flag ? mem_rare_freq_f64 : mem_rare_freq_f32;
 
 	// allocate
-	GPU_CREATE_MEM_V(mem_build_haplo_idx, CL_MEM_READ_WRITE, sizeof(int)*(n_hla+1), NULL);
 	GPU_CREATE_MEM_V(mem_build_idx_oob, CL_MEM_READ_WRITE, sizeof(int)*n_samp, NULL);
 	GPU_CREATE_MEM_V(mem_build_idx_ib,  CL_MEM_READ_WRITE, sizeof(int)*n_samp, NULL);
 	GPU_CREATE_MEM_V(mem_build_output, CL_MEM_READ_WRITE, float_size*n_samp, NULL);
+	GPU_CREATE_MEM_V(mem_build_haplo_idx, CL_MEM_READ_WRITE, sizeof(int)*(n_samp+n_hla), NULL);
 	GPU_CREATE_MEM_V(mem_snpgeno, CL_MEM_READ_WRITE, sizeof(TGenotype)*n_samp, NULL);
 	GPU_CREATE_MEM_V(mem_build_hla_idx_map, CL_MEM_READ_WRITE, sizeof(int)*sz_hla, NULL);
 	{
@@ -306,7 +306,9 @@ SEXP ocl_build_init(SEXP R_nHLA, SEXP R_nSample, SEXP R_verbose)
 	GPU_CREATE_MEM_V(mem_prob_buffer, CL_MEM_READ_WRITE,
 		msize_prob_buffer_each*mem_sample_nmax, NULL);
 	msize_prob_buffer_total = msize_prob_buffer_each * mem_sample_nmax;
-	cl_uint nmax_buf = msize_prob_buffer_total / sizeof(cl_uint);
+
+	const cl_uint nmax_buf = msize_prob_buffer_total / sizeof(cl_uint);
+	const cl_uint nmax_match_buf = nmax_buf - 2;
 	const int zero = 0;
 
 	// arguments for build_haplo_match_init
@@ -317,25 +319,21 @@ SEXP ocl_build_init(SEXP R_nHLA, SEXP R_nSample, SEXP R_verbose)
 	GPU_SETARG(gpu_kl_build_haplo_match1, 0, mem_build_output);
 	GPU_SETARG(gpu_kl_build_haplo_match1, 1, mem_prob_buffer);
 	GPU_SETARG(gpu_kl_build_haplo_match1, 2, zero);
-	const size_t local_n = gpu_local_size_d2*gpu_local_size_d2;
-	GPU_SETARG_LOCAL(gpu_kl_build_haplo_match1, 3, local_n*sizeof(cl_uint));
-	GPU_SETARG_LOCAL(gpu_kl_build_haplo_match1, 4, local_n*sizeof(cl_int));
-	GPU_SETARG(gpu_kl_build_haplo_match1, 5, nmax_buf);
-	GPU_SETARG(gpu_kl_build_haplo_match1, 6, mem_build_idx_ib);
-	GPU_SETARG(gpu_kl_build_haplo_match1, 7, mem_build_haplo_idx);
-	GPU_SETARG(gpu_kl_build_haplo_match1, 8, mem_haplo_list);
-	GPU_SETARG(gpu_kl_build_haplo_match1, 9, mem_snpgeno);
+	GPU_SETARG(gpu_kl_build_haplo_match1, 3, nmax_match_buf);
+	GPU_SETARG(gpu_kl_build_haplo_match1, 4, mem_build_haplo_idx);
+	GPU_SETARG(gpu_kl_build_haplo_match1, 5, mem_build_idx_ib);
+	GPU_SETARG(gpu_kl_build_haplo_match1, 6, mem_haplo_list);
+	GPU_SETARG(gpu_kl_build_haplo_match1, 7, mem_snpgeno);
 
 	// arguments for build_haplo_match2
 	GPU_SETARG(gpu_kl_build_haplo_match2, 0, mem_build_output);
 	GPU_SETARG(gpu_kl_build_haplo_match2, 1, mem_prob_buffer);
 	GPU_SETARG(gpu_kl_build_haplo_match2, 2, zero);  // n_snp
-	GPU_SETARG_LOCAL(gpu_kl_build_haplo_match2, 3, local_n*sizeof(cl_uint));
-	GPU_SETARG(gpu_kl_build_haplo_match2, 4, nmax_buf);
+	GPU_SETARG(gpu_kl_build_haplo_match2, 3, nmax_match_buf);
+	GPU_SETARG(gpu_kl_build_haplo_match2, 4, mem_build_haplo_idx);
 	GPU_SETARG(gpu_kl_build_haplo_match2, 5, mem_build_idx_ib);
-	GPU_SETARG(gpu_kl_build_haplo_match2, 6, mem_build_haplo_idx);
-	GPU_SETARG(gpu_kl_build_haplo_match2, 7, mem_haplo_list);
-	GPU_SETARG(gpu_kl_build_haplo_match2, 8, mem_snpgeno);
+	GPU_SETARG(gpu_kl_build_haplo_match2, 6, mem_haplo_list);
+	GPU_SETARG(gpu_kl_build_haplo_match2, 7, mem_snpgeno);
 
 	// arguments for build_calc_prob
 	GPU_SETARG(gpu_kl_build_calc_prob, 0, mem_prob_buffer);
@@ -425,23 +423,22 @@ static void build_set_bootstrap(const int oob_cnt[])
 }
 
 
-static UINT32 *build_haplomatch(const THaplotype haplo[], const int HaploStIdx[],
+static UINT32 *build_haplomatch(const THaplotype haplo[], const size_t nHaplo[],
 	int n_snp, const TGenotype geno[], size_t &out_n_buf)
 {
 	// find max and check
-	int nhla_each_max = 0;
+	size_t nhla_each_max=0, n_tot_haplo=0;
 	for (int i=0; i < Num_HLA; i++)
 	{
-		int m = HaploStIdx[i+1] - HaploStIdx[i];
-		if (m > nhla_each_max)
-			nhla_each_max = m;
+		size_t m = nHaplo[i];
+		if (nhla_each_max < m) nhla_each_max = m;
+		n_tot_haplo += m;
 	}
-	const int n_haplo = HaploStIdx[Num_HLA];
-	if (n_haplo > build_haplo_nmax)
+	if (n_tot_haplo > build_haplo_nmax)
 		throw "Too many haplotypes out of the limit in build_haplomatch().";
 
 	cl_event events[6];
-	events[0] = GPU_WRITE_EVENT(mem_haplo_list, sizeof(THaplotype)*n_haplo, haplo);
+	events[0] = GPU_WRITE_EVENT(mem_haplo_list, sizeof(THaplotype)*n_tot_haplo, haplo);
 	events[1] = GPU_WRITE_EVENT(mem_snpgeno, sizeof(TGenotype)*Num_Sample, geno);
 	{ // events[2]
 		size_t w = build_num_ib;
@@ -452,7 +449,23 @@ static UINT32 *build_haplomatch(const THaplotype haplo[], const int HaploStIdx[]
 		GPU_RUN_KERNEL_EVENT(gpu_kl_build_haplo_match_init, 1, &w, &gpu_local_size_d1,
 			0, NULL, &events[2]);
 	}
-	events[3] = GPU_WRITE_EVENT(mem_build_haplo_idx, sizeof(int)*(Num_HLA+1), HaploStIdx);
+	{ // events[3]
+		GPU_MEM_MAP(Mib, int, mem_build_idx_ib, Num_Sample, false);
+		int *pib = Mib.ptr();
+		vector<cl_uint> b(build_num_ib + Num_HLA);
+		for (int i=0; i < build_num_ib; i++)
+		{
+			const THLAType &H = geno[pib[i]].aux_hla_type;
+			b[i] = nHaplo[H.Allele1] | (nHaplo[H.Allele2] << 16);
+		}
+		size_t st = 0;
+		for (int i=0; i < Num_HLA; i++)
+		{
+			b[build_num_ib + i] = st;
+			st += nHaplo[i];
+		}
+		events[3] = GPU_WRITE_EVENT(mem_build_haplo_idx, sizeof(cl_uint)*b.size(), &b[0]);
+	}
 	const int one = 1;
 	events[4] = GPU_WRITE_EVENT(mem_prob_buffer, sizeof(one), &one);
 
@@ -473,7 +486,6 @@ static UINT32 *build_haplomatch(const THaplotype haplo[], const int HaploStIdx[]
 
 	gpu_finish();
 	gpu_free_events(6, events);
-
 
 	// output
 	UINT32 nbuf=0, *buf=NULL;

@@ -430,9 +430,11 @@ hlaPredict_gpu <- function(object, snp,
 
 	.packageEnv$code_haplo_match_init <- code_haplo_match_init
 	.packageEnv$code_build_haplo_match1 <- paste(c(
-		code_macro, code_hamming_dist, code_build_haplo_match1), collapse="\n")
+		code_macro, code_hamming_dist, code_build_alloc_set, code_build_haplo_match1),
+		collapse="\n")
 	.packageEnv$code_build_haplo_match2 <- paste(c(
-		code_macro, code_hamming_dist, code_build_haplo_match2), collapse="\n")
+		code_macro, code_hamming_dist, code_build_alloc_set, code_build_haplo_match2),
+		collapse="\n")
 	.packageEnv$code_build_calc_prob <- paste(c(
 		code_macro, code_macro_prec[train_prec], code_hamm_dist_max[train_prec],
 		if (f64_build) code_atomic_add_f64 else code_atomic_add_f32,
