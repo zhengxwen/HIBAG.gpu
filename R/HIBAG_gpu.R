@@ -334,7 +334,9 @@ hlaPredict_gpu <- function(object, snp,
 	pm <- .Call(ocl_set_kl_clearmem, code_clear_memory)
 	msg <- c(msg, paste0("    CL_KERNEL_WORK_GROUP_SIZE: ", pm[1L]))
 	msg <- c(msg, paste0("    CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE: ", pm[2L]))
-	msg <- c(msg, sprintf("    local work size: %d (D1), %dx%d (D2)",
+	LOCAL_SIZE_D1 <- paste0("#define LOCAL_SIZE_D1    ", pm[3L])
+	LOCAL_SIZE_D2 <- paste0("#define LOCAL_SIZE_D2    ", pm[4L])
+	msg <- c(msg, sprintf("    local work size: %d (Dim1), %dx%d (Dim2)",
 		pm[3L], pm[4L], pm[4L]))
 
 	# support 64-bit floating-point numbers or not
@@ -342,8 +344,8 @@ hlaPredict_gpu <- function(object, snp,
 	if (dev_fp64)
 	{
 		.packageEnv$code_attempt_f64 <- paste(c(code_macro, code_macro_prec["double"],
-			code_hamm_dist_max["double"], code_atomic_add_f64, code_hamming_dist,
-			code_build_calc_prob), collapse="\n")
+			code_hamm_dist_max["double"], code_atomic_add_f64, LOCAL_SIZE_D2,
+			code_hamming_dist, code_build_calc_prob), collapse="\n")
 		# also need cl_khr_int64_base_atomics : enable
 		dev_fp64 <- tryCatch({
 			.Call(ocl_set_kl_attempt, "build_calc_prob", .packageEnv$code_attempt_f64)
@@ -438,7 +440,7 @@ hlaPredict_gpu <- function(object, snp,
 	.packageEnv$code_build_calc_prob <- paste(c(
 		code_macro, code_macro_prec[train_prec], code_hamm_dist_max[train_prec],
 		if (f64_build) code_atomic_add_f64 else code_atomic_add_f32,
-		code_hamming_dist, code_build_calc_prob), collapse="\n")
+		LOCAL_SIZE_D2, code_hamming_dist, code_build_calc_prob), collapse="\n")
 	.packageEnv$code_build_calc_oob <- paste(c(
 		c(code_macro, code_macro_prec[train_prec], code_build_calc_oob)), collapse="\n")
 	.packageEnv$code_build_calc_ib <- paste(c(

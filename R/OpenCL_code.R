@@ -69,13 +69,28 @@ inline static void atomic_fadd(volatile __global float *addr, float val)
 			expected.u32, next.u32);
 	} while (current.u32 != expected.u32);
 }
+
+#pragma OPENCL EXTENSION cl_khr_local_int32_base_atomics : enable
+inline static void atomic_fadd_local(volatile __local float *addr, float val)
+{
+	union{
+		uint  u32;
+		float f32;
+	} next, expected, current;
+	current.f32 = *addr;
+	do{
+		expected.f32 = current.f32;
+		next.f32     = expected.f32 + val;
+		current.u32  = atomic_cmpxchg((volatile __local unsigned int *)addr,
+			expected.u32, next.u32);
+	} while (current.u32 != expected.u32);
+}
 "
 
 code_atomic_add_f64 <- "
 #define OFFSET_HAPLO_FREQ    16
 
 #pragma OPENCL EXTENSION cl_khr_int64_base_atomics : enable
-// #pragma OPENCL EXTENSION cl_khr_global_int64_base_atomics : enable
 inline static void atomic_fadd(volatile __global double *addr, double val)
 {
 	union{
@@ -87,6 +102,22 @@ inline static void atomic_fadd(volatile __global double *addr, double val)
 		expected.f64 = current.f64;
 		next.f64     = expected.f64 + val;
 		current.u64  = atom_cmpxchg((volatile __global ulong*)addr,
+			expected.u64, next.u64);
+	} while (current.u64 != expected.u64);
+}
+
+#pragma OPENCL EXTENSION cl_khr_int64_base_atomics : enable
+inline static void atomic_fadd_local(volatile __local double *addr, double val)
+{
+	union{
+		ulong  u64;
+		double f64;
+	} next, expected, current;
+	current.f64 = *addr;
+	do{
+		expected.f64 = current.f64;
+		next.f64     = expected.f64 + val;
+		current.u64  = atom_cmpxchg((volatile __local ulong*)addr,
 			expected.u64, next.u64);
 	} while (current.u64 != expected.u64);
 }
@@ -256,45 +287,65 @@ __kernel void build_haplo_match2(
 
 code_build_calc_prob <- "
 __kernel void build_calc_prob(
-	__global numeric *out_prob,
-	__constant numeric *exp_log_min_rare_freq,
+	__global numeric *out_prob, __constant numeric *exp_log_min_rare_freq,
 	const int n_hla, const int num_hla_geno,
 	const int n_haplo, const int n_snp, const int start_sample_idx,
-	__global const int *p_idx,
-	__global const unsigned char *p_haplo,
-	__global const unsigned char *p_geno)
+	__global const int *p_samp_idx,
+	__global const unsigned char *p_haplo, __global const unsigned char *p_geno,
+	__global const uint *p_haplo_info)
 {
+	// initialize local variables
+	__local numeric lsum[LOCAL_SIZE_D2][LOCAL_SIZE_D2];
+	const size_t l_i1 = get_local_id(1);
+	const size_t l_i2 = get_local_id(2);
+	lsum[l_i2][l_i1] = 0;
+	barrier(CLK_LOCAL_MEM_FENCE);
+
+	__global const unsigned char *p1, *p2;
+	p1 = p_haplo + (get_group_id(1)*get_local_size(1) << SIZEOF_THAPLO_SHIFT);
+	p2 = p_haplo + (get_group_id(2)*get_local_size(2) << SIZEOF_THAPLO_SHIFT);
+	int h1_st = *(__global const int*)(p1 + OFFSET_ALLELE_INDEX);
+	int h2_st = *(__global const int*)(p2 + OFFSET_ALLELE_INDEX);
+
+	const int ii = get_global_id(0);  // individual index
 	const int i1 = get_global_id(1);  // first haplotype index
 	const int i2 = get_global_id(2);  // second haplotype index
-	if ((i2 < i1) || (i2 >= n_haplo)) return;
-	const int ii = get_global_id(0);  // individual index
-
-	// the first haplotype
-	__global const unsigned char *p1 = p_haplo + (i1 << SIZEOF_THAPLO_SHIFT);
-	// the second haplotype
-	__global const unsigned char *p2 = p_haplo + (i2 << SIZEOF_THAPLO_SHIFT);
-	// SNP genotype
-	__global const unsigned char *pg = p_geno +
-		(p_idx[start_sample_idx + ii] * SIZEOF_TGENOTYPE);
-	// hamming distance
-	int d = hamming_dist(n_snp, pg, p1, p2);
-	// since exp_log_min_rare_freq[>HAMM_DIST_MAX] = 0
-	if (d <= HAMM_DIST_MAX)
+	if (i1 <= i2 && i2 < n_haplo)
 	{
-		numeric fq1 = *(__global const numeric*)(p1 + OFFSET_HAPLO_FREQ);
-		int h1 = *(__global const int*)(p1 + OFFSET_ALLELE_INDEX);
-		numeric fq2 = *(__global const numeric*)(p2 + OFFSET_HAPLO_FREQ);
-		int h2 = *(__global const int*)(p2 + OFFSET_ALLELE_INDEX);
-		// genotype frequency
-		numeric ff = fq1 * fq2;
-		if (i1 != i2) ff += ff;
-		ff *= exp_log_min_rare_freq[d];  // account for mutation and error rate
-		// update
-		if (ff > 0)
+
+		// the first and second haplotypes
+		p1 = p_haplo + (i1 << SIZEOF_THAPLO_SHIFT);
+		p2 = p_haplo + (i2 << SIZEOF_THAPLO_SHIFT);
+		// SNP genotype
+		__global const unsigned char *pg = p_geno +
+			(p_samp_idx[start_sample_idx + ii] * SIZEOF_TGENOTYPE);
+		// hamming distance
+		int d = hamming_dist(n_snp, pg, p1, p2);
+		// since exp_log_min_rare_freq[>HAMM_DIST_MAX] = 0
+		if (d <= HAMM_DIST_MAX)
 		{
-			int k = h2 + (h1 * ((n_hla << 1) - h1 - 1) >> 1);
-			atomic_fadd(&out_prob[num_hla_geno*ii + k], ff);
+			numeric fq1 = *(__global const numeric*)(p1 + OFFSET_HAPLO_FREQ);
+			int h1 = *(__global const int*)(p1 + OFFSET_ALLELE_INDEX);
+			numeric fq2 = *(__global const numeric*)(p2 + OFFSET_HAPLO_FREQ);
+			int h2 = *(__global const int*)(p2 + OFFSET_ALLELE_INDEX);
+			// genotype frequency
+			numeric ff = fq1 * fq2;
+			if (i1 != i2) ff += ff;
+			ff *= exp_log_min_rare_freq[d];  // account for mutation and error rate
+			// update locally
+			atomic_fadd_local(&lsum[h2-h2_st][h1-h1_st], ff);
 		}
+	}
+
+	barrier(CLK_LOCAL_MEM_FENCE);
+	numeric ff = lsum[l_i2][l_i1];
+	if (ff > 0)
+	{
+		// update globally
+		int h1 = h1_st + l_i1;
+		int h2 = h2_st + l_i2;
+		int k = h2 + (h1 * ((n_hla << 1) - h1 - 1) >> 1);
+		atomic_fadd(&out_prob[num_hla_geno*ii + k], ff);
 	}
 }
 "

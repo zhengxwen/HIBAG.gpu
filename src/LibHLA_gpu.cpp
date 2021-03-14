@@ -346,6 +346,7 @@ SEXP ocl_build_init(SEXP R_nHLA, SEXP R_nSample, SEXP R_verbose)
 	GPU_SETARG(gpu_kl_build_calc_prob, 7, mem_build_idx_oob);  // mem_build_idx_oob or mem_build_idx_ib
 	GPU_SETARG(gpu_kl_build_calc_prob, 8, mem_haplo_list);
 	GPU_SETARG(gpu_kl_build_calc_prob, 9, mem_snpgeno);
+	GPU_SETARG(gpu_kl_build_calc_prob, 10, mem_build_haplo_idx);
 
 	// arguments for gpu_kl_build_calc_oob (out-of-bag)
 	GPU_SETARG(gpu_kl_build_calc_oob, 0, mem_build_output);
@@ -517,7 +518,7 @@ static void build_set_haplo_geno(const THaplotype haplo[], int n_haplo,
 	if (n_haplo > build_haplo_nmax)
 		throw "Too many haplotypes out of the limit, please contact the package author.";
 
-	cl_event events[2];
+	cl_event events[3];
 	events[0] = GPU_WRITE_EVENT(mem_haplo_list, sizeof(THaplotype)*n_haplo, haplo);
 	events[1] = GPU_WRITE_EVENT(mem_snpgeno, sizeof(TGenotype)*Num_Sample, geno);
 
@@ -538,8 +539,12 @@ static void build_set_haplo_geno(const THaplotype haplo[], int n_haplo,
 		GPU_SETARG(gpu_kl_build_calc_ib, 2, run_aux_log_freq2_f32);
 	}
 
+	const size_t  wdim_num_haplo / gpu_local_size_d2;
+	vector<unsigned int> h()
+mem_build_haplo_idx
+
 	gpu_finish();
-	gpu_free_events(2, events);
+	gpu_free_events(3, events);
 }
 
 
