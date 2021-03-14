@@ -444,9 +444,11 @@ static UINT32 *build_haplomatch(const THaplotype haplo[], const size_t nHaplo[],
 		throw "Too many haplotypes out of the limit in build_haplomatch().";
 
 	cl_event events[6];
+	// event 0 & 1
 	events[0] = GPU_WRITE_EVENT(mem_haplo_list, sizeof(THaplotype)*n_tot_haplo, haplo);
 	events[1] = GPU_WRITE_EVENT(mem_snpgeno, sizeof(TGenotype)*Num_Sample, geno);
-	{ // events[2]
+	// event 2
+	{
 		size_t w = build_num_ib;
 		if (w % gpu_local_size_d1)
 			w = (w/gpu_local_size_d1 + 1)*gpu_local_size_d1;
@@ -455,21 +457,21 @@ static UINT32 *build_haplomatch(const THaplotype haplo[], const size_t nHaplo[],
 		GPU_RUN_KERNEL_EVENT(gpu_kl_build_haplo_match_init, 1, &w, &gpu_local_size_d1,
 			0, NULL, &events[2]);
 	}
-	{ // events[3]
-		vector<unsigned int> b(build_num_ib + Num_HLA);
-		for (int i=0; i < build_num_ib; i++)
-		{
-			const THLAType &H = geno[samp_ib_idx[i]].aux_hla_type;
-			b[i] = nHaplo[H.Allele1] | (nHaplo[H.Allele2] << 16);
-		}
-		size_t st = 0;
-		for (int i=0; i < Num_HLA; i++)
-		{
-			b[build_num_ib + i] = st;
-			st += nHaplo[i];
-		}
-		events[3] = GPU_WRITE_EVENT(mem_build_haplo_idx, sizeof(cl_uint)*b.size(), &b[0]);
+	// event 3
+	vector<unsigned int> b(build_num_ib + Num_HLA);
+	for (int i=0; i < build_num_ib; i++)
+	{
+		const THLAType &H = geno[samp_ib_idx[i]].aux_hla_type;
+		b[i] = nHaplo[H.Allele1] | (nHaplo[H.Allele2] << 16);
 	}
+	size_t st = 0;
+	for (int i=0; i < Num_HLA; i++)
+	{
+		b[build_num_ib + i] = st;
+		st += nHaplo[i];
+	}
+	events[3] = GPU_WRITE_EVENT(mem_build_haplo_idx, sizeof(cl_uint)*b.size(), &b[0]);
+	// event 4
 	const int one = 1;
 	events[4] = GPU_WRITE_EVENT(mem_prob_buffer, sizeof(one), &one);
 
