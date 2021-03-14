@@ -204,7 +204,6 @@ hlaAttrBagging_gpu <- function(hla, snp, nclassifier=100,
 	###################################################################
 	# training ...
 
-	.Call(ocl_set_local_size, verbose)
 	.gpu_build_init_memory(n.hla, n.samp, verbose)
 
 	# add new individual classifers
@@ -272,7 +271,6 @@ hlaPredict_gpu <- function(object, snp,
 			"-precision floating-point numbers in GPU computing\n", sep="")
 	}
 	.Call(ocl_set_verbose, verbose)
-	.Call(ocl_set_local_size, verbose)
 
 	# GPU proc pointer
 	cl <- FALSE
@@ -336,6 +334,8 @@ hlaPredict_gpu <- function(object, snp,
 	pm <- .Call(ocl_set_kl_clearmem, code_clear_memory)
 	msg <- c(msg, paste0("    CL_KERNEL_WORK_GROUP_SIZE: ", pm[1L]))
 	msg <- c(msg, paste0("    CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE: ", pm[2L]))
+	msg <- c(msg, sprintf("    local work size: %d (D1), %dx%d (D2)",
+		pm[3L], pm[4L], pm[4L]))
 
 	# support 64-bit floating-point numbers or not
 	dev_fp64 <- dev_fp64_ori <- any(grepl("cl_khr_fp64", exts))

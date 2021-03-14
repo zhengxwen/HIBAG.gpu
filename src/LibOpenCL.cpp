@@ -684,6 +684,41 @@ SEXP ocl_set_kl_attempt(SEXP name, SEXP code)
 }
 
 
+/// automatically set the work local size for the kernel
+static void set_local_size()
+{
+	size_t max_wz[128];
+	cl_int err = clGetDeviceInfo(gpu_device, CL_DEVICE_MAX_WORK_ITEM_SIZES,
+		sizeof(max_wz), max_wz, NULL);
+	if (err != CL_SUCCESS)
+		max_wz[0] = max_wz[1] = max_wz[2] = 65536;
+
+	size_t mem_byte = 0;
+	err = clGetKernelWorkGroupInfo(gpu_kl_clear_mem, gpu_device,
+		CL_KERNEL_WORK_GROUP_SIZE, sizeof(mem_byte), &mem_byte, NULL);
+	if (err==CL_SUCCESS && mem_byte>64)
+	{
+		gpu_local_size_d1 = mem_byte;
+		if (mem_byte >= 4096)
+			gpu_local_size_d2 = 64;
+		else if (mem_byte >= 1024)
+			gpu_local_size_d2 = 32;
+		else if (mem_byte >= 256)
+			gpu_local_size_d2 = 16;
+		else
+			gpu_local_size_d2 = 8;
+	} else {
+		gpu_local_size_d1 = 64;
+		gpu_local_size_d2 = 8;
+	}
+
+	if (gpu_local_size_d1 > max_wz[0]) gpu_local_size_d1 = max_wz[0];
+	if (gpu_local_size_d2 > max_wz[1]) gpu_local_size_d2 = max_wz[1];
+
+	if (gpu_local_size_d2 == 1) // it is a CPU (very likely)
+		gpu_local_size_d1 = 1;
+}
+
 /// set kernel for clear memory
 SEXP ocl_set_kl_clearmem(SEXP code)
 {
@@ -692,9 +727,12 @@ SEXP ocl_set_kl_clearmem(SEXP code)
 		CL_KERNEL_WORK_GROUP_SIZE);
 	int mt = get_kernel_param(gpu_device, gpu_kl_clear_mem,
 		CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE);
-	SEXP rv_ans = PROTECT(NEW_INTEGER(2));
-	INTEGER(rv_ans)[0] = ws;
-	INTEGER(rv_ans)[1] = mt;
+	set_local_size();
+
+	SEXP rv_ans = PROTECT(NEW_INTEGER(4));
+	int *p = INTEGER(rv_ans);
+	p[0] = ws; p[1] = mt;
+	p[2] = gpu_local_size_d1; p[3] = gpu_local_size_d2;
 	UNPROTECT(1);
 	return rv_ans;
 }
@@ -727,53 +765,5 @@ SEXP ocl_set_kl_predict(SEXP f64_pred, SEXP code_calc, SEXP code_sum, SEXP code_
 	gpu_kl_pred_addprob = build_kernel(code_add,  kl_nm_pred_calc_addprob);
 	return R_NilValue;
 }
-
-
-/// automatically set the work local size for the kernel
-SEXP ocl_set_local_size(SEXP Rverbose)
-{
-	const bool verbose = Rf_asLogical(Rverbose)==TRUE;
-
-	size_t max_wz[128];
-	cl_int err = clGetDeviceInfo(gpu_device, CL_DEVICE_MAX_WORK_ITEM_SIZES,
-		sizeof(max_wz), max_wz, NULL);
-	if (err != CL_SUCCESS)
-		max_wz[0] = max_wz[1] = max_wz[2] = 65536;
-
-	size_t mem_byte = 0;
-	err = clGetKernelWorkGroupInfo(gpu_kl_clear_mem, gpu_device,
-		CL_KERNEL_WORK_GROUP_SIZE, sizeof(mem_byte), &mem_byte, NULL);
-	if (err==CL_SUCCESS && mem_byte>64)
-	{
-		gpu_local_size_d1 = mem_byte;
-		if (mem_byte >= 4096)
-			gpu_local_size_d2 = 64;
-		else if (mem_byte >= 1024)
-			gpu_local_size_d2 = 32;
-		else if (mem_byte >= 256)
-			gpu_local_size_d2 = 16;
-		else
-			gpu_local_size_d2 = 8;
-	} else {
-		gpu_local_size_d1 = 64;
-		gpu_local_size_d2 = 8;
-	}
-
-	if (gpu_local_size_d1 > max_wz[0]) gpu_local_size_d1 = max_wz[0];
-	if (gpu_local_size_d2 > max_wz[1]) gpu_local_size_d2 = max_wz[1];
-
-	if (gpu_local_size_d2 == 1) // it is a CPU (very likely)
-		gpu_local_size_d1 = 1;
-
-	if (verbose)
-	{
-		Rprintf("    local work size: %d (D1), %dx%d (D2)\n",
-			(int)gpu_local_size_d1, (int)gpu_local_size_d2, (int)gpu_local_size_d2);
-	}
-
-	return R_NilValue;
-}
-
-
 
 } // extern "C"
