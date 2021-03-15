@@ -334,7 +334,7 @@ hlaPredict_gpu <- function(object, snp,
 	pm <- .Call(ocl_set_kl_clearmem, code_clear_memory)
 	msg <- c(msg, paste0("    CL_KERNEL_WORK_GROUP_SIZE: ", pm[1L]))
 	msg <- c(msg, paste0("    CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE: ", pm[2L]))
-	msg <- c(msg, sprintf("    local work size: %d (D1), %dx%d (D2)",
+	msg <- c(msg, sprintf("    local work size: %d (Dim1), %dx%d (Dim2)",
 		pm[3L], pm[4L], pm[4L]))
 
 	# support 64-bit floating-point numbers or not
