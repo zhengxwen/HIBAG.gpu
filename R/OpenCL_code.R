@@ -256,45 +256,46 @@ __kernel void build_haplo_match2(
 
 code_build_calc_prob <- "
 __kernel void build_calc_prob(
-	__global numeric *out_prob,
-	__constant numeric *exp_log_min_rare_freq,
-	const int n_hla, const int num_hla_geno,
-	const int n_haplo, const int n_snp, const int start_sample_idx,
-	__global const int *p_idx,
-	__global const unsigned char *p_haplo,
-	__global const unsigned char *p_geno)
+	__global numeric *out_prob, __constant numeric *exp_log_min_rare_freq,
+	const int n_hla, const int num_hla_geno, const int n_haplo, const int n_snp,
+	const int start_sample_idx, const int n_samp, __global const int *p_samp_idx,
+	__global const unsigned char *p_haplo, __global const unsigned char *p_geno)
 {
-	const int i1 = get_global_id(1);  // first haplotype index
-	const int i2 = get_global_id(2);  // second haplotype index
+	const int i1 = get_global_id(0);  // first haplotype index
+	const int i2 = get_global_id(1);  // second haplotype index
 	if ((i2 < i1) || (i2 >= n_haplo)) return;
-	const int ii = get_global_id(0);  // individual index
 
 	// the first haplotype
 	__global const unsigned char *p1 = p_haplo + (i1 << SIZEOF_THAPLO_SHIFT);
 	// the second haplotype
 	__global const unsigned char *p2 = p_haplo + (i2 << SIZEOF_THAPLO_SHIFT);
-	// SNP genotype
-	__global const unsigned char *pg = p_geno +
-		(p_idx[start_sample_idx + ii] * SIZEOF_TGENOTYPE);
-	// hamming distance
-	int d = hamming_dist(n_snp, pg, p1, p2);
-	// since exp_log_min_rare_freq[>HAMM_DIST_MAX] = 0
-	if (d <= HAMM_DIST_MAX)
+	// allele and genotype frequency
+	numeric fq1 = *(__global const numeric*)(p1 + OFFSET_HAPLO_FREQ);
+	numeric fq2 = *(__global const numeric*)(p2 + OFFSET_HAPLO_FREQ);
+	numeric ff = fq1 * fq2;
+	if (i1 != i2) ff += ff;
+	// allele index (always h1 <= h2)
+	int h1 = *(__global const int*)(p1 + OFFSET_ALLELE_INDEX);
+	int h2 = *(__global const int*)(p2 + OFFSET_ALLELE_INDEX);
+	out_prob += h2 + (h1 * ((n_hla << 1) - h1 - 1) >> 1);
+
+	// for each sample
+	for (int ii=0; ii < n_samp; ii++)
 	{
-		numeric fq1 = *(__global const numeric*)(p1 + OFFSET_HAPLO_FREQ);
-		int h1 = *(__global const int*)(p1 + OFFSET_ALLELE_INDEX);
-		numeric fq2 = *(__global const numeric*)(p2 + OFFSET_HAPLO_FREQ);
-		int h2 = *(__global const int*)(p2 + OFFSET_ALLELE_INDEX);
-		// genotype frequency
-		numeric ff = fq1 * fq2;
-		if (i1 != i2) ff += ff;
-		ff *= exp_log_min_rare_freq[d];  // account for mutation and error rate
-		// update
-		if (ff > 0)
+		// SNP genotype
+		__global const unsigned char *pg = p_geno +
+			(p_samp_idx[start_sample_idx + ii] * SIZEOF_TGENOTYPE);
+		// hamming distance
+		int d = hamming_dist(n_snp, pg, p1, p2);
+		// since exp_log_min_rare_freq[>HAMM_DIST_MAX] = 0
+		if (d <= HAMM_DIST_MAX)
 		{
-			int k = h2 + (h1 * ((n_hla << 1) - h1 - 1) >> 1);
-			atomic_fadd(&out_prob[num_hla_geno*ii + k], ff);
+			// account for mutation and error rate
+			numeric ff_d = ff * exp_log_min_rare_freq[d];
+			if (ff_d > 0)
+				atomic_fadd(out_prob, ff_d);
 		}
+		out_prob += num_hla_geno;
 	}
 }
 "

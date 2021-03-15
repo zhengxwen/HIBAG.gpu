@@ -343,9 +343,10 @@ SEXP ocl_build_init(SEXP R_nHLA, SEXP R_nSample, SEXP R_verbose)
 	GPU_SETARG(gpu_kl_build_calc_prob, 4, zero);  // n_haplo
 	GPU_SETARG(gpu_kl_build_calc_prob, 5, zero);  // n_snp
 	GPU_SETARG(gpu_kl_build_calc_prob, 6, zero);  // start_sample_idx
-	GPU_SETARG(gpu_kl_build_calc_prob, 7, mem_build_idx_oob);  // mem_build_idx_oob or mem_build_idx_ib
-	GPU_SETARG(gpu_kl_build_calc_prob, 8, mem_haplo_list);
-	GPU_SETARG(gpu_kl_build_calc_prob, 9, mem_snpgeno);
+	GPU_SETARG(gpu_kl_build_calc_prob, 7, zero);  // n_samp
+	GPU_SETARG(gpu_kl_build_calc_prob, 8, mem_build_idx_oob);  // mem_build_idx_oob or mem_build_idx_ib
+	GPU_SETARG(gpu_kl_build_calc_prob, 9, mem_haplo_list);
+	GPU_SETARG(gpu_kl_build_calc_prob, 10, mem_snpgeno);
 
 	// arguments for gpu_kl_build_calc_oob (out-of-bag)
 	GPU_SETARG(gpu_kl_build_calc_oob, 0, mem_build_output);
@@ -559,12 +560,13 @@ static int build_acc_oob()
 		GPU_SETARG(gpu_kl_build_calc_prob, 4, run_num_haplo);  // n_haplo
 		GPU_SETARG(gpu_kl_build_calc_prob, 5, run_num_snp);    // n_snp
 		GPU_SETARG(gpu_kl_build_calc_prob, 6, zero);           // start_sample_idx
-		GPU_SETARG(gpu_kl_build_calc_prob, 7, mem_build_idx_oob);
-		size_t wdims[3] =
-			{ (size_t)build_num_oob, (size_t)wdim_num_haplo, (size_t)wdim_num_haplo };
-		size_t local_size[3] =
-			{ 1, gpu_local_size_d2, gpu_local_size_d2 };
-		GPU_RUN_KERNEL_EVENT(gpu_kl_build_calc_prob, 3, wdims, local_size,
+		GPU_SETARG(gpu_kl_build_calc_prob, 7, build_num_oob);  // n_samp
+		GPU_SETARG(gpu_kl_build_calc_prob, 8, mem_build_idx_oob);
+		size_t wdims[2] =
+			{ (size_t)wdim_num_haplo, (size_t)wdim_num_haplo };
+		size_t local_size[2] =
+			{ gpu_local_size_d2, gpu_local_size_d2 };
+		GPU_RUN_KERNEL_EVENT(gpu_kl_build_calc_prob, 2, wdims, local_size,
 			1, events, &events[1]);
 	}
 
@@ -605,13 +607,14 @@ static double build_acc_ib()
 	{
 		int zero = 0;
 		// n_haplo (ARG4) & n_snp (ARG5) are set in build_acc_oob()
-		GPU_SETARG(gpu_kl_build_calc_prob, 6, zero);  // start_sample_idx
-		GPU_SETARG(gpu_kl_build_calc_prob, 7, mem_build_idx_ib);
-		size_t wdims[3] =
-			{ (size_t)build_num_ib, (size_t)wdim_num_haplo, (size_t)wdim_num_haplo };
-		size_t local_size[3] =
-			{ 1, gpu_local_size_d2, gpu_local_size_d2 };
-		GPU_RUN_KERNEL_EVENT(gpu_kl_build_calc_prob, 3, wdims, local_size,
+		GPU_SETARG(gpu_kl_build_calc_prob, 6, zero);          // start_sample_idx
+		GPU_SETARG(gpu_kl_build_calc_prob, 7, build_num_ib);  // n_samp
+		GPU_SETARG(gpu_kl_build_calc_prob, 8, mem_build_idx_ib);
+		size_t wdims[2] =
+			{ (size_t)wdim_num_haplo, (size_t)wdim_num_haplo };
+		size_t local_size[2] =
+			{ gpu_local_size_d2, gpu_local_size_d2 };
+		GPU_RUN_KERNEL_EVENT(gpu_kl_build_calc_prob, 2, wdims, local_size,
 			1, events, &events[1]);
 	}
 
