@@ -7,8 +7,12 @@
     To build a HIBAG model for predicting HLA types with SNP markers.
 }
 \usage{
-hlaAttrBagging_gpu(hla, snp, nclassifier=100, mtry=c("sqrt", "all", "one"),
+hlaAttrBagging_gpu(hla, snp, nclassifier=100L, mtry=c("sqrt", "all", "one"),
     prune=TRUE, na.rm=TRUE, verbose=TRUE, verbose.detail=FALSE)
+hlaAttrBagging_MultiGPU(gpus, hla, snp, auto.save="", nclassifier=100L,
+	mtry=c("sqrt", "all", "one"), prune=TRUE, na.rm=TRUE,
+	train_prec="auto", predict_prec="auto",
+	verbose=TRUE)
 }
 \arguments{
     \item{hla}{the training HLA types, an object of

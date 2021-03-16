@@ -46,6 +46,35 @@
 	invisible()
 }
 
+.set_mtry <- function(mtry, n.snp)
+{
+	mtry <- mtry[1L]
+	if (is.character(mtry))
+	{
+		if (mtry == "sqrt")
+			mtry <- ceiling(sqrt(n.snp))
+		else if (mtry == "all")
+			mtry <- n.snp
+		else if (mtry == "one")
+			mtry <- 1L
+		else
+			stop("Invalid mtry!")
+	} else if (is.numeric(mtry))
+	{
+		if (is.finite(mtry))
+		{
+			if ((0 < mtry) & (mtry < 1)) mtry <- n.snp*mtry
+			mtry <- ceiling(mtry)
+			if (mtry > n.snp) mtry <- n.snp
+		} else {
+			mtry <- ceiling(sqrt(n.snp))
+		}
+	} else {
+		stop("Invalid mtry value!")
+	}
+	if (mtry <= 0L) mtry <- 1L
+	mtry
+}
 
 
 ##########################################################################
@@ -53,7 +82,7 @@
 # Attribute Bagging method -- HIBAG algorithm
 #
 
-hlaAttrBagging_gpu <- function(hla, snp, nclassifier=100,
+hlaAttrBagging_gpu <- function(hla, snp, nclassifier=100L,
 	mtry=c("sqrt", "all", "one"), prune=TRUE, na.rm=TRUE,
 	verbose=TRUE, verbose.detail=FALSE)
 {
@@ -78,7 +107,7 @@ hlaAttrBagging_gpu <- function(hla, snp, nclassifier=100,
     }
 
 	# GPU platform
-	on.exit({ .gpu_build_free_memory() })
+	on.exit({ if (!with.in.call) .gpu_build_free_memory() })
 
 	# get the common samples
 	samp.id <- intersect(hla$value$sample.id, snp$sample.id)
@@ -101,9 +130,7 @@ hlaAttrBagging_gpu <- function(hla, snp, nclassifier=100,
 		}
 	} else {
 		if (any(is.na(c(hla.allele1, hla.allele2))))
-		{
 			stop("There are missing HLA alleles!")
-		}
 	}
 
 	# SNP genotypes
@@ -157,35 +184,7 @@ hlaAttrBagging_gpu <- function(hla, snp, nclassifier=100,
 		PACKAGE="HIBAG")
 
 	# number of variables randomly sampled as candidates at each split
-	mtry <- mtry[1L]
-	if (is.character(mtry))
-	{
-		if (mtry == "sqrt")
-		{
-			mtry <- ceiling(sqrt(n.snp))
-		} else if (mtry == "all")
-		{
-			mtry <- n.snp
-		} else if (mtry == "one")
-		{
-			mtry <- 1L
-		} else {
-			stop("Invalid mtry!")
-		}
-	} else if (is.numeric(mtry))
-	{
-		if (is.finite(mtry))
-		{
-			if ((0 < mtry) & (mtry < 1)) mtry <- n.snp*mtry
-			mtry <- ceiling(mtry)
-			if (mtry > n.snp) mtry <- n.snp
-		} else {
-			mtry <- ceiling(sqrt(n.snp))
-		}
-	} else {
-		stop("Invalid mtry value!")
-	}
-	if (mtry <= 0) mtry <- 1L
+	mtry <- .set_mtry(mtry, n.snp)
 
 	if (verbose)
 	{
@@ -204,7 +203,9 @@ hlaAttrBagging_gpu <- function(hla, snp, nclassifier=100,
 	###################################################################
 	# training ...
 
-	.gpu_build_init_memory(n.hla, n.samp, verbose)
+	# initialize gpu memory
+	if (!with.in.call)
+		.gpu_build_init_memory(n.hla, n.samp, verbose)
 
 	# add new individual classifers
 	.Call("HIBAG_NewClassifiers", ABmodel, nclassifier, mtry, prune,
@@ -225,7 +226,8 @@ hlaAttrBagging_gpu <- function(hla, snp, nclassifier=100,
 
 	# clear memory
 	on.exit()
-	.gpu_build_free_memory()
+	if (!with.in.call)
+		.gpu_build_free_memory()
 
 	###################################################################
 	# calculate matching statistic
@@ -250,6 +252,275 @@ hlaAttrBagging_gpu <- function(hla, snp, nclassifier=100,
 	mod
 }
 
+
+#######################################################################
+
+hlaAttrBagging_MultiGPU <- function(gpus, hla, snp, auto.save="", nclassifier=100L,
+	mtry=c("sqrt", "all", "one"), prune=TRUE, na.rm=TRUE,
+	train_prec="auto", predict_prec="auto",
+	verbose=TRUE)
+{
+	# check
+	stopifnot(is.numeric(gpus), all(!is.na(gpus)), length(gpus)>0L)
+	stopifnot(inherits(hla, "hlaAlleleClass"))
+	stopifnot(inherits(snp, "hlaSNPGenoClass"))
+	stopifnot(is.character(auto.save), length(auto.save)==1L, !is.na(auto.save))
+	if (auto.save!="" && is.na(HIBAG:::.fn_obj_check(auto.save)))
+		stop("'auto.save' should be a .rda/.RData or .rds file name.")
+	stopifnot(is.numeric(nclassifier), length(nclassifier)==1L, nclassifier>0L)
+	stopifnot(is.character(mtry) | is.numeric(mtry), length(mtry)>0L)
+	stopifnot(is.logical(prune), length(prune)==1L)
+	stopifnot(is.logical(na.rm), length(na.rm)==1L)
+	stopifnot(is.logical(verbose), length(verbose)==1L)
+	stopifnot(is.character(train_prec),
+		length(train_prec)==1L || length(train_prec)==length(gpus))
+	stopifnot(is.character(predict_prec),
+		length(predict_prec)==1L || length(predict_prec)==length(gpus))
+
+	# GPU platform
+	for (i in gpus)
+	{
+		n <- .packageEnv$opencl_dev_num
+		if (!all(1<=gpus & gpus<=n))
+			stop("'gpus' should be between 1 and ", n, ".")
+	}
+	if (length(train_prec)==1L)
+		train_prec <- rep(train_prec, length(gpus))
+	if (length(predict_prec)==1L)
+		predict_prec <- rep(predict_prec, length(gpus))
+
+	if (verbose)
+	{
+		cat("Building a HIBAG model:\n")
+		cat(sprintf("    %d individual classifier%s\n", nclassifier,
+			.plural(nclassifier)))
+		if (length(gpus) > 1L)
+		{
+			cat(sprintf("    run in parallel with %d compute node%s\n",
+				length(gpus), .plural(length(gpus))))
+		}
+		if (auto.save != "")
+			cat("    autosave to ", sQuote(auto.save), "\n", sep="")
+	}
+
+	# get the common samples
+	samp.id <- intersect(hla$value$sample.id, snp$sample.id)
+
+	# hla types
+	samp.flag <- match(samp.id, hla$value$sample.id)
+	hla.allele1 <- hla$value$allele1[samp.flag]
+	hla.allele2 <- hla$value$allele2[samp.flag]
+	if (na.rm)
+	{
+		if (any(is.na(c(hla.allele1, hla.allele2))))
+		{
+			warning("There are missing HLA alleles, ",
+				"and the corresponding samples have been removed.")
+			flag <- is.na(hla.allele1) | is.na(hla.allele2)
+			samp.id <- setdiff(samp.id, hla$value$sample.id[samp.flag[flag]])
+			samp.flag <- match(samp.id, hla$value$sample.id)
+			hla.allele1 <- hla$value$allele1[samp.flag]
+			hla.allele2 <- hla$value$allele2[samp.flag]
+		}
+	} else {
+		if (any(is.na(c(hla.allele1, hla.allele2))))
+			stop("There are missing HLA alleles!")
+	}
+
+	# SNP genotypes
+	samp.flag <- match(samp.id, snp$sample.id)
+	snp.geno <- snp$genotype[, samp.flag]
+	if (!is.integer(snp.geno))
+		storage.mode(snp.geno) <- "integer"
+
+	tmp.snp.id <- snp$snp.id
+	tmp.snp.position <- snp$snp.position
+	tmp.snp.allele <- snp$snp.allele
+
+	# remove mono-SNPs
+	snpsel <- rowMeans(snp.geno, na.rm=TRUE)
+	snpsel[!is.finite(snpsel)] <- 0
+	snpsel <- (0 < snpsel) & (snpsel < 2)
+	if (sum(!snpsel) > 0L)
+	{
+		snp.geno <- snp.geno[snpsel, ]
+		if (verbose)
+		{
+			a <- sum(!snpsel)
+			if (a > 0L)
+				cat(sprintf("Exclude %d monomorphic SNP%s\n", a, .plural(a)))
+		}
+		tmp.snp.id <- tmp.snp.id[snpsel]
+		tmp.snp.position <- tmp.snp.position[snpsel]
+		tmp.snp.allele <- tmp.snp.allele[snpsel]
+	}
+
+	if (length(samp.id) <= 0L)
+		stop("There is no common sample between 'hla' and 'snp'.")
+	if (length(dim(snp.geno)[1L]) <= 0L)
+		stop("There is no valid SNP markers.")
+
+	# initialize ...
+	n.snp <- dim(snp.geno)[1L]	   # Num. of SNPs
+	n.samp <- dim(snp.geno)[2L]	   # Num. of samples
+	HUA <- hlaUniqueAllele(c(hla.allele1, hla.allele2))
+	H <- factor(match(c(hla.allele1, hla.allele2), HUA))
+	levels(H) <- HUA
+	n.hla <- nlevels(H)
+	mtry <- .set_mtry(mtry, n.snp)
+	if (verbose)
+	{
+		cat("    # of SNPs randomly sampled as candidates for each selection: ",
+			mtry, "\n", sep="")
+		cat("    # of SNPs: ", n.snp, "\n", sep="")
+		cat("    # of samples: ", n.samp, "\n", sep="")
+		s <- ifelse(!grepl("^KIR", hla$locus), "HLA", "KIR")
+		cat("    # of unique ", s, " alleles: ", n.hla, "\n", sep="")
+	}
+
+	# initialize GPUs
+	if (length(gpus) == 1L)
+	{
+		cl <- NULL
+		hlaGPU_Init(gpus[1L], train_prec=train_prec, predict_prec=predict_prec,
+			verbose=verbose)
+
+		.gpu_build_init_memory(n.hla, n.samp, verbose)
+		on.exit({ .gpu_build_free_memory() })
+
+	} else {
+		cl <- makeCluster(length(gpus), outfile="")
+		on.exit(stopCluster(cl))
+		# GPU
+		msg <- clusterApply(cl, seq_along(gpus),
+			function(i, gpus, train_prec, pred_prec)
+			{
+				env <- new.env()
+				.gpu_init(gpus[i], train_prec[i], pred_prec[i], function(s) env$msg <- s)
+				env$msg
+			}, gpus=gpus, train_prec=train_prec, pred_prec=predict_prec)
+		if (verbose)
+		{
+			for (i in seq_along(msg))
+			{
+				ss <- unlist(strsplit(msg[[i]], "\n"))
+				ss <- gsub("^    ", ">>  ", ss)
+				ss[1L] <- paste0("[[Process ", i, "]]: ", ss[1L])
+				ss[-1L] <- paste0("    ", ss[-1L])
+				cat(paste(ss, collapse="\n"))
+				cat("\n")
+			}
+		}
+		# GPU memory
+		for (idx in seq_along(gpus))
+		{
+			clusterApply(cl, seq_along(gpus), function(i, idx, verbose)
+				{
+					if (i == idx)
+					{
+						if (verbose) cat("[[Process ", i, "]]:\n")
+						.gpu_build_init_memory(n.hla, n.samp, verbose)
+					}
+				}, idx=idx, verbose=verbose)
+		}
+		# on exit in case fails
+		on.exit({
+			clusterApply(cl, seq_along(gpus), function(i) .gpu_build_free_memory())
+		}, add=TRUE)
+	}
+
+	# set random number for the cluster
+	RNGkind("L'Ecuyer-CMRG")
+	rand <- .Random.seed
+	clusterSetRNGStream(cl)
+	if (verbose)
+		cat("[-] ", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "\n", sep="")
+
+	total <- 0L
+	ans <- HIBAG:::.DynamicClusterCall(cl,
+		fun = function(job, hla, snp, mtry, prune, na.rm)
+		{
+			model <- hlaAttrBagging_gpu(hla=hla, snp=snp, nclassifier=0L,
+				mtry=mtry, prune=prune, na.rm=na.rm,
+				verbose=FALSE, verbose.detail=FALSE)
+			mobj <- hlaModelToObj(model)
+			hlaClose(model)
+			mobj
+		},
+		combine.fun = function(obj1, obj2)
+		{
+			if (is.null(obj1))
+				mobj <- obj2
+			else if (is.null(obj2))
+				mobj <- obj1
+			else
+				mobj <- hlaCombineModelObj(obj1, obj2)
+			if (auto.save != "")
+				HIBAG:::.fn_obj_save(auto.save, mobj)
+			if (verbose & !is.null(mobj))
+				HIBAG:::.show_model_obj(mobj, auto.save!="")
+			mobj
+		},
+		msg.fn = function(job, obj)
+		{
+			if (verbose)
+			{
+				z <- summary(obj, show=FALSE)
+				total <<- total + 1L
+				cat(sprintf(
+					"[%d] %s, job%3d, # of SNPs: %g, # of haplo: %g, acc: %0.1f%%\n",
+					total, format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+					as.integer(job), z$info["num.snp", "Mean"],
+					z$info["num.haplo", "Mean"],
+					z$info["accuracy", "Mean"]))
+			}
+		},
+		n=nclassifier, stop.cluster=FALSE,
+		hla=hla, snp=snp, mtry=mtry, prune=prune, na.rm=na.rm
+	)
+
+	# the next random seed
+	nextRNGStream(rand)
+	nextRNGSubStream(rand)
+	if (auto.save != "")
+		ans <- HIBAG:::.fn_obj_load(auto.save)
+	mod <- hlaModelFromObj(ans)
+
+	# on exit
+	on.exit()
+	if (is.null(cl))
+	{
+		.gpu_build_free_memory()
+	} else {
+		clusterApply(cl, seq_along(gpus), function(i) .gpu_build_free_memory())
+		stopCluster(cl)
+	}
+
+	# matching proportion
+	if (verbose)
+		cat("Calculating matching proportion:\n")
+	pd <- hlaPredict_gpu(mod, snp, verbose=FALSE)
+	mod$matching <- pd$value$matching
+	mobj <- NULL
+	if (auto.save != "")
+	{
+		mobj <- hlaModelToObj(mod)
+		HIBAG:::.fn_obj_save(auto.save, mobj)
+	}
+	if (verbose)
+	{
+		HIBAG:::.printMatching(mod$matching)
+		acc <- hlaCompareAllele(hla, pd, verbose=FALSE)$overall$acc.haplo
+		cat(sprintf("Accuracy with training data: %.2f%%\n", acc*100))
+		# out-of-bag accuracy
+		if (is.null(mobj)) mobj <- hlaModelToObj(mod)
+		acc <- sapply(mobj$classifiers, function(x) x$outofbag.acc)
+		cat(sprintf("Out-of-bag accuracy: %.2f%%\n", mean(acc)*100))
+	}
+
+	# output
+	if (auto.save != "") invisible() else mod
+}
 
 
 #######################################################################
@@ -568,6 +839,8 @@ hlaGPU_Init <- function(device=NA_integer_,
 	i <- .search_dev(packageStartupMessage)
 	if (is.na(i))
 		packageStartupMessage("No device supports!")
+	else
+		packageStartupMessage("")
 
 	TRUE
 }
