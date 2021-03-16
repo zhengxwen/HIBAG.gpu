@@ -558,15 +558,6 @@ hlaPredict_gpu <- function(object, snp,
 # GPU utilities
 #
 
-.new_kernel <- function(name, src, mode)
-{
-	if (mode == "double")
-		src <- gsub("numeric", "double", src, fixed=TRUE)
-	else if (mode == "single")
-		src <- gsub("numeric", "float", src, fixed=TRUE)
-	oclSimpleKernel(.packageEnv$gpu_context, name, src, output.mode=mode)
-}
-
 # initialize GPU device
 .gpu_init <- function(dev_idx, train_prec, predict_prec, showmsg)
 {
