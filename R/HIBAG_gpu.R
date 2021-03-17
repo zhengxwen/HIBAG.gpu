@@ -255,6 +255,59 @@ hlaAttrBagging_gpu <- function(hla, snp, nclassifier=100L,
 
 #######################################################################
 
+postNode <- function(con, type, value=NULL, tag=NULL)
+{
+	parallel:::sendData(con, list(type=type, data=value, tag=tag))
+}
+sendCall <- function(con, fun, args, return=TRUE, tag=NULL)
+{
+	postNode(con, "EXEC", list(fun=fun, args=args, return=return, tag=tag))
+	NULL
+}
+recvOneResult <- function(cl)
+{
+	v <- parallel:::recvOneData(cl)
+	list(value=v$value$value, node=v$node, tag=v$value$tag)
+}
+
+.DynamicClusterCall <- function(cl, ntot, fun, update_fc, ...)
+{
+	# check
+	stopifnot(is.null(cl) | inherits(cl, "cluster"))
+	stopifnot(is.numeric(ntot), length(ntot)==1L)
+	stopifnot(is.function(fun))
+	stopifnot(is.function(update_fc))
+
+	p <- length(cl)
+	if (ntot > 0L && p > 0L)
+	{
+		## this closure is sending to all nodes
+		argfun <- function(node, i) c(node, i, list(...))
+		submit <- function(node, idx)
+			sendCall(cl[[node]], fun, argfun(node, idx), tag=idx)
+
+		for (i in 1L:min(ntot, p)) submit(i, i)
+		for (i in 1L:ntot)
+		{
+			d <- recvOneResult(cl)
+			j <- i + min(ntot, p)
+			if (j <= ntot) submit(d$node, j)
+			dv <- d$value
+			if (inherits(dv, "try-error"))
+				stop("One node produced an error: ", as.character(dv))
+			update_fc(d$node, dv)
+		}
+	} else {
+		for (i in seq_len(ntot))
+		{
+			dv <- fun(1L, i, ...)
+			update_fc(1L, i, dv)
+		}
+	}
+	invisible()
+}
+
+
 hlaAttrBagging_MultiGPU <- function(gpus, hla, snp, auto.save="", nclassifier=100L,
 	mtry=c("sqrt", "all", "one"), prune=TRUE, na.rm=TRUE,
 	train_prec="auto", predict_prec="auto",
@@ -367,6 +420,8 @@ hlaAttrBagging_MultiGPU <- function(gpus, hla, snp, auto.save="", nclassifier=10
 	H <- factor(match(c(hla.allele1, hla.allele2), HUA))
 	levels(H) <- HUA
 	n.hla <- nlevels(H)
+	H1 <- as.integer(H[1L:n.samp]) - 1L
+	H2 <- as.integer(H[(n.samp+1L):(2L*n.samp)]) - 1L
 	mtry <- .set_mtry(mtry, n.snp)
 	if (verbose)
 	{
@@ -378,6 +433,7 @@ hlaAttrBagging_MultiGPU <- function(gpus, hla, snp, auto.save="", nclassifier=10
 		cat("    # of unique ", s, " alleles: ", n.hla, "\n", sep="")
 	}
 
+
 	# initialize GPUs
 	if (length(gpus) == 1L)
 	{
@@ -385,8 +441,15 @@ hlaAttrBagging_MultiGPU <- function(gpus, hla, snp, auto.save="", nclassifier=10
 		hlaGPU_Init(gpus[1L], train_prec=train_prec, predict_prec=predict_prec,
 			verbose=verbose)
 
+		# create an attribute bagging object (return an integer)
+		.packageEnv$M_ABmodel <- .Call("HIBAG_Training", n.snp, n.samp, snp.geno,
+			n.hla, H1, H2, PACKAGE="HIBAG")
+
 		.gpu_build_init_memory(n.hla, n.samp, verbose)
-		on.exit({ .gpu_build_free_memory() })
+		on.exit({
+			.packageEnv$Model_ABmodel <- NULL
+			.gpu_build_free_memory()
+		})
 
 	} else {
 		cl <- makeCluster(length(gpus), outfile="")
@@ -418,83 +481,139 @@ hlaAttrBagging_MultiGPU <- function(gpus, hla, snp, auto.save="", nclassifier=10
 				{
 					if (i == idx)
 					{
-						if (verbose) cat("[[Process ", i, "]]:\n")
+						if (verbose)
+							cat("[[Process ", i, "]]:\n", sep="")
 						.gpu_build_init_memory(n.hla, n.samp, verbose)
 					}
 				}, idx=idx, verbose=verbose)
 		}
+		# create an attribute bagging object
+		clusterApply(cl, seq_along(gpus),
+			function(i, n.snp, n.samp, snp.geno, n.hla, H1, H2, mtry, prune, hla.allele)
+			{
+				.packageEnv$M_snp.geno <- snp.geno
+				.packageEnv$M_H1 <- H1
+				.packageEnv$M_H2 <- H2
+				.packageEnv$M_mtry  <- mtry
+				.packageEnv$M_prune <- prune
+				.packageEnv$M_hla.allele <- hla.allele
+				.packageEnv$M_ABmodel <- .Call("HIBAG_Training", n.snp, n.samp,
+					snp.geno, n.hla, H1, H2, PACKAGE="HIBAG")
+				.packageEnv$M_ptm <- proc.time()
+			}, n.snp=n.snp, n.samp=n.samp, snp.geno=snp.geno, n.hla=n.hla,
+				H1=H1, H2=H2, mtry=mtry, prune=prune, hla.allele=HUA)
 		# on exit in case fails
 		on.exit({
 			clusterApply(cl, seq_along(gpus), function(i) .gpu_build_free_memory())
-		}, add=TRUE)
+			stopCluster(cl)
+		})
 	}
+
 
 	# set random number for the cluster
 	RNGkind("L'Ecuyer-CMRG")
 	rand <- .Random.seed
 	clusterSetRNGStream(cl)
+
+	# output object
+	mobj <- list(n.samp = n.samp, n.snp = n.snp, sample.id = samp.id,
+		snp.id = tmp.snp.id, snp.position = tmp.snp.position,
+		snp.allele = tmp.snp.allele,
+		snp.allele.freq = 0.5*rowMeans(snp.geno, na.rm=TRUE),
+		hla.locus = hla$locus, hla.allele = levels(H),
+		hla.freq = prop.table(table(H)),
+		assembly = as.character(snp$assembly)[1L],
+        classifiers = list(),
+        matching = NULL, appendix = list())
+	if (is.na(mobj$assembly)) mobj$assembly <- "unknown"
+	class(mobj) <- "hlaAttrBagObj"
+
 	if (verbose)
 		cat("[-] ", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "\n", sep="")
 
-	total <- 0L
-	ans <- HIBAG:::.DynamicClusterCall(cl,
-		fun = function(job, hla, snp, mtry, prune, na.rm)
+	save_ptm <- proc.time()
+	clr <- list()
+	.DynamicClusterCall(cl, nclassifier,
+		fun = function(node, idx)
 		{
-			model <- hlaAttrBagging_gpu(hla=hla, snp=snp, nclassifier=0L,
-				mtry=mtry, prune=prune, na.rm=na.rm,
-				verbose=FALSE, verbose.detail=FALSE)
-			mobj <- hlaModelToObj(model)
-			hlaClose(model)
-			mobj
-		},
-		combine.fun = function(obj1, obj2)
-		{
-			if (is.null(obj1))
-				mobj <- obj2
-			else if (is.null(obj2))
-				mobj <- obj1
-			else
-				mobj <- hlaCombineModelObj(obj1, obj2)
-			if (auto.save != "")
-				HIBAG:::.fn_obj_save(auto.save, mobj)
-			if (verbose & !is.null(mobj))
-				HIBAG:::.show_model_obj(mobj, auto.save!="")
-			mobj
-		},
-		msg.fn = function(job, obj)
-		{
-			if (verbose)
+			# add a new individual classifer
+			with(.packageEnv, .Call("HIBAG_NewClassifiers", M_ABmodel, 1L,
+					M_mtry, M_prune, -1L, FALSE, FALSE, gpu_proc_ptr, PACKAGE="HIBAG"))
+			v <- .Call("HIBAG_GetLastClassifierInfo", .packageEnv$M_ABmodel,
+				PACKAGE="HIBAG")
+			ss <- sprintf(
+				"[%d] %s, worker %d, # of SNPs: %g, # of haplo: %g, acc: %0.1f%%",
+				idx, format(Sys.time(), "%Y-%m-%d %H:%M:%S"), node, v[1L], v[2L], v[3L])
+			# output
+			tm <- proc.time()
+			if ((.packageEnv$M_ptm - tm)[3L] >= 180L)  # elapsed time >= 3min
 			{
-				z <- summary(obj, show=FALSE)
-				total <<- total + 1L
-				cat(sprintf(
-					"[%d] %s, job%3d, # of SNPs: %g, # of haplo: %g, acc: %0.1f%%\n",
-					total, format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
-					as.integer(job), z$info["num.snp", "Mean"],
-					z$info["num.haplo", "Mean"],
-					z$info["accuracy", "Mean"]))
+				.packageEnv$M_ptm <- tm
+				clr <- with(.packageEnv, .Call("HIBAG_GetClassifierList",
+					M_ABmodel, M_hla.allele, PACKAGE="HIBAG"))
+				.Call("HIBAG_ClearClassifier", .packageEnv$M_ABmodel, PACKAGE="HIBAG")
+				ss <- list(ss, clr)
 			}
+			ss
 		},
-		n=nclassifier, stop.cluster=FALSE,
-		hla=hla, snp=snp, mtry=mtry, prune=prune, na.rm=na.rm
+		update_fc = function(job, val)
+		{
+			if (is.character(val))
+			{
+				if (verbose) cat(val, "\n", sep="")
+			} else {
+				if (verbose) cat(val[[1L]], "\n", sep="")
+				clr <<- append(clr, val[[2L]])
+				tm <- proc.time()
+				if ((save_ptm - tm)[3L] >= 600L)  # elapsed time >= 10min
+				{
+					save_ptm <- tm
+					mobj$classifiers <<- clr
+					if (auto.save != "")
+					{
+						HIBAG:::.fn_obj_save(auto.save, mobj)
+						HIBAG:::.show_model_obj(mobj, TRUE)
+					}
+				}
+			}
+		}
 	)
+
+	old_n <- length(clr)
+	if (is.null(cl))
+	{
+		v <- with(.packageEnv, .Call("HIBAG_GetClassifierList",
+			M_ABmodel, M_hla.allele, PACKAGE="HIBAG"))
+		if (length(v)) clr <- append(clr, v)
+		on.exit()
+		.packageEnv$M_ABmodel <- NULL
+		.gpu_build_free_memory()
+	} else {
+		on.exit()
+		vs <- clusterApply(cl, seq_along(gpus), function(i)
+			{
+				.gpu_build_free_memory()
+				with(.packageEnv, .Call("HIBAG_GetClassifierList",
+					M_ABmodel, M_hla.allele, PACKAGE="HIBAG"))
+			})
+		for (v in vs) clr <- append(clr, v)
+		stopCluster(cl)
+	}
+
+	if (old_n < length(clr))
+	{
+		mobj$classifiers <- clr
+		if (auto.save != "")
+		{
+			HIBAG:::.fn_obj_save(auto.save, mobj)
+			HIBAG:::.show_model_obj(mobj, TRUE)
+		}
+	}
 
 	# the next random seed
 	nextRNGStream(rand)
 	nextRNGSubStream(rand)
-	if (auto.save != "")
-		ans <- HIBAG:::.fn_obj_load(auto.save)
-	mod <- hlaModelFromObj(ans)
-
-	# on exit
-	on.exit()
-	if (is.null(cl))
-	{
-		.gpu_build_free_memory()
-	} else {
-		clusterApply(cl, seq_along(gpus), function(i) .gpu_build_free_memory())
-		stopCluster(cl)
-	}
+	mod <- hlaModelFromObj(mobj)
 
 	# matching proportion
 	if (verbose)

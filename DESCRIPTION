@@ -19,5 +19,5 @@ Description: It is an extensible component of the HIBAG package for imputing
 License: GPL-3 | file LICENSE
 Collate: OpenCL_code.R HIBAG_gpu.R
 SystemRequirements: GNU make
-LazyData: yes
+ByteCompile: TRUE
 URL: http://github.com/zhengxwen/HIBAG.gpu, http://github.com/zhengxwen/HIBAG
