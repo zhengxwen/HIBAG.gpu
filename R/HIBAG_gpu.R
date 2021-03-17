@@ -542,7 +542,7 @@ hlaAttrBagging_MultiGPU <- function(gpus, hla, snp, auto.save="", nclassifier=10
 			v <- .Call("HIBAG_GetLastClassifierInfo", .packageEnv$M_ABmodel,
 				PACKAGE="HIBAG")
 			ss <- sprintf(
-				"[%d] %s, worker %d, # of SNPs: %g, # of haplo: %g, acc: %0.1f%%",
+				"[%d] %s, worker %d, # of SNPs: %g, # of haplo: %g, acc: %0.1f%%\n",
 				idx, format(Sys.time(), "%Y-%m-%d %H:%M:%S"), node, v[1L], v[2L], v[3L])
 			# output
 			tm <- proc.time()
@@ -560,9 +560,9 @@ hlaAttrBagging_MultiGPU <- function(gpus, hla, snp, auto.save="", nclassifier=10
 		{
 			if (is.character(val))
 			{
-				if (verbose) cat(val, "\n", sep="")
+				if (verbose) cat(val)
 			} else {
-				if (verbose) cat(val[[1L]], "\n", sep="")
+				if (verbose) cat(val[[1L]])
 				clr <<- append(clr, val[[2L]])
 				tm <- proc.time()
 				if ((save_ptm - tm)[3L] >= 600L)  # elapsed time >= 10min
