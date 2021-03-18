@@ -420,10 +420,12 @@ static void build_set_bootstrap(const int oob_cnt[])
 	samp_ib_idx.clear();
 	for (int i=0; i < Num_Sample; i++)
 	{
-		if (oob_cnt[i] <= 0)
+		int cnt = oob_cnt[i];
+		if (cnt == 0)
 		{
 			p_oob[build_num_oob++] = i;
-		} else {
+		} else if (cnt > 0)
+		{
 			p_ib[build_num_ib++] = i;
 			samp_ib_idx.push_back(i);
 		}
