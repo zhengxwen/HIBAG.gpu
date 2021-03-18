@@ -301,7 +301,7 @@ recvOneResult <- function(cl)
 		for (i in seq_len(ntot))
 		{
 			dv <- fun(1L, i, ...)
-			update_fc(1L, i, dv)
+			update_fc(i, dv)
 		}
 	}
 	invisible()
@@ -310,8 +310,7 @@ recvOneResult <- function(cl)
 
 hlaAttrBagging_MultiGPU <- function(gpus, hla, snp, auto.save="", nclassifier=100L,
 	mtry=c("sqrt", "all", "one"), prune=TRUE, na.rm=TRUE,
-	train_prec="auto", predict_prec="auto",
-	verbose=TRUE)
+	train_prec="auto", verbose=TRUE)
 {
 	# check
 	stopifnot(is.numeric(gpus), all(!is.na(gpus)), length(gpus)>0L)
@@ -327,8 +326,6 @@ hlaAttrBagging_MultiGPU <- function(gpus, hla, snp, auto.save="", nclassifier=10
 	stopifnot(is.logical(verbose), length(verbose)==1L)
 	stopifnot(is.character(train_prec),
 		length(train_prec)==1L || length(train_prec)==length(gpus))
-	stopifnot(is.character(predict_prec),
-		length(predict_prec)==1L || length(predict_prec)==length(gpus))
 
 	# GPU platform
 	for (i in gpus)
@@ -339,8 +336,6 @@ hlaAttrBagging_MultiGPU <- function(gpus, hla, snp, auto.save="", nclassifier=10
 	}
 	if (length(train_prec)==1L)
 		train_prec <- rep(train_prec, length(gpus))
-	if (length(predict_prec)==1L)
-		predict_prec <- rep(predict_prec, length(gpus))
 
 	if (verbose)
 	{
@@ -438,12 +433,16 @@ hlaAttrBagging_MultiGPU <- function(gpus, hla, snp, auto.save="", nclassifier=10
 	if (length(gpus) == 1L)
 	{
 		cl <- NULL
-		hlaGPU_Init(gpus[1L], train_prec=train_prec, predict_prec=predict_prec,
+		hlaGPU_Init(gpus[1L], train_prec=train_prec, .packageEnv$predict_prec,
 			verbose=verbose)
 
 		# create an attribute bagging object (return an integer)
 		.packageEnv$M_ABmodel <- .Call("HIBAG_Training", n.snp, n.samp, snp.geno,
 			n.hla, H1, H2, PACKAGE="HIBAG")
+		.packageEnv$M_mtry  <- mtry
+		.packageEnv$M_prune <- prune
+		.packageEnv$M_hla.allele <- HUA
+		.packageEnv$M_ptm <- proc.time()
 
 		.gpu_build_init_memory(n.hla, n.samp, verbose)
 		on.exit({
@@ -452,16 +451,16 @@ hlaAttrBagging_MultiGPU <- function(gpus, hla, snp, auto.save="", nclassifier=10
 		})
 
 	} else {
-		cl <- makeCluster(length(gpus), outfile="")
+		cl <- makeCluster(length(gpus), outfile="", useXDR=FALSE)
 		on.exit(stopCluster(cl))
 		# GPU
 		msg <- clusterApply(cl, seq_along(gpus),
-			function(i, gpus, train_prec, pred_prec)
+			function(i, gpus, train_prec)
 			{
 				env <- new.env()
-				.gpu_init(gpus[i], train_prec[i], pred_prec[i], function(s) env$msg <- s)
+				.gpu_init(gpus[i], train_prec[i], "auto", function(s) env$msg <- s)
 				env$msg
-			}, gpus=gpus, train_prec=train_prec, pred_prec=predict_prec)
+			}, gpus=gpus, train_prec=train_prec)
 		if (verbose)
 		{
 			for (i in seq_along(msg))
@@ -469,6 +468,8 @@ hlaAttrBagging_MultiGPU <- function(gpus, hla, snp, auto.save="", nclassifier=10
 				ss <- unlist(strsplit(msg[[i]], "\n"))
 				ss <- gsub("^    ", ">>  ", ss)
 				ss[1L] <- paste0("[[Process ", i, "]]: ", ss[1L])
+				ss <- ss[-length(ss)]
+				ss[length(ss)] <- paste0("=== ", ss[length(ss)], " ===")
 				ss[-1L] <- paste0("    ", ss[-1L])
 				cat(paste(ss, collapse="\n"))
 				cat("\n")
@@ -507,13 +508,12 @@ hlaAttrBagging_MultiGPU <- function(gpus, hla, snp, auto.save="", nclassifier=10
 			clusterApply(cl, seq_along(gpus), function(i) .gpu_build_free_memory())
 			stopCluster(cl)
 		})
+		# set random number for the cluster
+		RNGkind("L'Ecuyer-CMRG")
+		rand <- .Random.seed
+		clusterSetRNGStream(cl)
 	}
 
-
-	# set random number for the cluster
-	RNGkind("L'Ecuyer-CMRG")
-	rand <- .Random.seed
-	clusterSetRNGStream(cl)
 
 	# output object
 	mobj <- list(n.samp = n.samp, n.snp = n.snp, sample.id = samp.id,
@@ -597,6 +597,10 @@ hlaAttrBagging_MultiGPU <- function(gpus, hla, snp, auto.save="", nclassifier=10
 					M_ABmodel, M_hla.allele, PACKAGE="HIBAG"))
 			})
 		for (v in vs) clr <- append(clr, v)
+		# the next random seed
+		nextRNGStream(rand)
+		nextRNGSubStream(rand)
+		# stop the workers
 		stopCluster(cl)
 	}
 
@@ -609,11 +613,8 @@ hlaAttrBagging_MultiGPU <- function(gpus, hla, snp, auto.save="", nclassifier=10
 			HIBAG:::.show_model_obj(mobj, TRUE)
 		}
 	}
-
-	# the next random seed
-	nextRNGStream(rand)
-	nextRNGSubStream(rand)
 	mod <- hlaModelFromObj(mobj)
+
 
 	# matching proportion
 	if (verbose)

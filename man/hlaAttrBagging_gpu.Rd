@@ -11,8 +11,8 @@
 hlaAttrBagging_gpu(hla, snp, nclassifier=100L, mtry=c("sqrt", "all", "one"),
     prune=TRUE, na.rm=TRUE, verbose=TRUE, verbose.detail=FALSE)
 hlaAttrBagging_MultiGPU(gpus, hla, snp, auto.save="", nclassifier=100L,
-	mtry=c("sqrt", "all", "one"), prune=TRUE, na.rm=TRUE,
-	train_prec="auto", predict_prec="auto", verbose=TRUE)
+	mtry=c("sqrt", "all", "one"), prune=TRUE, na.rm=TRUE, train_prec="auto",
+	verbose=TRUE)
 }
 \arguments{
 	\item{hla}{the training HLA types, an object of
@@ -31,8 +31,6 @@ hlaAttrBagging_MultiGPU(gpus, hla, snp, auto.save="", nclassifier=100L,
 		(.rda, .RData or .rds); "", no file saving}
 	\item{train_prec}{length-1 character, or a character vector according to \code{gpus}
 		for the training precision, see \code{hlaGPU_Init}}
-	\item{predict_prec}{length-1 character, or a character vector according to \code{gpus}
-		for the prediction precision, see \code{hlaGPU_Init}}
 	\item{verbose}{if TRUE, show information}
 	\item{verbose.detail}{if TRUE, show more information}
 }
