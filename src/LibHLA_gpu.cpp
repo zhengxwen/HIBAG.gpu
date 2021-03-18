@@ -44,6 +44,7 @@
 #include <cstdlib>
 #include <cmath>
 #include <vector>
+#include <time.h>
 
 #define USE_RINTERNALS 1
 #include <Rinternals.h>
@@ -847,6 +848,98 @@ void predict_avg_prob(const TGenotype geno[], const double weight[],
 		fmul_f64(out_prob, num_size, 1 / get_sum_f64(out_prob, num_size));
 	}
 }
+
+
+// ===================================================================== //
+
+static SEXP M_ABmodel = R_NilValue;
+static SEXP M_mtry    = R_NilValue;
+static SEXP M_prune   = R_NilValue;
+static SEXP M_hla_allele = R_NilValue;
+static SEXP M_gpu_proc_ptr = R_NilValue;
+static time_t M_timer;
+
+typedef SEXP (*Type_NewClassifiers)(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
+static Type_NewClassifiers fc_NewClassifiers = NULL;
+
+typedef SEXP (*Type_GetLastClassifierInfo)(SEXP);
+static Type_GetLastClassifierInfo fc_GetLastClassifierInfo = NULL;
+
+typedef SEXP (*Type_GetClassifierList)(SEXP, SEXP);
+static Type_GetClassifierList fc_GetClassifierList = NULL;
+
+typedef SEXP (*Type_ClearClassifier)(SEXP);
+static Type_ClearClassifier fc_ClearClassifier = NULL;
+
+
+SEXP multigpu_init(SEXP ABmodel, SEXP mtry, SEXP prune, SEXP hla_allele, SEXP proc_ptr)
+{
+	M_ABmodel = ABmodel;
+	M_mtry = mtry; M_prune = prune; M_hla_allele = hla_allele;
+	M_gpu_proc_ptr = proc_ptr;
+
+	static const char *PKG_HIBAG = "HIBAG";
+	#define LOAD(var, name)    { \
+	    DL_FUNC f = R_GetCCallable(PKG_HIBAG, name); \
+		memcpy(&var, &f, sizeof(f)); \
+	}
+
+	LOAD(fc_NewClassifiers, "HIBAG_NewClassifiers");
+	LOAD(fc_GetLastClassifierInfo, "HIBAG_GetLastClassifierInfo");
+	LOAD(fc_GetClassifierList, "HIBAG_GetClassifierList");
+	LOAD(fc_ClearClassifier, "HIBAG_ClearClassifier");
+
+	time(&M_timer);
+	return R_NilValue;
+	#undef LOAD
+}
+
+
+SEXP multigpu_train(SEXP node, SEXP idx)
+{
+	SEXP ONE = PROTECT(ScalarInteger(1));
+	SEXP MINUS = PROTECT(ScalarInteger(-1));
+	SEXP RFalse = PROTECT(ScalarLogical(FALSE));
+	SEXP rv_ans;
+
+	// train an individual classifer
+	(*fc_NewClassifiers)(M_ABmodel, ONE, M_mtry, M_prune, MINUS, RFalse, RFalse,
+		M_gpu_proc_ptr);
+
+	// get the last classifier info
+	SEXP info = (*fc_GetLastClassifierInfo)(M_ABmodel);
+	time_t now = time(NULL);
+	{
+		PROTECT(info);
+		double *s = REAL(info);
+		int i_node = Rf_asInteger(node);
+		int i = Rf_asInteger(idx);
+		char buffer[1024];
+		struct tm *p = localtime(&now);
+		sprintf(buffer,
+			"[%d] %04d-%02d-%02d %02d:%02d:%02d, worker %d, # of SNPs: %g, # of haplo: %g, acc: %0.1f%%\n",
+			i, p->tm_year+1900, p->tm_mon+1, p->tm_mday, p->tm_hour, p->tm_min, p->tm_sec,
+			i_node, s[0], s[1], s[2]*100);
+		UNPROTECT(1);
+		rv_ans = PROTECT(mkString(buffer));
+	}
+
+	if (difftime(now, M_timer) >= 60*3)  // elapsed time >= 3min
+	{
+		M_timer = now;
+		SEXP clr = PROTECT((*fc_GetClassifierList)(M_ABmodel, M_hla_allele));
+		(*fc_ClearClassifier)(M_ABmodel);
+		SEXP ss = rv_ans;
+		rv_ans = PROTECT(NEW_LIST(2));
+		SET_ELEMENT(rv_ans, 0, ss);
+		SET_ELEMENT(rv_ans, 1, clr);
+		UNPROTECT(2);
+	}
+
+	UNPROTECT(4);
+	return rv_ans;
+}
+
 
 
 // ===================================================================== //

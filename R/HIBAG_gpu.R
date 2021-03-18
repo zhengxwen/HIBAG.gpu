@@ -442,7 +442,8 @@ hlaAttrBagging_MultiGPU <- function(gpus, hla, snp, auto.save="", nclassifier=10
 		.packageEnv$M_mtry  <- mtry
 		.packageEnv$M_prune <- prune
 		.packageEnv$M_hla.allele <- HUA
-		.packageEnv$M_ptm <- proc.time()
+		with(.packageEnv, .Call(multigpu_init,
+			M_ABmodel, M_mtry, M_prune, M_hla.allele, gpu_proc_ptr))
 
 		.gpu_build_init_memory(n.hla, n.samp, verbose)
 		on.exit({
@@ -500,7 +501,8 @@ hlaAttrBagging_MultiGPU <- function(gpus, hla, snp, auto.save="", nclassifier=10
 				.packageEnv$M_hla.allele <- hla.allele
 				.packageEnv$M_ABmodel <- .Call("HIBAG_Training", n.snp, n.samp,
 					snp.geno, n.hla, H1, H2, PACKAGE="HIBAG")
-				.packageEnv$M_ptm <- proc.time()
+				with(.packageEnv, .Call(multigpu_init,
+					M_ABmodel, M_mtry, M_prune, M_hla.allele, gpu_proc_ptr))
 			}, n.snp=n.snp, n.samp=n.samp, snp.geno=snp.geno, n.hla=n.hla,
 				H1=H1, H2=H2, mtry=mtry, prune=prune, hla.allele=HUA)
 		# on exit in case fails
@@ -530,32 +532,11 @@ hlaAttrBagging_MultiGPU <- function(gpus, hla, snp, auto.save="", nclassifier=10
 
 	if (verbose)
 		cat("[-] ", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "\n", sep="")
-
 	save_ptm <- proc.time()
 	clr <- list()
+
 	.DynamicClusterCall(cl, nclassifier,
-		fun = function(node, idx)
-		{
-			# add a new individual classifer
-			with(.packageEnv, .Call("HIBAG_NewClassifiers", M_ABmodel, 1L,
-					M_mtry, M_prune, -1L, FALSE, FALSE, gpu_proc_ptr, PACKAGE="HIBAG"))
-			v <- .Call("HIBAG_GetLastClassifierInfo", .packageEnv$M_ABmodel,
-				PACKAGE="HIBAG")
-			ss <- sprintf(
-				"[%d] %s, worker %d, # of SNPs: %g, # of haplo: %g, acc: %0.1f%%\n",
-				idx, format(Sys.time(), "%Y-%m-%d %H:%M:%S"), node, v[1L], v[2L], v[3L])
-			# output
-			tm <- proc.time()
-			if ((.packageEnv$M_ptm - tm)[3L] >= 180L)  # elapsed time >= 3min
-			{
-				.packageEnv$M_ptm <- tm
-				clr <- with(.packageEnv, .Call("HIBAG_GetClassifierList",
-					M_ABmodel, M_hla.allele, PACKAGE="HIBAG"))
-				.Call("HIBAG_ClearClassifier", .packageEnv$M_ABmodel, PACKAGE="HIBAG")
-				ss <- list(ss, clr)
-			}
-			ss
-		},
+		fun = function(node, idx) .Call(multigpu_train, node, idx),
 		update_fc = function(job, val)
 		{
 			if (is.character(val))
@@ -565,9 +546,9 @@ hlaAttrBagging_MultiGPU <- function(gpus, hla, snp, auto.save="", nclassifier=10
 				if (verbose) cat(val[[1L]])
 				clr <<- append(clr, val[[2L]])
 				tm <- proc.time()
-				if ((save_ptm - tm)[3L] >= 600L)  # elapsed time >= 10min
+				if ((tm - save_ptm)[3L] >= 600L)  # elapsed time >= 10min
 				{
-					save_ptm <- tm
+					save_ptm <<- tm
 					mobj$classifiers <<- clr
 					if (auto.save != "")
 					{

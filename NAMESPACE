@@ -1,6 +1,6 @@
 # Load the shared object
 useDynLib(HIBAG.gpu,
-	gpu_init_proc,
+	gpu_init_proc, multigpu_init, multigpu_train,
 	ocl_set_verbose, ocl_init_dev_list, ocl_dev_info, ocl_get_dev_param,
 	ocl_select_dev, ocl_release_dev,
 	ocl_set_kl_attempt, ocl_set_kl_clearmem, ocl_set_kl_build, ocl_set_kl_predict,
