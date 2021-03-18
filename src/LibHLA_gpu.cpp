@@ -880,7 +880,8 @@ SEXP multigpu_init(SEXP ABmodel, SEXP mtry, SEXP prune, SEXP hla_allele, SEXP pr
 
 	static const char *PKG_HIBAG = "HIBAG";
 	#define LOAD(var, name)    { \
-	    DL_FUNC f = R_GetCCallable(PKG_HIBAG, name); \
+	    DL_FUNC f = R_FindSymbol(name, PKG_HIBAG, NULL); \
+	    if (!f) Rf_error("No C function '%s' in HIBAG.", name); \
 		memcpy(&var, &f, sizeof(f)); \
 	}
 
