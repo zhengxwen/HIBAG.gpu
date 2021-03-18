@@ -705,8 +705,9 @@ hlaPredict_gpu <- function(object, snp,
 	if (dev_fp64)
 	{
 		.packageEnv$code_attempt_f64 <- paste(c(code_macro, code_macro_prec["double"],
-			code_hamm_dist_max["double"], code_atomic_add_f64, code_hamming_dist,
-			code_build_calc_prob), collapse="\n")
+			code_hamm_dist_max["double"], code_atomic_add_f64,
+			"#define FIXED_NUM_INT_HAMM    128",
+			code_hamming_dist, code_build_calc_prob), collapse="\n")
 		# also need cl_khr_int64_base_atomics : enable
 		dev_fp64 <- tryCatch({
 			.Call(ocl_set_kl_attempt, "build_calc_prob", .packageEnv$code_attempt_f64)
@@ -798,10 +799,28 @@ hlaPredict_gpu <- function(object, snp,
 	.packageEnv$code_build_haplo_match2 <- paste(c(
 		code_macro, code_hamming_dist, code_build_alloc_set, code_build_haplo_match2),
 		collapse="\n")
-	.packageEnv$code_build_calc_prob <- paste(c(
+
+	.packageEnv$code_build_calc_prob_int1 <- paste(c(
 		code_macro, code_macro_prec[train_prec], code_hamm_dist_max[train_prec],
 		if (f64_build) code_atomic_add_f64 else code_atomic_add_f32,
+		"#define FIXED_NUM_INT_HAMM    32",
 		code_hamming_dist, code_build_calc_prob), collapse="\n")
+	.packageEnv$code_build_calc_prob_int2 <- paste(c(
+		code_macro, code_macro_prec[train_prec], code_hamm_dist_max[train_prec],
+		if (f64_build) code_atomic_add_f64 else code_atomic_add_f32,
+		"#define FIXED_NUM_INT_HAMM    64",
+		code_hamming_dist, code_build_calc_prob), collapse="\n")
+	.packageEnv$code_build_calc_prob_int3 <- paste(c(
+		code_macro, code_macro_prec[train_prec], code_hamm_dist_max[train_prec],
+		if (f64_build) code_atomic_add_f64 else code_atomic_add_f32,
+		"#define FIXED_NUM_INT_HAMM    96",
+		code_hamming_dist, code_build_calc_prob), collapse="\n")
+	.packageEnv$code_build_calc_prob_int4 <- paste(c(
+		code_macro, code_macro_prec[train_prec], code_hamm_dist_max[train_prec],
+		if (f64_build) code_atomic_add_f64 else code_atomic_add_f32,
+		"#define FIXED_NUM_INT_HAMM    128",
+		code_hamming_dist, code_build_calc_prob), collapse="\n")
+
 	.packageEnv$code_build_calc_oob <- paste(c(
 		c(code_macro, code_macro_prec[train_prec], code_build_calc_oob)), collapse="\n")
 	.packageEnv$code_build_calc_ib <- paste(c(
@@ -810,7 +829,10 @@ hlaPredict_gpu <- function(object, snp,
 	.Call(ocl_set_kl_build, dev_fp64_ori, f64_build, list(
 		.packageEnv$code_haplo_match_init,
 		.packageEnv$code_build_haplo_match1, .packageEnv$code_build_haplo_match2,
-		.packageEnv$code_build_calc_prob,
+		.packageEnv$code_build_calc_prob_int1,
+		.packageEnv$code_build_calc_prob_int2,
+		.packageEnv$code_build_calc_prob_int3,
+		.packageEnv$code_build_calc_prob_int4,
 		.packageEnv$code_build_calc_oob, .packageEnv$code_build_calc_ib))
 
 	prec_predict <- ifelse(f64_pred,  "double", "single")

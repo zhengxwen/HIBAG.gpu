@@ -78,6 +78,8 @@ namespace HLA_LIB
 	// the number of individual classifiers
 	static int Num_Classifier;
 
+	// OpenCL kernel
+	cl_kernel gpu_kl_build_calc_prob_sel = NULL;
 
 	// OpenCL memory objects
 
@@ -103,7 +105,6 @@ namespace HLA_LIB
 	static int build_num_oob;   ///< the number of out-of-bag samples
 	static int build_num_ib;    ///< the number of in-bag samples
 	static int run_num_haplo;   ///< the total number of haplotypes
-	static int run_num_snp;     ///< the number of SNPs
 	static int wdim_num_haplo;  ///< global_work_size for the number of haplotypes
 
 
@@ -336,18 +337,53 @@ SEXP ocl_build_init(SEXP R_nHLA, SEXP R_nSample, SEXP R_verbose)
 	GPU_SETARG(gpu_kl_build_haplo_match2, 6, mem_haplo_list);
 	GPU_SETARG(gpu_kl_build_haplo_match2, 7, mem_snpgeno);
 
-	// arguments for build_calc_prob
-	GPU_SETARG(gpu_kl_build_calc_prob, 0, mem_prob_buffer);
-	GPU_SETARG(gpu_kl_build_calc_prob, 1, mem_rare_freq);
-	GPU_SETARG(gpu_kl_build_calc_prob, 2, n_hla);
-	GPU_SETARG(gpu_kl_build_calc_prob, 3, sz_hla);
-	GPU_SETARG(gpu_kl_build_calc_prob, 4, zero);  // n_haplo
-	GPU_SETARG(gpu_kl_build_calc_prob, 5, zero);  // n_snp
-	GPU_SETARG(gpu_kl_build_calc_prob, 6, zero);  // start_sample_idx
-	GPU_SETARG(gpu_kl_build_calc_prob, 7, zero);  // n_samp
-	GPU_SETARG(gpu_kl_build_calc_prob, 8, mem_build_idx_oob);  // mem_build_idx_oob or mem_build_idx_ib
-	GPU_SETARG(gpu_kl_build_calc_prob, 9, mem_haplo_list);
-	GPU_SETARG(gpu_kl_build_calc_prob, 10, mem_snpgeno);
+	// arguments for build_calc_prob_int1
+	GPU_SETARG(gpu_kl_build_calc_prob_int1, 0, mem_prob_buffer);
+	GPU_SETARG(gpu_kl_build_calc_prob_int1, 1, mem_rare_freq);
+	GPU_SETARG(gpu_kl_build_calc_prob_int1, 2, n_hla);
+	GPU_SETARG(gpu_kl_build_calc_prob_int1, 3, sz_hla);
+	GPU_SETARG(gpu_kl_build_calc_prob_int1, 4, zero);  // n_haplo
+	GPU_SETARG(gpu_kl_build_calc_prob_int1, 5, zero);  // start_sample_idx
+	GPU_SETARG(gpu_kl_build_calc_prob_int1, 6, zero);  // n_samp
+	GPU_SETARG(gpu_kl_build_calc_prob_int1, 7, mem_build_idx_oob);  // mem_build_idx_oob or mem_build_idx_ib
+	GPU_SETARG(gpu_kl_build_calc_prob_int1, 8, mem_haplo_list);
+	GPU_SETARG(gpu_kl_build_calc_prob_int1, 9, mem_snpgeno);
+
+	// arguments for build_calc_prob_int2
+	GPU_SETARG(gpu_kl_build_calc_prob_int2, 0, mem_prob_buffer);
+	GPU_SETARG(gpu_kl_build_calc_prob_int2, 1, mem_rare_freq);
+	GPU_SETARG(gpu_kl_build_calc_prob_int2, 2, n_hla);
+	GPU_SETARG(gpu_kl_build_calc_prob_int2, 3, sz_hla);
+	GPU_SETARG(gpu_kl_build_calc_prob_int2, 4, zero);  // n_haplo
+	GPU_SETARG(gpu_kl_build_calc_prob_int2, 5, zero);  // start_sample_idx
+	GPU_SETARG(gpu_kl_build_calc_prob_int2, 6, zero);  // n_samp
+	GPU_SETARG(gpu_kl_build_calc_prob_int2, 7, mem_build_idx_oob);  // mem_build_idx_oob or mem_build_idx_ib
+	GPU_SETARG(gpu_kl_build_calc_prob_int2, 8, mem_haplo_list);
+	GPU_SETARG(gpu_kl_build_calc_prob_int2, 9, mem_snpgeno);
+
+	// arguments for build_calc_prob_int3
+	GPU_SETARG(gpu_kl_build_calc_prob_int3, 0, mem_prob_buffer);
+	GPU_SETARG(gpu_kl_build_calc_prob_int3, 1, mem_rare_freq);
+	GPU_SETARG(gpu_kl_build_calc_prob_int3, 2, n_hla);
+	GPU_SETARG(gpu_kl_build_calc_prob_int3, 3, sz_hla);
+	GPU_SETARG(gpu_kl_build_calc_prob_int3, 4, zero);  // n_haplo
+	GPU_SETARG(gpu_kl_build_calc_prob_int3, 5, zero);  // start_sample_idx
+	GPU_SETARG(gpu_kl_build_calc_prob_int3, 6, zero);  // n_samp
+	GPU_SETARG(gpu_kl_build_calc_prob_int3, 7, mem_build_idx_oob);  // mem_build_idx_oob or mem_build_idx_ib
+	GPU_SETARG(gpu_kl_build_calc_prob_int3, 8, mem_haplo_list);
+	GPU_SETARG(gpu_kl_build_calc_prob_int3, 9, mem_snpgeno);
+
+	// arguments for build_calc_prob_int4
+	GPU_SETARG(gpu_kl_build_calc_prob_int4, 0, mem_prob_buffer);
+	GPU_SETARG(gpu_kl_build_calc_prob_int4, 1, mem_rare_freq);
+	GPU_SETARG(gpu_kl_build_calc_prob_int4, 2, n_hla);
+	GPU_SETARG(gpu_kl_build_calc_prob_int4, 3, sz_hla);
+	GPU_SETARG(gpu_kl_build_calc_prob_int4, 4, zero);  // n_haplo
+	GPU_SETARG(gpu_kl_build_calc_prob_int4, 5, zero);  // start_sample_idx
+	GPU_SETARG(gpu_kl_build_calc_prob_int4, 6, zero);  // n_samp
+	GPU_SETARG(gpu_kl_build_calc_prob_int4, 7, mem_build_idx_oob);  // mem_build_idx_oob or mem_build_idx_ib
+	GPU_SETARG(gpu_kl_build_calc_prob_int4, 8, mem_haplo_list);
+	GPU_SETARG(gpu_kl_build_calc_prob_int4, 9, mem_snpgeno);
 
 	// arguments for gpu_kl_build_calc_oob (out-of-bag)
 	GPU_SETARG(gpu_kl_build_calc_oob, 0, mem_build_output);
@@ -525,7 +561,15 @@ static void build_set_haplo_geno(const THaplotype haplo[], int n_haplo,
 	events[0] = GPU_WRITE_EVENT(mem_haplo_list, sizeof(THaplotype)*n_haplo, haplo);
 	events[1] = GPU_WRITE_EVENT(mem_snpgeno, sizeof(TGenotype)*Num_Sample, geno);
 
-	run_num_snp = n_snp;
+	if (n_snp > 96)
+		gpu_kl_build_calc_prob_sel = gpu_kl_build_calc_prob_int4;
+	else if (n_snp > 64)
+		gpu_kl_build_calc_prob_sel = gpu_kl_build_calc_prob_int3;
+	else if (n_snp > 32)
+		gpu_kl_build_calc_prob_sel = gpu_kl_build_calc_prob_int2;
+	else
+		gpu_kl_build_calc_prob_sel = gpu_kl_build_calc_prob_int1;
+
 	run_num_haplo = wdim_num_haplo = n_haplo;
 	if (wdim_num_haplo % gpu_local_size_d2)
 		wdim_num_haplo = (wdim_num_haplo/gpu_local_size_d2 + 1)*gpu_local_size_d2;
@@ -560,16 +604,15 @@ static int build_acc_oob()
 	// calculate probabilities
 	{
 		int zero = 0;
-		GPU_SETARG(gpu_kl_build_calc_prob, 4, run_num_haplo);  // n_haplo
-		GPU_SETARG(gpu_kl_build_calc_prob, 5, run_num_snp);    // n_snp
-		GPU_SETARG(gpu_kl_build_calc_prob, 6, zero);           // start_sample_idx
-		GPU_SETARG(gpu_kl_build_calc_prob, 7, build_num_oob);  // n_samp
-		GPU_SETARG(gpu_kl_build_calc_prob, 8, mem_build_idx_oob);
+		GPU_SETARG(gpu_kl_build_calc_prob_sel, 4, run_num_haplo);  // n_haplo
+		GPU_SETARG(gpu_kl_build_calc_prob_sel, 5, zero);           // start_sample_idx
+		GPU_SETARG(gpu_kl_build_calc_prob_sel, 6, build_num_oob);  // n_samp
+		GPU_SETARG(gpu_kl_build_calc_prob_sel, 7, mem_build_idx_oob);
 		size_t wdims[2] =
 			{ (size_t)wdim_num_haplo, (size_t)wdim_num_haplo };
 		size_t local_size[2] =
 			{ gpu_local_size_d2, gpu_local_size_d2 };
-		GPU_RUN_KERNEL_EVENT(gpu_kl_build_calc_prob, 2, wdims, local_size,
+		GPU_RUN_KERNEL_EVENT(gpu_kl_build_calc_prob_sel, 2, wdims, local_size,
 			1, events, &events[1]);
 	}
 
@@ -610,14 +653,14 @@ static double build_acc_ib()
 	{
 		int zero = 0;
 		// n_haplo (ARG4) & n_snp (ARG5) are set in build_acc_oob()
-		GPU_SETARG(gpu_kl_build_calc_prob, 6, zero);          // start_sample_idx
-		GPU_SETARG(gpu_kl_build_calc_prob, 7, build_num_ib);  // n_samp
-		GPU_SETARG(gpu_kl_build_calc_prob, 8, mem_build_idx_ib);
+		GPU_SETARG(gpu_kl_build_calc_prob_sel, 5, zero);          // start_sample_idx
+		GPU_SETARG(gpu_kl_build_calc_prob_sel, 6, build_num_ib);  // n_samp
+		GPU_SETARG(gpu_kl_build_calc_prob_sel, 7, mem_build_idx_ib);
 		size_t wdims[2] =
 			{ (size_t)wdim_num_haplo, (size_t)wdim_num_haplo };
 		size_t local_size[2] =
 			{ gpu_local_size_d2, gpu_local_size_d2 };
-		GPU_RUN_KERNEL_EVENT(gpu_kl_build_calc_prob, 2, wdims, local_size,
+		GPU_RUN_KERNEL_EVENT(gpu_kl_build_calc_prob_sel, 2, wdims, local_size,
 			1, events, &events[1]);
 	}
 

@@ -53,7 +53,10 @@ cl_kernel gpu_kl_clear_mem = NULL;
 cl_kernel gpu_kl_build_haplo_match_init = NULL;
 cl_kernel gpu_kl_build_haplo_match1 = NULL;
 cl_kernel gpu_kl_build_haplo_match2 = NULL;
-cl_kernel gpu_kl_build_calc_prob = NULL;
+cl_kernel gpu_kl_build_calc_prob_int1 = NULL;
+cl_kernel gpu_kl_build_calc_prob_int2 = NULL;
+cl_kernel gpu_kl_build_calc_prob_int3 = NULL;
+cl_kernel gpu_kl_build_calc_prob_int4 = NULL;
 cl_kernel gpu_kl_build_calc_oob = NULL;
 cl_kernel gpu_kl_build_calc_ib = NULL;
 cl_kernel gpu_kl_pred_calc = NULL;
@@ -638,12 +641,13 @@ SEXP ocl_select_dev(SEXP dev_idx)
 SEXP ocl_release_dev()
 {
 	// release kernels
-	const int kl_num = 10;
+	const int kl_num = 13;
 	static cl_kernel *kl_lst[kl_num] = {
 		&gpu_kl_clear_mem,
 		&gpu_kl_build_haplo_match_init,
 		&gpu_kl_build_haplo_match1, &gpu_kl_build_haplo_match2,
-		&gpu_kl_build_calc_prob,
+		&gpu_kl_build_calc_prob_int1, &gpu_kl_build_calc_prob_int2,
+		&gpu_kl_build_calc_prob_int3, &gpu_kl_build_calc_prob_int4,
 		&gpu_kl_build_calc_oob, &gpu_kl_build_calc_ib,
 		&gpu_kl_pred_calc,
 		&gpu_kl_pred_sumprob, &gpu_kl_pred_addprob
@@ -749,9 +753,18 @@ SEXP ocl_set_kl_build(SEXP f64, SEXP f64_build, SEXP codes)
 		build_kernel(VECTOR_ELT(codes, 1), kl_nm_build_haplo_match1);
 	gpu_kl_build_haplo_match2 =
 		build_kernel(VECTOR_ELT(codes, 2), kl_nm_build_haplo_match2);
-	gpu_kl_build_calc_prob = build_kernel(VECTOR_ELT(codes, 3), kl_nm_build_calc_prob);
-	gpu_kl_build_calc_oob  = build_kernel(VECTOR_ELT(codes, 4), kl_nm_build_calc_oob);
-	gpu_kl_build_calc_ib   = build_kernel(VECTOR_ELT(codes, 5), kl_nm_build_calc_ib);
+	gpu_kl_build_calc_prob_int1 =
+		build_kernel(VECTOR_ELT(codes, 3), kl_nm_build_calc_prob);
+	gpu_kl_build_calc_prob_int2 =
+		build_kernel(VECTOR_ELT(codes, 4), kl_nm_build_calc_prob);
+	gpu_kl_build_calc_prob_int3 =
+		build_kernel(VECTOR_ELT(codes, 5), kl_nm_build_calc_prob);
+	gpu_kl_build_calc_prob_int4 =
+		build_kernel(VECTOR_ELT(codes, 6), kl_nm_build_calc_prob);
+	gpu_kl_build_calc_oob =
+		build_kernel(VECTOR_ELT(codes, 7), kl_nm_build_calc_oob);
+	gpu_kl_build_calc_ib  =
+		build_kernel(VECTOR_ELT(codes, 8), kl_nm_build_calc_ib);
 	return R_NilValue;
 }
 
