@@ -441,7 +441,7 @@ static UINT32 *build_haplomatch(const THaplotype haplo[], const size_t nHaplo[],
 		if (nhla_each_max < m) nhla_each_max = m;
 		n_tot_haplo += m;
 	}
-	if (n_tot_haplo > build_haplo_nmax)
+	if (n_tot_haplo > (size_t)build_haplo_nmax)
 		throw "Too many haplotypes out of the limit in build_haplomatch().";
 
 	cl_event events[6];
