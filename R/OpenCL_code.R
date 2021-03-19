@@ -108,8 +108,6 @@ code_hamming_dist <- "
 #endif
 
 #define HAMM_CALC(TYPE)    \\
-	TYPE H1 = *((__global const TYPE *)h_1);  \\
-	TYPE H2 = *((__global const TYPE *)h_2);  \\
 	TYPE S1 = *((__global const TYPE *)geno);    \\
 	TYPE S2 = *((__global const TYPE *)(geno + OFFSET_SECOND_HAPLO));  \\
 	TYPE MASK = ((H1 ^ S2) | (H2 ^ S1)) & (S1 | ~S2);   \\
@@ -120,10 +118,19 @@ code_hamming_dist <- "
 
 
 inline static int hamming_dist(__global const unsigned char *geno,
-#ifndef FIXED_NUM_INT_HAMM
-	int n,
+#if defined(FIXED_NUM_INT_HAMM)
+#   if FIXED_NUM_INT_HAMM==128
+		const uint4 H1, const uint4 H2)
+#   elif FIXED_NUM_INT_HAMM==96
+		const uint3 H1, const uint3 H2)
+#   elif FIXED_NUM_INT_HAMM==64
+		const uint2 H1, const uint2 H2)
+#   elif FIXED_NUM_INT_HAMM==32
+		const uint H1, const uint H2)
+#   endif
+#else
+	int n, __global const unsigned char *h_1, __global const unsigned char *h_2)
 #endif
-	__global const unsigned char *h_1, __global const unsigned char *h_2)
 {
 #if defined(FIXED_NUM_INT_HAMM) && (FIXED_NUM_INT_HAMM==128)
 	HAMM_CALC(uint4)
@@ -140,17 +147,25 @@ inline static int hamming_dist(__global const unsigned char *geno,
 #else
 	if (n > 96)  // n always <= 128
 	{
+		uint4 H1 = *((__global const uint4 *)h_1);
+		uint4 H2 = *((__global const uint4 *)h_2);
 		HAMM_CALC(uint4)
 		return pn.s0 + pn.s1 + pn.s2 + pn.s3;
 	} else if (n > 64)
 	{
+		uint3 H1 = *((__global const uint3 *)h_1);
+		uint3 H2 = *((__global const uint3 *)h_2);
 		HAMM_CALC(uint3)
 		return pn.s0 + pn.s1 + pn.s2;
 	} else if (n > 32)
 	{
+		uint2 H1 = *((__global const uint2 *)h_1);
+		uint2 H2 = *((__global const uint2 *)h_2);
 		HAMM_CALC(uint2)
 		return pn.s0 + pn.s1;
 	} else {
+		uint H1 = *((__global const uint *)h_1);
+		uint H2 = *((__global const uint *)h_2);
 		HAMM_CALC(uint)
 		return pn;
 	}
@@ -299,15 +314,29 @@ __kernel void build_calc_prob(
 	int h1 = *(__global const int*)(p1 + OFFSET_ALLELE_INDEX);
 	int h2 = *(__global const int*)(p2 + OFFSET_ALLELE_INDEX);
 	out_prob += h2 + (h1 * ((n_hla << 1) - h1 - 1) >> 1);
+	// HLA-allele-specific haplotypes
+#if FIXED_NUM_INT_HAMM==128
+	const uint4 H1 = *((__global const uint4 *)p1);
+	const uint4 H2 = *((__global const uint4 *)p2);
+#elif FIXED_NUM_INT_HAMM==96
+	const uint3 H1 = *((__global const uint3 *)p1);
+	const uint3 H2 = *((__global const uint3 *)p2);
+#elif FIXED_NUM_INT_HAMM==64
+	const uint2 H1 = *((__global const uint2 *)p1);
+	const uint2 H2 = *((__global const uint2 *)p2);
+#elif FIXED_NUM_INT_HAMM==32
+	const uint H1 = *((__global const uint *)p1);
+	const uint H2 = *((__global const uint *)p2);
+#endif
 
 	// for each sample
 	for (int ii=0; ii < n_samp; ii++)
 	{
 		// SNP genotype
-		__global const unsigned char *pg = p_geno +
+		__global const unsigned char *snp_g = p_geno +
 			(p_samp_idx[start_sample_idx + ii] * SIZEOF_TGENOTYPE);
 		// hamming distance
-		int d = hamming_dist(pg, p1, p2);
+		int d = hamming_dist(snp_g, H1, H2);
 		// since exp_log_min_rare_freq[>HAMM_DIST_MAX] = 0
 		if (d <= HAMM_DIST_MAX)
 		{
