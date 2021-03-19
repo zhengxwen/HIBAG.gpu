@@ -963,7 +963,7 @@ SEXP multigpu_train(SEXP node, SEXP idx)
 		char buffer[1024];
 		struct tm *p = localtime(&now);
 		sprintf(buffer,
-			"[%d] %04d-%02d-%02d %02d:%02d:%02d, worker %d, # of SNPs: %g, # of haplo: %g, acc: %0.1f%%\n",
+			"[%d] %04d-%02d-%02d %02d:%02d:%02d, worker %d, # of SNPs: %g, # of haplo: %g, oob acc: %0.1f%%\n",
 			i, p->tm_year+1900, p->tm_mon+1, p->tm_mday, p->tm_hour, p->tm_min, p->tm_sec,
 			i_node, s[0], s[1], s[2]*100);
 		UNPROTECT(1);

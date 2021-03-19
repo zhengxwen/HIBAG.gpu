@@ -96,92 +96,64 @@ inline static void atomic_fadd(volatile __global double *addr, double val)
 code_hamming_dist <- "
 #define OFFSET_SECOND_HAPLO    16
 
-#define HAMM_CALC(TYPE)    \\
-		TYPE H1 = *((__global const TYPE *)h_1);  \\
-		TYPE H2 = *((__global const TYPE *)h_2);  \\
-		TYPE S1 = *((__global const TYPE *)g);    \\
-		TYPE S2 = *((__global const TYPE *)(g + OFFSET_SECOND_HAPLO));  \\
-		TYPE MASK = ((H1 ^ S2) | (H2 ^ S1)) & (S1 | ~S2);  \\
-		TYPE v1 = (H1 ^ S1) & MASK, v2 = (H2 ^ S2) & MASK;
+#if defined(__OPENCL_VERSION__) && (__OPENCL_VERSION__ >= 120)
+#   define POPCNT(v)    v = popcount(v)
+#else
+#   define POPCNT(v)    \\
+		v -= ((v >> 1) & 0x55555555);  \\
+		v = (v & 0x33333333) + ((v >> 2) & 0x33333333);  \\
+		v = (v + (v >> 4)) & 0x0F0F0F0F;  \\
+		v = v + (v >> 8); v = v + (v >> 16);  \\
+		v = v & 0x3F
+#endif
 
-inline static int hamming_dist(
+#define HAMM_CALC(TYPE)    \\
+	TYPE H1 = *((__global const TYPE *)h_1);  \\
+	TYPE H2 = *((__global const TYPE *)h_2);  \\
+	TYPE S1 = *((__global const TYPE *)geno);    \\
+	TYPE S2 = *((__global const TYPE *)(geno + OFFSET_SECOND_HAPLO));  \\
+	TYPE MASK = ((H1 ^ S2) | (H2 ^ S1)) & (S1 | ~S2);   \\
+	TYPE v1 = (H1 ^ S1) & MASK, v2 = (H2 ^ S2) & MASK;  \\
+	POPCNT(v1);  \\
+	POPCNT(v2);  \\
+	TYPE pn = v1 + v2;
+
+
+inline static int hamming_dist(__global const unsigned char *geno,
 #ifndef FIXED_NUM_INT_HAMM
 	int n,
 #endif
-	__global const unsigned char *g,
 	__global const unsigned char *h_1, __global const unsigned char *h_2)
 {
-#if defined(__OPENCL_VERSION__) && (__OPENCL_VERSION__ >= 120)
-#   if defined(FIXED_NUM_INT_HAMM) && (FIXED_NUM_INT_HAMM==128)
-		HAMM_CALC(uint4)
-		uint4 pn = popcount(v1) + popcount(v2);
-		return pn.s0 + pn.s1 + pn.s2 + pn.s3;
-#   elif defined(FIXED_NUM_INT_HAMM) && (FIXED_NUM_INT_HAMM==96)
-		HAMM_CALC(uint3)
-		uint3 pn = popcount(v1) + popcount(v2);
-		return pn.s0 + pn.s1 + pn.s2;
-#   elif defined(FIXED_NUM_INT_HAMM) && (FIXED_NUM_INT_HAMM==64)
-		HAMM_CALC(uint2)
-		uint2 pn = popcount(v1) + popcount(v2);
-		return pn.s0 + pn.s1;
-#   elif defined(FIXED_NUM_INT_HAMM) && (FIXED_NUM_INT_HAMM==32)
-		HAMM_CALC(uint)
-		return popcount(v1) + popcount(v2);
-#   else
+#if defined(FIXED_NUM_INT_HAMM) && (FIXED_NUM_INT_HAMM==128)
+	HAMM_CALC(uint4)
+	return pn.s0 + pn.s1 + pn.s2 + pn.s3;
+#elif defined(FIXED_NUM_INT_HAMM) && (FIXED_NUM_INT_HAMM==96)
+	HAMM_CALC(uint3)
+	return pn.s0 + pn.s1 + pn.s2;
+#elif defined(FIXED_NUM_INT_HAMM) && (FIXED_NUM_INT_HAMM==64)
+	HAMM_CALC(uint2)
+	return pn.s0 + pn.s1;
+#elif defined(FIXED_NUM_INT_HAMM) && (FIXED_NUM_INT_HAMM==32)
+	HAMM_CALC(uint)
+	return pn;
+#else
 	if (n > 96)  // n always <= 128
 	{
 		HAMM_CALC(uint4)
-		uint4 pn = popcount(v1) + popcount(v2);
 		return pn.s0 + pn.s1 + pn.s2 + pn.s3;
 	} else if (n > 64)
 	{
 		HAMM_CALC(uint3)
-		uint3 pn = popcount(v1) + popcount(v2);
 		return pn.s0 + pn.s1 + pn.s2;
 	} else if (n > 32)
 	{
 		HAMM_CALC(uint2)
-		uint2 pn = popcount(v1) + popcount(v2);
 		return pn.s0 + pn.s1;
 	} else {
 		HAMM_CALC(uint)
-		return popcount(v1) + popcount(v2);
+		return pn;
 	}
-#   endif
-#else
-	__global const uint *h1 = (__global const uint *)h_1;
-	__global const uint *h2 = (__global const uint *)h_2;
-	__global const uint *s1 = (__global const uint *)g;
-	__global const uint *s2 = (__global const uint *)(g + OFFSET_SECOND_HAPLO);
-	int ans = 0;
-	// for-loop
-#   ifdef FIXED_NUM_INT_HAMM
-	int n = FIXED_NUM_INT_HAMM;
-#   endif
-	for (; n > 0; n-=32)
-	{
-		uint H1 = *h1++, H2 = *h2++;  // two haplotypes
-		uint S1 = *s1++, S2 = *s2++;  // genotypes
-		uint M  = S1 | ~S2;           // missing value, 0 is missing
-		uint MASK = ((H1 ^ S2) | (H2 ^ S1)) & M;
-		// popcount for '(H1 ^ S1) & MASK'
-		uint v1 = (H1 ^ S1) & MASK;
-		v1 -= ((v1 >> 1) & 0x55555555);
-		v1 = (v1 & 0x33333333) + ((v1 >> 2) & 0x33333333);
-		v1 = (v1 + (v1 >> 4)) & 0x0F0F0F0F;
-		v1 = v1 + (v1 >> 8);
-		v1 = v1 + (v1 >> 16);
-		ans += v1 & 0x3F;
-		// popcount for '(H2 ^ S2) & MASK'
-		uint v2 = (H2 ^ S2) & MASK;
-		v2 -= ((v2 >> 1) & 0x55555555);
-		v2 = (v2 & 0x33333333) + ((v2 >> 2) & 0x33333333);
-		v2 = (v2 + (v2 >> 4)) & 0x0F0F0F0F;
-		v2 = v2 + (v2 >> 8);
-		v2 = v2 + (v2 >> 16);
-		ans += v2 & 0x3F;
-	}
-	return ans;
 #endif
 }
 "
@@ -236,7 +208,7 @@ __kernel void build_haplo_match1(
 		__global const unsigned char *p1 = p_haplo + ((st1 + i1) << SIZEOF_THAPLO_SHIFT);
 		__global const unsigned char *p2 = p_haplo + ((st2 + i2) << SIZEOF_THAPLO_SHIFT);
 		// distance
-		int d = hamming_dist(n_snp, pg, p1, p2);
+		int d = hamming_dist(pg, n_snp, p1, p2);
 		if (d < out_mindiff[ii])
 			atomic_min(&out_mindiff[ii], d);
 		if (d == 0)
@@ -247,7 +219,7 @@ __kernel void build_haplo_match1(
 		__global const unsigned char *p1 = p_haplo + ((st1 + i1) << SIZEOF_THAPLO_SHIFT);
 		__global const unsigned char *p2 = p_haplo + ((st1 + i2) << SIZEOF_THAPLO_SHIFT);
 		// distance
-		int d = hamming_dist(n_snp, pg, p1, p2);
+		int d = hamming_dist(pg, n_snp, p1, p2);
 		if (d < out_mindiff[ii])
 			atomic_min(&out_mindiff[ii], d);
 		if (d == 0)
@@ -286,7 +258,7 @@ __kernel void build_haplo_match2(
 		__global const unsigned char *p1 = p_haplo + ((st1 + i1) << SIZEOF_THAPLO_SHIFT);
 		__global const unsigned char *p2 = p_haplo + ((st2 + i2) << SIZEOF_THAPLO_SHIFT);
 		// distance
-		int d = hamming_dist(n_snp, pg, p1, p2);
+		int d = hamming_dist(pg, n_snp, p1, p2);
 		if (d == dmin)
 			alloc_set(ii, i1, i2, out_buffer, nmax_buffer);
 	} else if (i1 <= i2)
@@ -295,7 +267,7 @@ __kernel void build_haplo_match2(
 		__global const unsigned char *p1 = p_haplo + ((st1 + i1) << SIZEOF_THAPLO_SHIFT);
 		__global const unsigned char *p2 = p_haplo + ((st1 + i2) << SIZEOF_THAPLO_SHIFT);
 		// distance
-		int d = hamming_dist(n_snp, pg, p1, p2);
+		int d = hamming_dist(pg, n_snp, p1, p2);
 		if (d == dmin)
 			alloc_set(ii, i1, i2, out_buffer, nmax_buffer);
 	}
@@ -516,7 +488,7 @@ __kernel void pred_calc_prob(
 	// hamming distance
 	pGeno += ii * SIZEOF_TGENOTYPE;
 	const int n_snp = nHaplo[2];    // the number of SNPs in the classifier ii
-	int d = hamming_dist(n_snp, pGeno, p1, p2);
+	int d = hamming_dist(pGeno, n_snp, p1, p2);
 	// since exp_log_min_rare_freq[>HAMM_DIST_MAX] = 0
 	if (d <= HAMM_DIST_MAX)
 	{
