@@ -241,11 +241,11 @@ hlaAttrBagging_gpu <- function(hla, snp, nclassifier=100L,
 		{
 			print(summary(mod$matching))
 			acc <- hlaCompareAllele(hla, pd, verbose=FALSE)$overall$acc.haplo
-			cat(sprintf("Accuracy with training data: %.1f%%\n", acc*100))
+			cat(sprintf("Accuracy with training data: %.2f%%\n", acc*100))
 			# out-of-bag accuracy
 			mobj <- hlaModelToObj(mod)
 			acc <- sapply(mobj$classifiers, function(x) x$outofbag.acc)
-			cat(sprintf("Out-of-bag accuracy: %.1f%%\n", mean(acc)*100))
+			cat(sprintf("Out-of-bag accuracy: %.2f%%\n", mean(acc)*100))
 		}
 	}
 
