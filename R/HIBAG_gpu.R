@@ -699,13 +699,15 @@ hlaPredict_gpu <- function(object, snp,
 	msg <- c(msg, paste0("    CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE: ", pm[2L]))
 	msg <- c(msg, sprintf("    local work size: %d (Dim1), %dx%d (Dim2)",
 		pm[3L], pm[4L], pm[4L]))
+	local_size_macro <- paste0("#define LOCAL_SIZE_D1    ", pm[3L], "\n",
+		"#define LOCAL_SIZE_D2    ", pm[4L])
 
 	# support 64-bit floating-point numbers or not
 	dev_fp64 <- dev_fp64_ori <- any(grepl("cl_khr_fp64", exts))
 	if (dev_fp64)
 	{
-		.packageEnv$code_attempt_f64 <- paste(c(code_macro, code_macro_prec["double"],
-			code_hamm_dist_max["double"], code_atomic_add_f64,
+		.packageEnv$code_attempt_f64 <- paste(c(local_size_macro, code_macro,
+			code_macro_prec["double"], code_hamm_dist_max["double"], code_atomic_add_f64,
 			"#define FIXED_NUM_INT_HAMM    128",
 			code_hamming_dist, code_build_calc_prob), collapse="\n")
 		# also need cl_khr_int64_base_atomics : enable
@@ -793,37 +795,37 @@ hlaPredict_gpu <- function(object, snp,
 	.packageEnv$predict_prec <- predict_prec
 
 	.packageEnv$code_haplo_match_init <- code_haplo_match_init
-	.packageEnv$code_build_haplo_match1 <- paste(c(
+	.packageEnv$code_build_haplo_match1 <- paste(c(local_size_macro,
 		code_macro, code_hamming_dist, code_build_alloc_set, code_build_haplo_match1),
 		collapse="\n")
-	.packageEnv$code_build_haplo_match2 <- paste(c(
+	.packageEnv$code_build_haplo_match2 <- paste(c(local_size_macro,
 		code_macro, code_hamming_dist, code_build_alloc_set, code_build_haplo_match2),
 		collapse="\n")
 
-	.packageEnv$code_build_calc_prob_int1 <- paste(c(
+	.packageEnv$code_build_calc_prob_int1 <- paste(c(local_size_macro,
 		code_macro, code_macro_prec[train_prec], code_hamm_dist_max[train_prec],
 		if (f64_build) code_atomic_add_f64 else code_atomic_add_f32,
 		"#define FIXED_NUM_INT_HAMM    32",
 		code_hamming_dist, code_build_calc_prob), collapse="\n")
-	.packageEnv$code_build_calc_prob_int2 <- paste(c(
+	.packageEnv$code_build_calc_prob_int2 <- paste(c(local_size_macro,
 		code_macro, code_macro_prec[train_prec], code_hamm_dist_max[train_prec],
 		if (f64_build) code_atomic_add_f64 else code_atomic_add_f32,
 		"#define FIXED_NUM_INT_HAMM    64",
 		code_hamming_dist, code_build_calc_prob), collapse="\n")
-	.packageEnv$code_build_calc_prob_int3 <- paste(c(
+	.packageEnv$code_build_calc_prob_int3 <- paste(c(local_size_macro,
 		code_macro, code_macro_prec[train_prec], code_hamm_dist_max[train_prec],
 		if (f64_build) code_atomic_add_f64 else code_atomic_add_f32,
 		"#define FIXED_NUM_INT_HAMM    96",
 		code_hamming_dist, code_build_calc_prob), collapse="\n")
-	.packageEnv$code_build_calc_prob_int4 <- paste(c(
+	.packageEnv$code_build_calc_prob_int4 <- paste(c(local_size_macro,
 		code_macro, code_macro_prec[train_prec], code_hamm_dist_max[train_prec],
 		if (f64_build) code_atomic_add_f64 else code_atomic_add_f32,
 		"#define FIXED_NUM_INT_HAMM    128",
 		code_hamming_dist, code_build_calc_prob), collapse="\n")
 
-	.packageEnv$code_build_calc_oob <- paste(c(
+	.packageEnv$code_build_calc_oob <- paste(c(local_size_macro,
 		c(code_macro, code_macro_prec[train_prec], code_build_calc_oob)), collapse="\n")
-	.packageEnv$code_build_calc_ib <- paste(c(
+	.packageEnv$code_build_calc_ib <- paste(c(local_size_macro,
 		code_macro, code_macro_prec[train_prec], code_hamm_dist_max[train_prec],
 		code_build_calc_ib), collapse="\n")
 	.Call(ocl_set_kl_build, dev_fp64_ori, f64_build, list(
@@ -836,11 +838,11 @@ hlaPredict_gpu <- function(object, snp,
 		.packageEnv$code_build_calc_oob, .packageEnv$code_build_calc_ib))
 
 	prec_predict <- ifelse(f64_pred,  "double", "single")
-	.packageEnv$code_pred_calc <- paste(c(
+	.packageEnv$code_pred_calc <- paste(c(local_size_macro,
 		code_macro, code_macro_prec[predict_prec], code_hamm_dist_max[predict_prec],
 		if (f64_pred) code_atomic_add_f64 else code_atomic_add_f32,
 		code_hamming_dist, code_pred_calc_prob), collapse="\n")
-	.packageEnv$code_pred_sumprob <- paste(c(
+	.packageEnv$code_pred_sumprob <- paste(c(local_size_macro,
 		ifelse(dev_fp64_ori, "#define USE_SUM_DOUBLE", ""),
 		code_macro, code_macro_prec[predict_prec], code_pred_calc_sumprob), collapse="\n")
 	.packageEnv$kernel_pred_addprob <- paste(c(

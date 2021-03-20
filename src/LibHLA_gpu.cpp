@@ -389,12 +389,10 @@ SEXP ocl_build_init(SEXP R_nHLA, SEXP R_nSample, SEXP R_verbose)
 	GPU_SETARG(gpu_kl_build_calc_oob, 0, mem_build_output);
 	GPU_SETARG(gpu_kl_build_calc_oob, 1, zero);  // start_sample_idx
 	GPU_SETARG(gpu_kl_build_calc_oob, 2, sz_hla);
-	GPU_SETARG_LOCAL(gpu_kl_build_calc_oob, 3, gpu_local_size_d1*float_size);
-	GPU_SETARG_LOCAL(gpu_kl_build_calc_oob, 4, gpu_local_size_d1*sizeof(int));
-	GPU_SETARG(gpu_kl_build_calc_oob, 5, mem_prob_buffer);
-	GPU_SETARG(gpu_kl_build_calc_oob, 6, mem_build_hla_idx_map);
-	GPU_SETARG(gpu_kl_build_calc_oob, 7, mem_build_idx_oob);
-	GPU_SETARG(gpu_kl_build_calc_oob, 8, mem_snpgeno);
+	GPU_SETARG(gpu_kl_build_calc_oob, 3, mem_prob_buffer);
+	GPU_SETARG(gpu_kl_build_calc_oob, 4, mem_build_hla_idx_map);
+	GPU_SETARG(gpu_kl_build_calc_oob, 5, mem_build_idx_oob);
+	GPU_SETARG(gpu_kl_build_calc_oob, 6, mem_snpgeno);
 
 	// arguments for gpu_kl_build_calc_ib (in-bag)
 	GPU_SETARG(gpu_kl_build_calc_ib, 0, mem_build_output);
@@ -409,10 +407,9 @@ SEXP ocl_build_init(SEXP R_nHLA, SEXP R_nSample, SEXP R_verbose)
 	}
 	GPU_SETARG(gpu_kl_build_calc_ib, 3, n_hla);
 	GPU_SETARG(gpu_kl_build_calc_ib, 4, sz_hla);
-	GPU_SETARG_LOCAL(gpu_kl_build_calc_ib, 5, gpu_local_size_d1*float_size);
-	GPU_SETARG(gpu_kl_build_calc_ib, 6, mem_prob_buffer);
-	GPU_SETARG(gpu_kl_build_calc_ib, 7, mem_build_idx_ib);
-	GPU_SETARG(gpu_kl_build_calc_ib, 8, mem_snpgeno);
+	GPU_SETARG(gpu_kl_build_calc_ib, 5, mem_prob_buffer);
+	GPU_SETARG(gpu_kl_build_calc_ib, 6, mem_build_idx_ib);
+	GPU_SETARG(gpu_kl_build_calc_ib, 7, mem_snpgeno);
 
 	// arguments for gpu_kl_build_clear_mem
 	GPU_SETARG(gpu_kl_clear_mem, 1, mem_prob_buffer);
@@ -770,7 +767,6 @@ static void predict_init(int n_hla, int nClassifier, const THaplotype *const pHa
 	GPU_SETARG(gpu_kl_pred_sumprob, 0, mem_pred_weight);
 	GPU_SETARG(gpu_kl_pred_sumprob, 1, sz_hla);
 	GPU_SETARG(gpu_kl_pred_sumprob, 2, mem_prob_buffer);
-	GPU_SETARG_LOCAL(gpu_kl_pred_sumprob, 3, sizeof(double)*gpu_local_size_d1);
 
 	// arguments for gpu_kl_pred_addprob, pred_calc_addprob
 	GPU_SETARG(gpu_kl_pred_addprob, 0, mem_prob_buffer);

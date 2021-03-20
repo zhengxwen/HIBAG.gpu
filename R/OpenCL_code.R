@@ -199,6 +199,7 @@ inline static void alloc_set(size_t ii, size_t i1, size_t i2,
 
 code_build_haplo_match1 <- "
 #pragma OPENCL EXTENSION cl_khr_global_int32_base_atomics : enable
+__attribute__((reqd_work_group_size(1, LOCAL_SIZE_D2, LOCAL_SIZE_D2)))
 __kernel void build_haplo_match1(
 	__global int *out_mindiff, __global uint *out_buffer, const int n_snp,
 	const uint nmax_buffer, __global const uint *p_haplo_info,
@@ -246,6 +247,7 @@ __kernel void build_haplo_match1(
 
 code_build_haplo_match2 <- "
 #pragma OPENCL EXTENSION cl_khr_global_int32_base_atomics : enable
+__attribute__((reqd_work_group_size(1, LOCAL_SIZE_D2, LOCAL_SIZE_D2)))
 __kernel void build_haplo_match2(
 	__global int *out_mindiff, __global uint *out_buffer, const int n_snp,
 	const uint nmax_buffer, __global const uint *p_haplo_info,
@@ -291,6 +293,7 @@ __kernel void build_haplo_match2(
 
 
 code_build_calc_prob <- "
+__attribute__((reqd_work_group_size(LOCAL_SIZE_D2, LOCAL_SIZE_D2, 1)))
 __kernel void build_calc_prob(
 	__global numeric *out_prob, __constant numeric *exp_log_min_rare_freq,
 	const int n_hla, const int num_hla_geno, const int n_haplo,
@@ -365,21 +368,22 @@ inline static int compare_allele(int P1, int P2, int T1, int T2)
 }
 
 #pragma OPENCL EXTENSION cl_khr_global_int32_base_atomics : enable
+__attribute__((reqd_work_group_size(LOCAL_SIZE_D1, 1, 1)))
 __kernel void build_calc_oob(__global int *out_err_cnt,
 	const int start_sample_idx, const int num_hla_geno,
-	__local numeric *local_max, __local int *local_idx,
 	__global const numeric *prob, __global const int *hla_idx_map,
-	__global const int *p_idx,
-	__global const unsigned char *p_geno)
+	__global const int *p_idx, __global const unsigned char *p_geno)
 {
-	const int localsize = get_local_size(0);
+	__local numeric local_max[LOCAL_SIZE_D1];
+	__local int local_idx[LOCAL_SIZE_D1];
+
 	const int i = get_local_id(0);
 	const int i_samp = get_global_id(1);
 	prob += num_hla_geno * i_samp;
 
 	numeric max_pb = 0;
 	int max_idx = -1;
-	for (int k=i; k < num_hla_geno; k+=localsize)
+	for (int k=i; k < num_hla_geno; k+=LOCAL_SIZE_D1)
 	{
 		if (max_pb < prob[k])
 			{ max_pb = prob[k]; max_idx = k; }
@@ -388,7 +392,7 @@ __kernel void build_calc_oob(__global int *out_err_cnt,
 	local_idx[i] = max_idx;
 
 	// reduced, find max
-	for (int n=localsize>>1; n > 0; n >>= 1)
+	for (int n=LOCAL_SIZE_D1>>1; n > 0; n >>= 1)
 	{
 		barrier(CLK_LOCAL_MEM_FENCE);
 		if (i < n)
@@ -427,25 +431,26 @@ __kernel void build_calc_oob(__global int *out_err_cnt,
 
 
 code_build_calc_ib <- "
+__attribute__((reqd_work_group_size(LOCAL_SIZE_D1, 1, 1)))
 __kernel void build_calc_ib(__global numeric *out_prob,
 	const int start_sample_idx, const numeric aux_log_freq,
 	const int n_hla, const int num_hla_geno,
-	__local numeric *local_sum,
 	__global const numeric *prob, __global const int *p_idx,
 	__global const unsigned char *p_geno)
 {
-	const int localsize = get_local_size(0);
+	__local numeric local_sum[LOCAL_SIZE_D1];
+
 	const int i = get_local_id(0);
 	const int i_samp = get_global_id(1);
 	prob += num_hla_geno * i_samp;
 
 	numeric sum = 0;
-	for (int k=i; k < num_hla_geno; k+=localsize)
+	for (int k=i; k < num_hla_geno; k+=LOCAL_SIZE_D1)
 		sum += prob[k];
 	local_sum[i] = sum;
 
 	// reduced sum of local_sum
-	for (int n=localsize>>1; n > 0; n >>= 1)
+	for (int n=LOCAL_SIZE_D1>>1; n > 0; n >>= 1)
 	{
 		barrier(CLK_LOCAL_MEM_FENCE);
 		if (i < n) local_sum[i] += local_sum[i + n];
@@ -493,12 +498,11 @@ __kernel void clear_memory(const uint n, __global int *p)
 ##########################################################################
 
 code_pred_calc_prob <- "
+__attribute__((reqd_work_group_size(1, LOCAL_SIZE_D2, LOCAL_SIZE_D2)))
 __kernel void pred_calc_prob(
 	__global numeric *outProb,
-	const int n_hla, const int num_hla_geno,
-	__constant numeric *exp_log_min_rare_freq,
-	__global const unsigned char *pHaplo,
-	__global const int *nHaplo,
+	const int n_hla, const int num_hla_geno, __constant numeric *exp_log_min_rare_freq,
+	__global const unsigned char *pHaplo, __global const int *nHaplo,
 	__global const unsigned char *pGeno)
 {
 	const int ii = get_global_id(0);  // the index of individual classifier
@@ -544,21 +548,22 @@ code_pred_calc_sumprob <- "
 #   define TFLOAT    numeric
 #endif
 
-__kernel void pred_calc_sumprob(__global numeric *out_sum, const int num_hla_geno,
-	__global const numeric *prob, __local TFLOAT *local_sum)
+__kernel void pred_calc_sumprob(__global numeric *out_sum,
+	const int num_hla_geno, __global const numeric *prob)
 {
-	const int localsize = get_local_size(0);
+	__local TFLOAT local_sum[LOCAL_SIZE_D1];
+
 	const int i = get_local_id(0);
 	const int i_cfr = get_global_id(1);
 	prob += num_hla_geno * i_cfr;
 
 	TFLOAT sum = 0;
-	for (int k=i; k < num_hla_geno; k+=localsize)
+	for (int k=i; k < num_hla_geno; k+=LOCAL_SIZE_D1)
 		sum += prob[k];
 	local_sum[i] = sum;
 
 	// reduced sum of local_sum
-	for (int n=localsize>>1; n > 0; n >>= 1)
+	for (int n=LOCAL_SIZE_D1>>1; n > 0; n >>= 1)
 	{
 		barrier(CLK_LOCAL_MEM_FENCE);
 		if (i < n) local_sum[i] += local_sum[i + n];
