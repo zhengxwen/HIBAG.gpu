@@ -25,7 +25,7 @@ hlaAttrBagging_MultiGPU(gpus, hla, snp, auto.save="", nclassifier=100L,
 	\item{prune}{if TRUE, to perform a parsimonious forward variable selection,
 		otherwise, exhaustive forward variable selection. See details}
 	\item{na.rm}{if TRUE, remove the samples with missing HLA types}
-	\item{gpus}{a vector of GPU device IDs, \code{gpus} could have duplicated IDs
+	\item{gpus}{a vector of GPU device IDs, \code{gpus} may have duplicated IDs
 		to maximize the GPU load}
 	\item{auto.save}{specify a autosaved file name for an R object
 		(.rda, .RData or .rds); "", no file saving}
