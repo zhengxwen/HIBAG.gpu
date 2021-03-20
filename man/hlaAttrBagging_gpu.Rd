@@ -43,7 +43,6 @@ hlaAttrBagging_MultiGPU(gpus, hla, snp, auto.save="", nclassifier=100L,
     \code{an integer}, specifying the number of candidate SNPs;
     \code{0 < r < 1}, the number of candidate SNPs is
         "r * the total number of SNPs".
-
     \code{prune}: there is no significant difference on accuracy between
 parsimonious and exhaustive forward variable selections. If \code{prune=TRUE},
 the searching algorithm performs a parsimonious forward variable selection:
@@ -51,9 +50,6 @@ if a new SNP predictor reduces the current out-of-bag accuracy, then it is
 removed from the candidate SNP set for future searching. Parsimonious selection
 helps to improve the computational efficiency by reducing the searching times
 on non-informative SNP markers.
-
-    A parallel version of \code{hlaAttrBagging} is
-\code{\link{hlaParallelAttrBagging}}.
 }
 \value{
 	Return an object of \code{\link{hlaAttrBagClass}}:
@@ -70,6 +66,8 @@ on non-informative SNP markers.
 	\item{hla.freq}{the HLA allele frequencies}
 	\item{assembly}{the human genome reference, such like "hg19"}
 	\item{model}{internal use}
+
+	If \code{auto.save != ""}, return nothing.
 }
 \references{
 	Zheng, X. *et al*. HIBAG--HLA genotype imputation with attribute bagging.
