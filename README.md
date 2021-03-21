@@ -18,7 +18,7 @@ R package -- a GPU-based extension for the [HIBAG](https://github.com/zhengxwen/
 ### 1) Speedup factors using small training sets (~1,000 samples)
 
 | CPU / GPU              | Precision | Factor |
-|:-----------------------|:----------|:-------|
+|:-----------------------|:----------|-------:|
 | CPU (AVX2, 1 thread)   | double    | 1      |
 | CPU (AVX2, 20 threads) | double    | 14.7   |
 | 1x NVIDIA Tesla T4     | half      | 71.8   |
@@ -32,7 +32,7 @@ R package -- a GPU-based extension for the [HIBAG](https://github.com/zhengxwen/
 ### 2) Speedup factors using medium training sets (~5,000 samples)
 
 | CPU / GPU              | Precision | Factor |
-|:-----------------------|:----------|:-------|
+|:-----------------------|:----------|-------:|
 | CPU (AVX2, 1 thread)   | double    | 1      |
 | CPU (AVX2, 20 threads) | double    | 17.5   |
 | 1x NVIDIA Tesla T4     | half      | 101.6  |
