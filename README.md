@@ -10,7 +10,7 @@ R package -- a GPU-based extension for the [HIBAG](https://github.com/zhengxwen/
 
 * OpenCL C library and header files ([https://www.khronos.org](https://www.khronos.org))
 
-* [HIBAG](https://github.com/zhengxwen/HIBAG) R package (>= v1.27.3)
+* [HIBAG](https://github.com/zhengxwen/HIBAG) R package (>= v1.26.1)
 
 
 ## Benchmarks for model training
@@ -20,14 +20,35 @@ R package -- a GPU-based extension for the [HIBAG](https://github.com/zhengxwen/
 | CPU / GPU              | Precision | Factor |
 |:-----------------------|:----------|:-------|
 | CPU (AVX2, 1 thread)   | double    | 1      |
-| CPU (AVX2, 40 threads) | double    |        |
-| 1x NVIDIA Tesla T4     |        |        |
-| 1x NVIDIA Tesla V100   |        |        |
+| CPU (AVX2, 20 threads) | double    | 14.7   |
+| 1x NVIDIA Tesla T4     | half      | 71.8   |
+| 1x NVIDIA Tesla V100   | half      | 74.7   |
+| 1x NVIDIA Tesla T4     | mixed     | 61.2   |
+| 1x NVIDIA Tesla V100   | mixed     | 68.3   |
+| 1x NVIDIA Tesla T4     | single    | 52.4   |
+| 1x NVIDIA Tesla V100   | single    | 61.3   |
+| 1x NVIDIA Tesla V100   | double    | 22.7   |
+
+### 2) Speedup factors using medium training sets (~5,000 samples)
+
+| CPU / GPU              | Precision | Factor |
+|:-----------------------|:----------|:-------|
+| CPU (AVX2, 1 thread)   | double    | 1      |
+| CPU (AVX2, 20 threads) | double    | 17.5   |
+| 1x NVIDIA Tesla T4     | half      | 101.6  |
+| 1x NVIDIA Tesla V100   | half      | 125.2  |
+| 1x NVIDIA Tesla T4     | mixed     | 72.0   |
+| 1x NVIDIA Tesla V100   | mixed     | 98.9   |
+| 1x NVIDIA Tesla T4     | single    | 60.8   |
+| 1x NVIDIA Tesla V100   | single    | 92.4   |
+| 1x NVIDIA Tesla V100   | double    | 18.4   |
 
 
-*† model built on HLA-A, -B, -C, -DRB1 using HIBAG v1.26.1 and HIBAG.gpu v0.99.0*
+*† 'mixed' is a mixed precision between half and single*
 
-*† CPU (AVX2, 1/40 threads), optimization with Intel AVX2 instruction, using Intel(R) Xeon(R) Gold 6248 2.50GHz, 20 cores (Cascade Lake)*
+*† models built on HLA-A, -B, -C, -DRB1 using HIBAG v1.26.1 and HIBAG.gpu v0.99.0, and the average is reported*
+
+*† CPU (AVX2, 1/20 threads), optimization with Intel AVX2 instruction, using Intel(R) Xeon(R) Gold 6248 2.50GHz, 20 cores (Cascade Lake)*
 
 *† This work was made possible, in part, through HPC time donated by Microway, Inc. We gratefully acknowledge Microway for providing access to their GPU-accelerated compute cluster (http://www.microway.com/gpu-test-drive/).*
 
