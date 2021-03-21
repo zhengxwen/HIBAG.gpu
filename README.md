@@ -53,11 +53,6 @@ R package -- a GPU-based extension for the [HIBAG](https://github.com/zhengxwen/
 *† This work was made possible, in part, through HPC time donated by Microway, Inc. We gratefully acknowledge Microway for providing access to their GPU-accelerated compute cluster (http://www.microway.com/gpu-test-drive/).*
 
 
-**Floating-point Precision**
-
-The haplotype frequencies are calculated in host CPU using double-precision floating-point numbers. By default, the cross-validation in the model building is computed in GPU using single-precision floating-point numbers.
-
-
 ## Citation
 
 Zheng, X. *et al*. HIBAG-HLA genotype imputation with attribute bagging. *Pharmacogenomics Journal* 14, 192-200 (2014).
@@ -115,6 +110,7 @@ library(HIBAG.gpu)
 ##     CL_DEVICE_ADDRESS_BITS: 32
 ##     CL_KERNEL_WORK_GROUP_SIZE: 256
 ##     CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE: 64
+##     local work size: 256 (Dim1), 16x16 (Dim2)
 ##     atom_cmpxchg (enable cl_khr_int64_base_atomics): OK
 ## GPU device supports double-precision floating-point numbers
 ## Training uses a mixed precision between half and float in GPU
