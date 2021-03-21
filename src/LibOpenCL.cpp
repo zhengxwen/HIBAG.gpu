@@ -366,13 +366,15 @@ static cl_kernel build_kernel(SEXP code, const char *name)
 			if (clGetProgramBuildInfo(program, gpu_device, CL_PROGRAM_BUILD_LOG, log_len,
 				buffer, NULL) == CL_SUCCESS)
 			{
-				R_ShowMessage(buffer);
+				char *p = buffer;
+				for (; *p==' ' || *p=='\n' || *p=='\r' || *p=='\t'; p++);
+				if (*p) R_ShowMessage(buffer);
 			} else {
-				R_ShowMessage("Could not obtain build log");
+				R_ShowMessage("Could not obtain OpenCL build log.");
             }
 			free(buffer);
 		} else
-			R_ShowMessage("Out of memory in build_kernel() for log buffer");
+			R_ShowMessage("Out of memory in build_kernel() for log buffer.");
 	}
 	if (err != CL_SUCCESS)
 	{
