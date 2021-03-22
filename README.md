@@ -10,18 +10,18 @@ R package – a GPU-based extension for the [HIBAG](https://github.com/zhengxwen
 
 * OpenCL C library and header files ([https://www.khronos.org](https://www.khronos.org))
 
-* [HIBAG](https://github.com/zhengxwen/HIBAG) R package (>= v1.26.1)
+* [HIBAG](https://github.com/zhengxwen/HIBAG) R package (≥ v1.26.1)
 
 
 ## News
 
-**Changes in v0.99.0:**
+**Changes in v0.99.0 (Y2021):**
 
 * new implementation using half and mixed precisions
 
 * a new function `hlaAttrBagging_MultiGPU()` to leverage multiple GPU devices
 
-**Changes in v0.9.0:**
+**v0.9.0 (Y2018):**
 
 * initial GPU-based implementation for the HIBAG algorithm
 
