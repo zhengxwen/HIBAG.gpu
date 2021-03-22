@@ -13,6 +13,15 @@ R package – a GPU-based extension for the [HIBAG](https://github.com/zhengxwen
 * [HIBAG](https://github.com/zhengxwen/HIBAG) R package (>= v1.26.1)
 
 
+## News
+
+**Changes in v0.99.0:**
+
+* new implementation using half and mixed precisions
+
+* a new function `hlaAttrBagging_MultiGPU()` to leverage multiple GPU devices
+
+
 ## Benchmarks for model training
 
 ### 1) Speedup factors using small training sets (~1,000 samples)
@@ -44,7 +53,7 @@ R package – a GPU-based extension for the [HIBAG](https://github.com/zhengxwen
 | 1x NVIDIA Tesla V100   | double    | 18.4   |
 
 
-*† 'mixed' is a mixed precision between half and single*
+*† ‘mixed’ is a mixed precision between half and single*
 
 *† models built on HLA-A, -B, -C, -DRB1 using HIBAG v1.26.1 and HIBAG.gpu v0.99.0, and the average is reported*
 
