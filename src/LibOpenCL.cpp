@@ -639,6 +639,18 @@ SEXP ocl_select_dev(SEXP dev_idx)
 }
 
 
+static void kernel_release(int n, cl_kernel *ks[])
+{
+	for (int i=0; i < n; i++)
+	{
+		if (*ks[i])
+		{
+			clReleaseKernel(*ks[i]);
+			*ks[i] = NULL;
+		}
+	}
+}
+
 /// release the previous device
 SEXP ocl_release_dev()
 {
@@ -654,14 +666,7 @@ SEXP ocl_release_dev()
 		&gpu_kl_pred_calc,
 		&gpu_kl_pred_sumprob, &gpu_kl_pred_addprob
 	};
-	for (int i=0; i < kl_num; i++)
-	{
-		if (*kl_lst[i])
-		{
-			clReleaseKernel(*kl_lst[i]);
-			*kl_lst[i] = NULL;
-		}
-	}
+	kernel_release(kl_num, kl_lst);
 
 	// release command queue
 	if (gpu_command_queue)
@@ -743,10 +748,28 @@ SEXP ocl_set_kl_clearmem(SEXP code)
 	return rv_ans;
 }
 
+/// set local size for the kernels
+SEXP ocl_set_local_size(SEXP sz_d1, SEXP sz_d2)
+{
+	gpu_local_size_d1 = Rf_asInteger(sz_d1);
+	gpu_local_size_d2 = Rf_asInteger(sz_d2);
+	return R_NilValue;
+}
 
 /// set kernels for building the model
 SEXP ocl_set_kl_build(SEXP f64, SEXP f64_build, SEXP codes)
 {
+	// release kernels
+	const int kl_num = 9;
+	static cl_kernel *kl_lst[kl_num] = {
+		&gpu_kl_build_haplo_match_init,
+		&gpu_kl_build_haplo_match1, &gpu_kl_build_haplo_match2,
+		&gpu_kl_build_calc_prob_int1, &gpu_kl_build_calc_prob_int2,
+		&gpu_kl_build_calc_prob_int3, &gpu_kl_build_calc_prob_int4,
+		&gpu_kl_build_calc_oob, &gpu_kl_build_calc_ib
+	};
+	kernel_release(kl_num, kl_lst);
+	// setting
 	gpu_f64_flag = (Rf_asLogical(f64) == TRUE);
 	gpu_f64_build_flag = (Rf_asLogical(f64_build) == TRUE);
 	gpu_kl_build_haplo_match_init =
@@ -774,6 +797,13 @@ SEXP ocl_set_kl_build(SEXP f64, SEXP f64_build, SEXP codes)
 /// set kernels for prediction
 SEXP ocl_set_kl_predict(SEXP f64_pred, SEXP code_calc, SEXP code_sum, SEXP code_add)
 {
+	// release kernels
+	const int kl_num = 3;
+	static cl_kernel *kl_lst[kl_num] = {
+		&gpu_kl_pred_calc, &gpu_kl_pred_sumprob, &gpu_kl_pred_addprob
+	};
+	kernel_release(kl_num, kl_lst);
+	// setting
 	gpu_f64_pred_flag = (Rf_asLogical(f64_pred) == TRUE);
 	gpu_kl_pred_calc    = build_kernel(code_calc, kl_nm_pred_calc_prob);
 	gpu_kl_pred_sumprob = build_kernel(code_sum,  kl_nm_pred_calc_sumprob);

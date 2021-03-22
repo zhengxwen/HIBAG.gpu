@@ -701,9 +701,12 @@ hlaPredict_gpu <- function(object, snp,
 		pm[3L], pm[4L], pm[4L]))
 	local_size_macro <- paste0("#define LOCAL_SIZE_D1    ", pm[3L], "\n",
 		"#define LOCAL_SIZE_D2    ", pm[4L])
+	.packageEnv$local_size_macro <- local_size_macro
 
 	# support 64-bit floating-point numbers or not
 	dev_fp64 <- dev_fp64_ori <- any(grepl("cl_khr_fp64", exts))
+	.packageEnv$dev_fp64 <- dev_fp64
+	.packageEnv$dev_fp64_ori <- dev_fp64_ori
 	if (dev_fp64)
 	{
 		.packageEnv$code_attempt_f64 <- paste(c(local_size_macro, code_macro,
@@ -845,14 +848,58 @@ hlaPredict_gpu <- function(object, snp,
 	.packageEnv$code_pred_sumprob <- paste(c(local_size_macro,
 		ifelse(dev_fp64_ori, "#define USE_SUM_DOUBLE", ""),
 		code_macro, code_macro_prec[predict_prec], code_pred_calc_sumprob), collapse="\n")
-	.packageEnv$kernel_pred_addprob <- paste(c(
+	.packageEnv$code_pred_addprob <- paste(c(
 		ifelse(dev_fp64_ori, "#define USE_SUM_DOUBLE", ""),
 		code_macro_prec[predict_prec], code_pred_calc_addprob), collapse="\n")
 	.Call(ocl_set_kl_predict, f64_pred, .packageEnv$code_pred_calc,
-		.packageEnv$code_pred_sumprob, .packageEnv$kernel_pred_addprob)
+		.packageEnv$code_pred_sumprob, .packageEnv$code_pred_addprob)
 
 	on.exit()
 	showmsg(paste(msg, collapse="\n"))
+	invisible()
+}
+
+
+# initialize GPU device with given local size
+.gpu_set_localsize <- function(sz_d1, sz_d2, verbose=TRUE)
+{
+	# check
+	stopifnot(is.numeric(sz_d1), length(sz_d1)==1L, is.finite(sz_d1), sz_d1>0L)
+	stopifnot(is.numeric(sz_d2), length(sz_d2)==1L, is.finite(sz_d2), sz_d2>0L)
+	.Call(ocl_set_local_size, sz_d1, sz_d2)
+
+	old_lz_macro <- .packageEnv$local_size_macro
+	new_lz_macro <- paste0("#define LOCAL_SIZE_D1    ", sz_d1, "\n",
+		"#define LOCAL_SIZE_D2    ", sz_d2)
+	nm_lst <- c(
+		# training
+		"code_haplo_match_init", "code_build_haplo_match1", "code_build_haplo_match2",
+		"code_build_calc_prob_int1", "code_build_calc_prob_int2",
+		"code_build_calc_prob_int3", "code_build_calc_prob_int4",
+		"code_build_calc_oob", "code_build_calc_ib",
+		# prediction
+		"code_pred_calc", "code_pred_sumprob", "code_pred_addprob")
+	for (nm in nm_lst)
+	{
+		.packageEnv[[nm]] <- gsub(old_lz_macro, new_lz_macro,
+			.packageEnv[[nm]], fixed=TRUE)
+	}
+
+	.packageEnv$local_size_macro <- new_lz_macro
+	with(.packageEnv, .Call(ocl_set_kl_build, dev_fp64_ori, flag_build_f64, list(
+		code_haplo_match_init, code_build_haplo_match1, code_build_haplo_match2,
+		code_build_calc_prob_int1, code_build_calc_prob_int2,
+		code_build_calc_prob_int3, code_build_calc_prob_int4,
+		code_build_calc_oob, code_build_calc_ib)))
+	with(.packageEnv, .Call(ocl_set_kl_predict, flag_pred_f64,
+		code_pred_calc, code_pred_sumprob, code_pred_addprob))
+
+	if (verbose)
+	{
+		cat(sprintf("using local work size: %d (Dim1), %dx%d (Dim2)\n",
+			sz_d1, sz_d2, sz_d2))
+	}
+
 	invisible()
 }
 

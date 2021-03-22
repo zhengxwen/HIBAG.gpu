@@ -178,10 +178,6 @@ extern SEXP ocl_set_kl_predict(SEXP f64_pred, SEXP code_calc, SEXP code_sum,
 	SEXP code_add);
 
 
-/// set work local size
-extern SEXP ocl_set_local_size(SEXP Rverbose);
-
-
 #ifdef __cplusplus
 }
 #endif
