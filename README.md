@@ -21,6 +21,10 @@ R package – a GPU-based extension for the [HIBAG](https://github.com/zhengxwen
 
 * a new function `hlaAttrBagging_MultiGPU()` to leverage multiple GPU devices
 
+**Changes in v0.9.0:**
+
+* initial GPU-based implementation for the HIBAG algorithm
+
 
 ## Benchmarks for model training
 
