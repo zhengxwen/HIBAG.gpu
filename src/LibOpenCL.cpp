@@ -639,7 +639,7 @@ SEXP ocl_select_dev(SEXP dev_idx)
 }
 
 
-static void kernel_release(int n, cl_kernel *ks[])
+inline static void kernel_release(int n, cl_kernel *ks[])
 {
 	for (int i=0; i < n; i++)
 	{
