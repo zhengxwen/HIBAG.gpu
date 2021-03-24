@@ -506,10 +506,10 @@ extern SEXP ocl_dev_info(SEXP dev_idx)
 	cl_device_id dev = gpu_dev_list[idx-1];
 
 	// get device information
-	const int n_ds = 6;
+	const int n_ds = 7;
 	static cl_device_info ds[n_ds] = {
 		CL_DEVICE_VENDOR, CL_DEVICE_NAME, CL_DEVICE_VERSION, CL_DEVICE_EXTENSIONS,
-		CL_DEVICE_PROFILE, CL_DRIVER_VERSION
+		CL_DEVICE_PROFILE, CL_DEVICE_VERSION, CL_DRIVER_VERSION
 	};
 	tmp_ss.clear();
 	for (size_t i=0; i < n_ds; i++)
