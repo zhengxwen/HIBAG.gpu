@@ -108,6 +108,7 @@ library(HIBAG.gpu)
 ##     Dev #1: AMD, AMD Radeon Pro 560X Compute Engine, OpenCL 1.2
 ## 
 ## Using Device #1: AMD, AMD Radeon Pro 560X Compute Engine
+##     Device Version: OpenCL 1.2
 ##     Driver Version: 1.2 (Jan 12 2021 22:17:03)
 ##     EXTENSION cl_khr_global_int32_base_atomics: YES
 ##     EXTENSION cl_khr_fp64: YES

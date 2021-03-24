@@ -28,7 +28,8 @@ hlaAttrBagging_MultiGPU(gpus, hla, snp, auto.save="", nclassifier=100L,
 	\item{gpus}{a vector of GPU device IDs, \code{gpus} may have duplicated IDs
 		to maximize the GPU load}
 	\item{auto.save}{specify a autosaved file name for an R object
-		(.rda, .RData or .rds); "", no file saving}
+		(.rda, .RData or .rds file), and the model is auto-saved at most every 10 minutes;
+		"", no file saving}
 	\item{train_prec}{length-1 character, or a character vector according to \code{gpus}
 		for the training precision, see \code{hlaGPU_Init}}
 	\item{verbose}{if TRUE, show information}

@@ -546,7 +546,7 @@ hlaAttrBagging_MultiGPU <- function(gpus, hla, snp, auto.save="", nclassifier=10
 				if (verbose) cat(val[[1L]])
 				clr <<- append(clr, val[[2L]])
 				tm <- proc.time()
-				if ((tm - save_ptm)[3L] >= 300L)  # elapsed time >= 5min
+				if ((tm - save_ptm)[3L] >= 600L)  # elapsed time >= 10min
 				{
 					save_ptm <<- tm
 					mobj$classifiers <<- clr
