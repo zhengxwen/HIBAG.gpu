@@ -198,38 +198,44 @@ extern "C"
 /// clear the memory buffer 'mem_prob_buffer'
 static void clear_prob_buffer(size_t size, cl_event *event)
 {
-#if defined(CL_VERSION_1_2) && 0
-	// don't know why clEnqueueFillBuffer failed without an error return on my AMD Radeon Pro 560X
-	// so disable it
-	int zero = 0;
-	cl_int err = clEnqueueFillBuffer(gpu_command_queue, mem_prob_buffer,
-		&zero, sizeof(zero), 0, size, 0, NULL, event);
-	if (err != CL_SUCCESS)
-	{
-		if (event) clReleaseEvent(*event);
-		throw err_text("clEnqueueFillBuffer() with mem_prob_buffer failed", err);
-	}
-	if (!event) gpu_finish();
+#if !defined(CL_VERSION_1_2)
+	const bool flag = false;
 #else
-	if (size >= 4294967296)
-		throw "size is too large in clear_prob_buffer().";
-	// set parameter
-	int n = size / sizeof(int);
-	GPU_SETARG(gpu_kl_clear_mem, 0, n);
-	size_t wdim = n / gpu_local_size_d1;
-	if (n % gpu_local_size_d1) wdim++;
-	wdim *= gpu_local_size_d1;
-	// run the kernel
-	cl_int err = clEnqueueNDRangeKernel(gpu_command_queue, gpu_kl_clear_mem, 1, NULL,
-		&wdim, &gpu_local_size_d1, 0, NULL, event);
-	if (err != CL_SUCCESS)
-	{
-		Rf_error(
-			"Failed to run clEnqueueNDRangeKernel() on 'gpu_kl_clear_mem' (error: %d, %s)",
-			err, gpu_error_info(err));
-	}
-	if (!event) gpu_finish();
+	const bool flag = gpu_device_OpenCL_1_2;
 #endif
+	if (flag)
+	{
+	#if defined(CL_VERSION_1_2)
+		int zero = 0;
+		cl_int err = clEnqueueFillBuffer(gpu_command_queue, mem_prob_buffer,
+			&zero, sizeof(zero), 0, size, 0, NULL, event);
+		if (err != CL_SUCCESS)
+		{
+			if (event) clReleaseEvent(*event);
+			throw err_text("clEnqueueFillBuffer() with mem_prob_buffer failed", err);
+		}
+		if (!event) gpu_finish();
+	#endif
+	} else {
+		if (size >= 4294967296)
+			throw "size is too large in clear_prob_buffer().";
+		// set parameter
+		int n = size / sizeof(int);
+		GPU_SETARG(gpu_kl_clear_mem, 0, n);
+		size_t wdim = n / gpu_local_size_d1;
+		if (n % gpu_local_size_d1) wdim++;
+		wdim *= gpu_local_size_d1;
+		// run the kernel
+		cl_int err = clEnqueueNDRangeKernel(gpu_command_queue, gpu_kl_clear_mem, 1, NULL,
+			&wdim, &gpu_local_size_d1, 0, NULL, event);
+		if (err != CL_SUCCESS)
+		{
+			Rf_error(
+				"Failed to run clEnqueueNDRangeKernel() on 'gpu_kl_clear_mem' (error: %d, %s)",
+				err, gpu_error_info(err));
+		}
+		if (!event) gpu_finish();
+	}
 }
 
 

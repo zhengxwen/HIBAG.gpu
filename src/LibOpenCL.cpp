@@ -42,6 +42,7 @@ static std::vector<cl_device_id> gpu_dev_list;
 
 // OpenCL device variables
 cl_device_id gpu_device = 0;
+bool gpu_device_OpenCL_1_2 = false;
 cl_context gpu_context = NULL;
 cl_command_queue gpu_command_queue = NULL;
 
@@ -628,12 +629,30 @@ SEXP ocl_select_dev(SEXP dev_idx)
 
 	// start initializing
 
+	// get OpenCL version number:
+	// OpenCL<space><major_version.minor_version><space><vendor-specific information>
+	std::string s = get_dev_info_str(dev, CL_DEVICE_VERSION);
+	if (s.substr(0, 7) == "OpenCL ")
+	{
+		s.erase(0, 7);
+		size_t pn = s.find(' ');
+		if (pn != std::string::npos) s = s.substr(0, pn);
+		double v = atof(s.c_str());
+		gpu_device_OpenCL_1_2 = v >= 1.2;
+		s = std::string(">= v1.2: ") + (gpu_device_OpenCL_1_2 ? "YES" : "NO");
+	} else {
+		gpu_device_OpenCL_1_2 = false;
+		s = "Unknown";
+	}
+
+	// create context
 	cl_int err;
 	cl_context ctx = clCreateContext(NULL, 1, &dev, NULL, NULL, &err);
     if (!ctx || err!=CL_SUCCESS)
 		Rf_error(gpu_err_msg(err, err_info, fc_create_ctx));
 	gpu_context = ctx;
 
+	// create queue
 	cl_command_queue queue = clCreateCommandQueue(ctx, dev,
 		CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE, &err);
 	if (!queue && err==CL_INVALID_VALUE)
@@ -654,7 +673,7 @@ SEXP ocl_select_dev(SEXP dev_idx)
 		sizeof(mfreq64), mfreq64);
 
 	// return
-	return R_NilValue;
+	return mkString(s.c_str());
 }
 
 

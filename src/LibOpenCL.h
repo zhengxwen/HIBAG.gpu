@@ -38,6 +38,7 @@ extern "C" {
 
 // OpenCL device variables
 extern cl_device_id gpu_device;
+extern bool gpu_device_OpenCL_1_2;
 extern cl_context gpu_context;
 extern cl_command_queue gpu_command_queue;
 
