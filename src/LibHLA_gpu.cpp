@@ -273,8 +273,17 @@ SEXP ocl_build_init(SEXP R_nHLA, SEXP R_nSample, SEXP R_verbose)
 	// allocate
 	GPU_CREATE_MEM_V(mem_build_idx_oob, CL_MEM_READ_WRITE, sizeof(int)*n_samp, NULL);
 	GPU_CREATE_MEM_V(mem_build_idx_ib,  CL_MEM_READ_WRITE, sizeof(int)*n_samp, NULL);
-	GPU_CREATE_MEM_V(mem_build_output, CL_MEM_READ_WRITE, float_size*n_samp, NULL);
 	GPU_CREATE_MEM_V(mem_build_haplo_idx, CL_MEM_READ_WRITE, sizeof(int)*(n_samp+n_hla), NULL);
+	GPU_CREATE_MEM_V(mem_build_output, CL_MEM_READ_WRITE,
+		(sizeof(double) + sizeof(int))*n_samp, NULL);
+	{
+		// initialize mem_build_output
+		GPU_MEM_MAP(M, int, mem_build_output, 3*n_samp, false);
+		memset(M.ptr(), 0, sizeof(int)*2*n_samp);
+		// used in gpu_kl_build_haplo_match1
+		int *p = M.ptr() + 2*n_samp;
+		for (int i=0; i < n_samp; i++) p[i] = INT_MAX;
+	}
 	GPU_CREATE_MEM_V(mem_snpgeno, CL_MEM_READ_WRITE, sizeof(TGenotype)*n_samp, NULL);
 	GPU_CREATE_MEM_V(mem_build_hla_idx_map, CL_MEM_READ_WRITE, sizeof(int)*sz_hla, NULL);
 	{
@@ -312,10 +321,6 @@ SEXP ocl_build_init(SEXP R_nHLA, SEXP R_nSample, SEXP R_verbose)
 	const cl_uint nmax_buf = msize_prob_buffer_total / sizeof(cl_uint);
 	const cl_uint nmax_match_buf = nmax_buf - 2;
 	const int zero = 0;
-
-	// arguments for build_haplo_match_init
-	GPU_SETARG(gpu_kl_build_haplo_match_init, 0, zero);
-	GPU_SETARG(gpu_kl_build_haplo_match_init, 1, mem_build_output);
 
 	// arguments for build_haplo_match1
 	GPU_SETARG(gpu_kl_build_haplo_match1, 0, mem_build_output);
@@ -485,15 +490,8 @@ static UINT32 *build_haplomatch(const THaplotype haplo[], const size_t nHaplo[],
 	events[0] = GPU_WRITE_EVENT(mem_haplo_list, sizeof(THaplotype)*n_tot_haplo, haplo);
 	events[1] = GPU_WRITE_EVENT(mem_snpgeno, sizeof(TGenotype)*Num_Sample, geno);
 	// event 2
-	{
-		size_t w = build_num_ib;
-		if (w % gpu_local_size_d1)
-			w = (w/gpu_local_size_d1 + 1)*gpu_local_size_d1;
-		cl_uint n = build_num_ib;
-		GPU_SETARG(gpu_kl_build_haplo_match_init, 0, n);
-		GPU_RUN_KERNEL_EVENT(gpu_kl_build_haplo_match_init, 1, &w, &gpu_local_size_d1,
-			0, NULL, &events[2]);
-	}
+	GPU_COPY_BUFFER(mem_build_output, mem_build_output, sizeof(double)*Num_Sample, 0,
+		sizeof(int)*Num_Sample, 0, NULL, &events[2]);
 	// event 3
 	vector<unsigned int> b(build_num_ib + Num_HLA);
 	for (int i=0; i < build_num_ib; i++)

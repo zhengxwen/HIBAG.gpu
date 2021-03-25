@@ -50,7 +50,6 @@ cl_command_queue gpu_command_queue = NULL;
 cl_kernel gpu_kl_clear_mem = NULL;
 
 // OpenCL kernel functions
-cl_kernel gpu_kl_build_haplo_match_init = NULL;
 cl_kernel gpu_kl_build_haplo_match1 = NULL;
 cl_kernel gpu_kl_build_haplo_match2 = NULL;
 cl_kernel gpu_kl_build_calc_prob_int1 = NULL;
@@ -96,7 +95,6 @@ bool ocl_verbose = false;
 
 // OpenCL kernel function names
 static const char *kl_nm_clear_mem = "clear_memory";
-static const char *kl_nm_build_haplo_match_init = "build_haplo_match_init";
 static const char *kl_nm_build_haplo_match1 = "build_haplo_match1";
 static const char *kl_nm_build_haplo_match2 = "build_haplo_match2";
 static const char *kl_nm_build_calc_prob = "build_calc_prob";
@@ -325,6 +323,27 @@ void gpu_setarg(cl_kernel kernel, int arg_idx, size_t arg_size,
 		} else {
 			Rf_error("Failed to set the kernel argument[%d] (error: %d, %s).",
 				arg_idx, err, gpu_error_info(err));
+		}
+	}
+}
+
+
+/// copy buffer memory
+void gpu_copy_buffer(cl_mem src_buf, cl_mem dst_buf, size_t src_offset,
+	size_t dst_offset, size_t cb, cl_uint num_events_in_wait_list,
+	const cl_event *event_wait_list, cl_event *event, const char *s_nm, const char *d_nm)
+{
+	cl_int err = clEnqueueCopyBuffer(gpu_command_queue, src_buf, dst_buf,
+		src_offset, dst_offset, cb, num_events_in_wait_list, event_wait_list, event);
+	if (err != CL_SUCCESS)
+	{
+		if (s_nm && d_nm)
+		{
+			Rf_error("Failed to copy memory buffer '%s' to '%s' (error: %d, %s).",
+				s_nm, d_nm, err, gpu_error_info(err));
+		} else {
+			Rf_error("Failed to copy memory buffer (error: %d, %s)",
+				err, gpu_error_info(err));
 		}
 	}
 }
@@ -655,10 +674,9 @@ inline static void kernel_release(int n, cl_kernel *ks[])
 SEXP ocl_release_dev()
 {
 	// release kernels
-	const int kl_num = 13;
+	const int kl_num = 12;
 	static cl_kernel *kl_lst[kl_num] = {
 		&gpu_kl_clear_mem,
-		&gpu_kl_build_haplo_match_init,
 		&gpu_kl_build_haplo_match1, &gpu_kl_build_haplo_match2,
 		&gpu_kl_build_calc_prob_int1, &gpu_kl_build_calc_prob_int2,
 		&gpu_kl_build_calc_prob_int3, &gpu_kl_build_calc_prob_int4,
@@ -760,9 +778,8 @@ SEXP ocl_set_local_size(SEXP sz_d1, SEXP sz_d2)
 SEXP ocl_set_kl_build(SEXP f64, SEXP f64_build, SEXP codes)
 {
 	// release kernels
-	const int kl_num = 9;
+	const int kl_num = 8;
 	static cl_kernel *kl_lst[kl_num] = {
-		&gpu_kl_build_haplo_match_init,
 		&gpu_kl_build_haplo_match1, &gpu_kl_build_haplo_match2,
 		&gpu_kl_build_calc_prob_int1, &gpu_kl_build_calc_prob_int2,
 		&gpu_kl_build_calc_prob_int3, &gpu_kl_build_calc_prob_int4,
@@ -772,24 +789,22 @@ SEXP ocl_set_kl_build(SEXP f64, SEXP f64_build, SEXP codes)
 	// setting
 	gpu_f64_flag = (Rf_asLogical(f64) == TRUE);
 	gpu_f64_build_flag = (Rf_asLogical(f64_build) == TRUE);
-	gpu_kl_build_haplo_match_init =
-		build_kernel(VECTOR_ELT(codes, 0), kl_nm_build_haplo_match_init);
 	gpu_kl_build_haplo_match1 =
-		build_kernel(VECTOR_ELT(codes, 1), kl_nm_build_haplo_match1);
+		build_kernel(VECTOR_ELT(codes, 0), kl_nm_build_haplo_match1);
 	gpu_kl_build_haplo_match2 =
-		build_kernel(VECTOR_ELT(codes, 2), kl_nm_build_haplo_match2);
+		build_kernel(VECTOR_ELT(codes, 1), kl_nm_build_haplo_match2);
 	gpu_kl_build_calc_prob_int1 =
-		build_kernel(VECTOR_ELT(codes, 3), kl_nm_build_calc_prob);
+		build_kernel(VECTOR_ELT(codes, 2), kl_nm_build_calc_prob);
 	gpu_kl_build_calc_prob_int2 =
-		build_kernel(VECTOR_ELT(codes, 4), kl_nm_build_calc_prob);
+		build_kernel(VECTOR_ELT(codes, 3), kl_nm_build_calc_prob);
 	gpu_kl_build_calc_prob_int3 =
-		build_kernel(VECTOR_ELT(codes, 5), kl_nm_build_calc_prob);
+		build_kernel(VECTOR_ELT(codes, 4), kl_nm_build_calc_prob);
 	gpu_kl_build_calc_prob_int4 =
-		build_kernel(VECTOR_ELT(codes, 6), kl_nm_build_calc_prob);
+		build_kernel(VECTOR_ELT(codes, 5), kl_nm_build_calc_prob);
 	gpu_kl_build_calc_oob =
-		build_kernel(VECTOR_ELT(codes, 7), kl_nm_build_calc_oob);
+		build_kernel(VECTOR_ELT(codes, 6), kl_nm_build_calc_oob);
 	gpu_kl_build_calc_ib  =
-		build_kernel(VECTOR_ELT(codes, 8), kl_nm_build_calc_ib);
+		build_kernel(VECTOR_ELT(codes, 7), kl_nm_build_calc_ib);
 	return R_NilValue;
 }
 

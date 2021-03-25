@@ -798,7 +798,6 @@ hlaPredict_gpu <- function(object, snp,
 	.packageEnv$flag_pred_f64 <- f64_pred
 	.packageEnv$predict_prec <- predict_prec
 
-	.packageEnv$code_haplo_match_init <- code_haplo_match_init
 	.packageEnv$code_build_haplo_match1 <- paste(c(local_size_macro,
 		code_macro, code_hamming_dist, code_build_alloc_set, code_build_haplo_match1),
 		collapse="\n")
@@ -833,7 +832,6 @@ hlaPredict_gpu <- function(object, snp,
 		code_macro, code_macro_prec[train_prec], code_hamm_dist_max[train_prec],
 		code_build_calc_ib), collapse="\n")
 	.Call(ocl_set_kl_build, dev_fp64_ori, f64_build, list(
-		.packageEnv$code_haplo_match_init,
 		.packageEnv$code_build_haplo_match1, .packageEnv$code_build_haplo_match2,
 		.packageEnv$code_build_calc_prob_int1,
 		.packageEnv$code_build_calc_prob_int2,
@@ -874,7 +872,7 @@ hlaPredict_gpu <- function(object, snp,
 		"#define LOCAL_SIZE_D2    ", sz_d2)
 	nm_lst <- c(
 		# training
-		"code_haplo_match_init", "code_build_haplo_match1", "code_build_haplo_match2",
+		"code_build_haplo_match1", "code_build_haplo_match2",
 		"code_build_calc_prob_int1", "code_build_calc_prob_int2",
 		"code_build_calc_prob_int3", "code_build_calc_prob_int4",
 		"code_build_calc_oob", "code_build_calc_ib",
@@ -888,7 +886,7 @@ hlaPredict_gpu <- function(object, snp,
 
 	.packageEnv$local_size_macro <- new_lz_macro
 	with(.packageEnv, .Call(ocl_set_kl_build, dev_fp64_ori, flag_build_f64, list(
-		code_haplo_match_init, code_build_haplo_match1, code_build_haplo_match2,
+		code_build_haplo_match1, code_build_haplo_match2,
 		code_build_calc_prob_int1, code_build_calc_prob_int2,
 		code_build_calc_prob_int3, code_build_calc_prob_int4,
 		code_build_calc_oob, code_build_calc_ib)))

@@ -176,14 +176,6 @@ inline static int hamming_dist(__global const unsigned char *geno,
 
 ##########################################################################
 
-code_haplo_match_init <- "
-__kernel void build_haplo_match_init(const uint n, __global int *p)
-{
-	const uint i = get_global_id(0);
-	if (i < n) p[i] = INT_MAX;
-}
-"
-
 code_build_alloc_set <- "
 inline static void alloc_set(size_t ii, size_t i1, size_t i2,
 	__global uint *out_buffer, const uint nmax_buffer)

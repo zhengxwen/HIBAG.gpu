@@ -44,7 +44,6 @@ extern cl_command_queue gpu_command_queue;
 
 // OpenCL kernel functions
 extern cl_kernel gpu_kl_clear_mem;
-extern cl_kernel gpu_kl_build_haplo_match_init;
 extern cl_kernel gpu_kl_build_haplo_match1;
 extern cl_kernel gpu_kl_build_haplo_match2;
 extern cl_kernel gpu_kl_build_calc_prob_int1;
@@ -120,6 +119,11 @@ extern void gpu_read_mem(cl_mem buffer, size_t offset, size_t size, void *ptr,
 extern void gpu_setarg(cl_kernel kernel, int arg_idx, size_t arg_size,
 	const void *arg_value, const char *fc_nm);
 
+/// copy buffer memory
+extern void gpu_copy_buffer(cl_mem src_buf, cl_mem dst_buf, size_t src_offset,
+	size_t dst_offset, size_t cb, cl_uint num_events_in_wait_list,
+	const cl_event *event_wait_list, cl_event *event, const char *s_nm, const char *d_nm);
+
 
 // define MARCO
 
@@ -143,6 +147,9 @@ extern void gpu_setarg(cl_kernel kernel, int arg_idx, size_t arg_size,
 
 #define GPU_SETARG(kernel, i, x)           gpu_setarg(kernel, i, sizeof(x), &x, #kernel)
 #define GPU_SETARG_LOCAL(kernel, i, sz)    gpu_setarg(kernel, i, sz, NULL, #kernel)
+
+#define GPU_COPY_BUFFER(s_buf, d_buf, s_offset, d_offset, cb, n_e, e_lst, out_e)   \
+	gpu_copy_buffer(s_buf, d_buf, s_offset, d_offset, cb, n_e, e_lst, out_e, #s_buf, #d_buf)
 
 
 
