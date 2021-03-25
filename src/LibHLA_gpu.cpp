@@ -491,7 +491,7 @@ static UINT32 *build_haplomatch(const THaplotype haplo[], const size_t nHaplo[],
 	events[1] = GPU_WRITE_EVENT(mem_snpgeno, sizeof(TGenotype)*Num_Sample, geno);
 	// event 2
 	GPU_COPY_BUFFER(mem_build_output, mem_build_output, sizeof(double)*Num_Sample, 0,
-		sizeof(int)*Num_Sample, 0, NULL, &events[2]);
+		sizeof(int)*build_num_ib, 0, NULL, &events[2]);
 	// event 3
 	vector<unsigned int> b(build_num_ib + Num_HLA);
 	for (int i=0; i < build_num_ib; i++)
