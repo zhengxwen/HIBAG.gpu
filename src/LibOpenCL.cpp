@@ -118,7 +118,7 @@ const char *long_to_str(long long sz)
 	size_t m = 0;
 	for (size_t n=strlen(buf); n > 0; n--)
 	{
-		if ((++m) > 3) { m = 0; *(--p) = ','; }
+		if ((++m) > 3) { m = 1; *(--p) = ','; }
 		*(--p) = buf[n-1];
 	}
 	return p;
