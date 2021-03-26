@@ -90,6 +90,8 @@ extern bool ocl_verbose;
 
 
 
+/// get a string from an integer
+extern const char *long_to_str(long long sz);
 
 /// get information from an OpenCL error code
 extern const char *gpu_error_info(int err);
@@ -134,7 +136,7 @@ extern void gpu_copy_buffer(cl_mem src_buf, cl_mem dst_buf, size_t src_offset,
 	{ \
 		size_t sz = size; \
 		if (ocl_verbose) \
-			Rprintf("    allocating %lld bytes in GPU ", (long long)sz); \
+			Rprintf("    allocating %s bytes in GPU  ", long_to_str(sz)); \
 		x = gpu_create_mem(flags, sz, host_ptr, #x); \
 		if (ocl_verbose) \
 			Rprintf("[OK]\n"); \

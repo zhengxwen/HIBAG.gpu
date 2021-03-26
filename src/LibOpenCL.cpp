@@ -109,6 +109,22 @@ static const char *kl_nm_pred_calc_addprob = "pred_calc_addprob";
 
 // ===================================================================== //
 
+/// get a string from an integer
+const char *long_to_str(long long sz)
+{
+	static char numbuf[64];
+	char buf[64]; sprintf(buf, "%lld", sz);
+	char *p = numbuf + sizeof(numbuf) - 1; *p = 0;
+	size_t m = 0;
+	for (size_t n=strlen(buf); n > 0; n--)
+	{
+		if ((++m) > 3) { m = 0; *(--p) = ','; }
+		*(--p) = buf[n-1];
+	}
+	return p;
+}
+
+
 /// get information from an OpenCL error code
 const char *gpu_error_info(int err)
 {
