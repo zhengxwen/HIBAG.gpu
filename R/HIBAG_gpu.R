@@ -669,7 +669,9 @@ hlaPredict_gpu <- function(object, snp,
 	# set env variables
 	.packageEnv$gpu_dev_idx <- dev_idx
 	s <- .Call(ocl_select_dev, dev_idx)
-	msg <- c(msg, paste0("    Device Version: ", info[6L], "(", s, ")"))
+	ss <- info[6L]
+	if (!grepl("\\s$", ss)) ss <- paste0(ss, " ")
+	msg <- c(msg, paste0("    Device Version: ", ss, "(", s, ")"))
 	msg <- c(msg, paste("    Driver Version:", info[7L]))
 	on.exit(showmsg(paste(msg, collapse="\n")))
 
