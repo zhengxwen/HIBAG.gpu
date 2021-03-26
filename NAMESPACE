@@ -16,5 +16,4 @@ export(.onUnload)
 # Imports
 import(methods)
 import(HIBAG)
-importFrom(stats, predict)
 import(parallel)

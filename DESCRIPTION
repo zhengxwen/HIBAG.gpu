@@ -4,7 +4,7 @@ Title: GPU-based implementation for the HIBAG package
 Version: 0.99.0
 Date: 2021-03-22
 Depends: R (>= 3.2.0), HIBAG (>= 1.17.3)
-Imports: methods, stats, parallel
+Imports: methods, parallel
 LinkingTo: HIBAG
 Authors@R: person("Xiuwen", "Zheng", role=c("aut", "cre", "cph"),
     email="zhengxwen@gmail.com")
@@ -17,6 +17,6 @@ Description: It is a GPU-based implementation for the HIBAG algorithm, which imp
     of classifier ensembles using bootstrap aggregating and random variable selection.
 License: GPL-3 | file LICENSE
 Collate: OpenCL_code.R HIBAG_gpu.R
-SystemRequirements: GNU make
+SystemRequirements: GNU make; OpenCL library
 ByteCompile: TRUE
 URL: http://github.com/zhengxwen/HIBAG.gpu, http://github.com/zhengxwen/HIBAG
