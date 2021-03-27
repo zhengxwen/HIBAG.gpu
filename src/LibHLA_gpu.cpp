@@ -762,12 +762,13 @@ static void predict_init(int n_hla, int nClassifier, const THaplotype *const pHa
 	// arguments for gpu_kl_pred_calc, pred_calc_prob
 	int sz_hla = size_hla;
 	GPU_SETARG(gpu_kl_pred_calc, 0, mem_prob_buffer);
-	GPU_SETARG(gpu_kl_pred_calc, 1, n_hla);
-	GPU_SETARG(gpu_kl_pred_calc, 2, sz_hla);
-	GPU_SETARG(gpu_kl_pred_calc, 3, mem_rare_freq);
-	GPU_SETARG(gpu_kl_pred_calc, 4, mem_haplo_list);
-	GPU_SETARG(gpu_kl_pred_calc, 5, mem_pred_haplo_num);
-	GPU_SETARG(gpu_kl_pred_calc, 6, mem_snpgeno);
+	GPU_SETARG(gpu_kl_pred_calc, 1, nClassifier);
+	GPU_SETARG(gpu_kl_pred_calc, 2, n_hla);
+	GPU_SETARG(gpu_kl_pred_calc, 3, sz_hla);
+	GPU_SETARG(gpu_kl_pred_calc, 4, mem_rare_freq);
+	GPU_SETARG(gpu_kl_pred_calc, 5, mem_haplo_list);
+	GPU_SETARG(gpu_kl_pred_calc, 6, mem_pred_haplo_num);
+	GPU_SETARG(gpu_kl_pred_calc, 7, mem_snpgeno);
 
 	// arguments for gpu_kl_pred_sumprob, pred_calc_sumprob
 	GPU_SETARG(gpu_kl_pred_sumprob, 0, mem_pred_weight);
@@ -812,11 +813,9 @@ void predict_avg_prob(const TGenotype geno[], const double weight[],
 
 	// pred_calc_prob
 	{
-		size_t wdims[3] =
-			{ (size_t)Num_Classifier, (size_t)wdim_num_haplo, (size_t)wdim_num_haplo };
-		size_t local_size[3] =
-			{ 1, gpu_local_size_d2, gpu_local_size_d2 };
-		GPU_RUN_KERNEL_EVENT(gpu_kl_pred_calc, 3, wdims, local_size,
+		size_t wdims[2] = { (size_t)wdim_num_haplo, (size_t)wdim_num_haplo };
+		size_t local_size[2] = { gpu_local_size_d2, gpu_local_size_d2 };
+		GPU_RUN_KERNEL_EVENT(gpu_kl_pred_calc, 2, wdims, local_size,
 			2, events, &events[2]);
 	}
 

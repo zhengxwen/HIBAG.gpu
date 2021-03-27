@@ -490,44 +490,51 @@ __kernel void clear_memory(const uint n, __global int *p)
 ##########################################################################
 
 code_pred_calc_prob <- "
-__attribute__((reqd_work_group_size(1, LOCAL_SIZE_D2, LOCAL_SIZE_D2)))
-__kernel void pred_calc_prob(
-	__global numeric *outProb,
-	const int n_hla, const int num_hla_geno, __constant numeric *exp_log_min_rare_freq,
+__attribute__((reqd_work_group_size(LOCAL_SIZE_D2, LOCAL_SIZE_D2, 1)))
+__kernel void pred_calc_prob(__global numeric *outProb,
+	const int n_classifier, const int n_hla, const int num_hla_geno,
+	__constant numeric *exp_log_min_rare_freq,
 	__global const unsigned char *pHaplo, __global const int *nHaplo,
 	__global const unsigned char *pGeno)
 {
-	const int ii = get_global_id(0);  // the index of individual classifier
-	const int i1 = get_global_id(1);  // first haplotype index
-	const int i2 = get_global_id(2);  // second haplotype index
-	nHaplo += (ii << 2);
-	const int n_haplo = nHaplo[0];    // the number of haplotypes
-	if ((i2 < i1) || (i2 >= n_haplo)) return;
+	const int i1 = get_global_id(0);  // first haplotype index
+	const int i2 = get_global_id(1);  // second haplotype index
+	if (i2 < i1) return;
 
-	// haplotype list for the classifier ii
-	pHaplo += (nHaplo[1] << SIZEOF_THAPLO_SHIFT);
-	// the first haplotype
-	__global const unsigned char *p1 = pHaplo + (i1 << SIZEOF_THAPLO_SHIFT);
-	// the second haplotype
-	__global const unsigned char *p2 = pHaplo + (i2 << SIZEOF_THAPLO_SHIFT);
-	// hamming distance
-	pGeno += ii * SIZEOF_TGENOTYPE;
-	const int n_snp = nHaplo[2];    // the number of SNPs in the classifier ii
-	int d = hamming_dist(pGeno, n_snp, p1, p2);
-	// since exp_log_min_rare_freq[>HAMM_DIST_MAX] = 0
-	if (d <= HAMM_DIST_MAX)
+	// for each classifier
+	for (int i_c=0; i_c < n_classifier; i_c++)
 	{
-		const numeric fq1 = *(__global numeric*)(p1 + OFFSET_HAPLO_FREQ);
-		const int h1 = *(__global int*)(p1 + OFFSET_ALLELE_INDEX);
-		const numeric fq2 = *(__global numeric*)(p2 + OFFSET_HAPLO_FREQ);
-		const int h2 = *(__global int*)(p2 + OFFSET_ALLELE_INDEX);
-		// genotype frequency
-		numeric ff = fq1 * fq2;
-		if (i1 != i2) ff += ff;
-		ff *= exp_log_min_rare_freq[d];  // account for mutation and error rate
-		// update
-		int k = h2 + (h1 * ((n_hla << 1) - h1 - 1) >> 1);
-		atomic_fadd(&outProb[num_hla_geno*ii + k], ff);
+		const int n_haplo = nHaplo[0];  // the number of haplotypes
+		if (i2 < n_haplo)
+		{
+			// haplotype list for the classifier i_c
+			__global const unsigned char *pH = pHaplo + (nHaplo[1] << SIZEOF_THAPLO_SHIFT);
+			// the first haplotype
+			__global const unsigned char *p1 = pH + (i1 << SIZEOF_THAPLO_SHIFT);
+			// the second haplotype
+			__global const unsigned char *p2 = pH + (i2 << SIZEOF_THAPLO_SHIFT);
+			// hamming distance
+			const int n_snp = nHaplo[2];  // the number of SNPs in the classifier i_c
+			int d = hamming_dist(pGeno, n_snp, p1, p2);
+			// since exp_log_min_rare_freq[>HAMM_DIST_MAX] = 0
+			if (d <= HAMM_DIST_MAX)
+			{
+				const numeric fq1 = *(__global numeric*)(p1 + OFFSET_HAPLO_FREQ);
+				const int h1 = *(__global int*)(p1 + OFFSET_ALLELE_INDEX);
+				const numeric fq2 = *(__global numeric*)(p2 + OFFSET_HAPLO_FREQ);
+				const int h2 = *(__global int*)(p2 + OFFSET_ALLELE_INDEX);
+				// genotype frequency
+				numeric ff = fq1 * fq2;
+				if (i1 != i2) ff += ff;
+				ff *= exp_log_min_rare_freq[d];  // account for mutation and error rate
+				// update
+				int k = h2 + (h1 * ((n_hla << 1) - h1 - 1) >> 1);
+				atomic_fadd(&outProb[k], ff);
+			}
+		}
+		nHaplo += 4;
+		pGeno += SIZEOF_TGENOTYPE;
+		outProb += num_hla_geno;
 	}
 }
 "
