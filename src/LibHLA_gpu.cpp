@@ -722,16 +722,32 @@ static void predict_init(int n_hla, int nClassifier, const THaplotype *const pHa
 	// GPU memory
 	cl_mem mem_rare_freq = gpu_f64_pred_flag ? mem_rare_freq_f64 : mem_rare_freq_f32;
 
+	// pred_calc_addprob -- weight
+	GPU_CREATE_MEM_V(mem_pred_weight, CL_MEM_READ_WRITE, sizeof(double)*nClassifier,
+		NULL);
+
+	// the numbers of haplotypes
+	GPU_CREATE_MEM_V(mem_pred_haplo_num, CL_MEM_READ_ONLY, sizeof(int)*4*nClassifier,
+		NULL);
+
 	// memory for SNP genotypes
-	GPU_CREATE_MEM_V(mem_snpgeno, CL_MEM_READ_ONLY, sizeof(TGenotype)*nClassifier, NULL);
+	GPU_CREATE_MEM_V(mem_snpgeno, CL_MEM_READ_ONLY, sizeof(TGenotype)*nClassifier,
+		NULL);
+
+	// pred_calc_prob -- out_prob
+	msize_prob_buffer_each = size_hla *
+		(gpu_f64_pred_flag ? sizeof(double) : sizeof(float));
+	msize_prob_buffer_total = msize_prob_buffer_each * nClassifier;
+	GPU_CREATE_MEM_V(mem_prob_buffer, CL_MEM_READ_WRITE, msize_prob_buffer_total, NULL);
 
 	// haplotype lists for all classifiers
-	vector<int> nhaplo_buf(4*nClassifier);
 	const size_t msize_haplo = sizeof(THaplotype)*sum_n_haplo;
 	GPU_CREATE_MEM_V(mem_haplo_list, CL_MEM_READ_ONLY, msize_haplo, NULL);
 	{
 		GPU_MEM_MAP(M, THaplotype, mem_haplo_list, sum_n_haplo, false);
+		GPU_MEM_MAP(H, int, mem_pred_haplo_num, 4*nClassifier, false);
 		THaplotype *p = M.ptr();
+		int *nhaplo_buf = H.ptr();
 		for (int i=0; i < nClassifier; i++)
 		{
 			size_t m = nHaplo[i];
@@ -742,20 +758,6 @@ static void predict_init(int n_hla, int nClassifier, const THaplotype *const pHa
 			p += m;
 		}
 	}
-
-	// the numbers of haplotypes
-	GPU_CREATE_MEM_V(mem_pred_haplo_num, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
-		sizeof(int)*nhaplo_buf.size(), (void*)&nhaplo_buf[0]);
-
-	// pred_calc_prob -- out_prob
-	msize_prob_buffer_each = size_hla *
-		(gpu_f64_pred_flag ? sizeof(double) : sizeof(float));
-	msize_prob_buffer_total = msize_prob_buffer_each * nClassifier;
-	GPU_CREATE_MEM_V(mem_prob_buffer, CL_MEM_READ_WRITE, msize_prob_buffer_total, NULL);
-
-	// pred_calc_addprob -- weight
-	GPU_CREATE_MEM_V(mem_pred_weight, CL_MEM_READ_WRITE, sizeof(double)*nClassifier,
-		NULL);
 
 	// arguments for gpu_kl_pred_calc, pred_calc_prob
 	int sz_hla = size_hla;
