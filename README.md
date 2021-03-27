@@ -181,7 +181,7 @@ pred <- hlaPredict_gpu(model, train.geno)
 summary(pred)
 
 # compare
-(comp <- hlaCompareAllele(hla, pred, allele.limit=model, call.threshold=0)$overall)
+(comp <- hlaCompareAllele(hla, pred, call.threshold=0)$overall)
 ```
 
 ```
