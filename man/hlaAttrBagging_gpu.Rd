@@ -9,7 +9,7 @@
 }
 \usage{
 hlaAttrBagging_gpu(hla, snp, nclassifier=100L, mtry=c("sqrt", "all", "one"),
-    prune=TRUE, na.rm=TRUE, verbose=TRUE, verbose.detail=FALSE)
+	prune=TRUE, na.rm=TRUE, verbose=TRUE, verbose.detail=FALSE)
 hlaAttrBagging_MultiGPU(gpus, hla, snp, auto.save="", nclassifier=100L,
 	mtry=c("sqrt", "all", "one"), prune=TRUE, na.rm=TRUE, train_prec="auto",
 	verbose=TRUE)
@@ -36,15 +36,15 @@ hlaAttrBagging_MultiGPU(gpus, hla, snp, auto.save="", nclassifier=100L,
 	\item{verbose.detail}{if TRUE, show more information}
 }
 \details{
-    \code{mtry} (the number of variables randomly sampled as candidates
-        for each selection, "sqrt" by default):
-    \code{"sqrt"}, using the square root of the total number of candidate SNPs;
-    \code{"all"}, using all candidate SNPs;
-    \code{"one"}, using one SNP;
-    \code{an integer}, specifying the number of candidate SNPs;
-    \code{0 < r < 1}, the number of candidate SNPs is
-        "r * the total number of SNPs".
-    \code{prune}: there is no significant difference on accuracy between
+	\code{mtry} (the number of variables randomly sampled as candidates
+		for each selection, "sqrt" by default):
+	\code{"sqrt"}, using the square root of the total number of candidate SNPs;
+	\code{"all"}, using all candidate SNPs;
+	\code{"one"}, using one SNP;
+	\code{an integer}, specifying the number of candidate SNPs;
+	\code{0 < r < 1}, the number of candidate SNPs is
+		"r * the total number of SNPs".
+	\code{prune}: there is no significant difference on accuracy between
 parsimonious and exhaustive forward variable selections. If \code{prune=TRUE},
 the searching algorithm performs a parsimonious forward variable selection:
 if a new SNP predictor reduces the current out-of-bag accuracy, then it is
@@ -59,8 +59,7 @@ on non-informative SNP markers.
 	\item{sample.id}{the sample IDs}
 	\item{snp.id}{the SNP IDs}
 	\item{snp.position}{SNP position in basepair}
-	\item{snp.allele}{a vector of characters with the format of
-		``A allele/B allele''}
+	\item{snp.allele}{a vector of characters with the format of ``A allele/B allele''}
 	\item{snp.allele.freq}{the allele frequencies}
 	\item{hla.locus}{the name of HLA locus}
 	\item{hla.allele}{the HLA alleles used in the model}
@@ -126,7 +125,7 @@ summary(model)
 
 # validation
 # call hlaPredict or hlaPredict_gpu
-pred <- hlaPredict(model, test.geno)
+pred <- hlaPredict_gpu(model, test.geno)
 summary(pred)
 
 # compare

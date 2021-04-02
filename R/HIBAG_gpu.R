@@ -628,12 +628,12 @@ hlaAttrBagging_MultiGPU <- function(gpus, hla, snp, auto.save="", nclassifier=10
 # Predict HLA types from unphased SNP data
 #
 
-hlaPredict_gpu <- function(object, snp,
-	type=c("response", "prob", "response+prob"), vote=c("prob", "majority"),
-	allele.check=TRUE, match.type=c("Position", "RefSNP+Position", "RefSNP"),
+hlaPredict_gpu <- function(model, snp,
+    type=c("response", "dosage", "prob", "response+prob"), vote=c("prob", "majority"),
+    allele.check=TRUE, match.type=c("Position", "Pos+Allele", "RefSNP+Position", "RefSNP"),
 	same.strand=FALSE, verbose=TRUE)
 {
-	stopifnot(inherits(object, "hlaAttrBagClass"))
+	stopifnot(inherits(model, "hlaAttrBagClass"))
 
 	# GPU platform
 	on.exit({ HIBAG:::.hlaClearGPU() })
@@ -649,8 +649,8 @@ hlaPredict_gpu <- function(object, snp,
 	attr(cl, "proc_ptr") <- .packageEnv$gpu_proc_ptr
 
 	# run
-	hlaPredict(object, snp, cl, type, vote, allele.check, match.type, same.strand,
-		verbose)
+	hlaPredict(model, snp, cl=cl, type=type, vote=vote, allele.check=allele.check,
+		match.type=match.type, same.strand=same.strand, verbose=verbose)
 }
 
 

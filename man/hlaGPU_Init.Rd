@@ -12,8 +12,8 @@ hlaGPU_Init(device=NA_integer_, train_prec=c("auto", "half", "mixed", "single", 
 }
 \arguments{
 	\item{device}{a \code{clDeviceID} object from \link[OpenCL]{oclDevices}; or
-	    a numeric value: 1 for the first device, 2 for the second device, ...,
-	    \code{NA_integer_} for the last selected device}
+		a numeric value: 1 for the first device, 2 for the second device, ...,
+		\code{NA_integer_} for the last selected device}
 	\item{train_prec}{"double": 64-bit floating-point numbers; "single": 32-bit
 		floating-point numbers; "mixed": a mixed precision between half and float;
 		"half": half precision (16 bits); or "auto", see details}
