@@ -308,7 +308,7 @@ __kernel void build_calc_prob(
 	// allele index (always h1 <= h2)
 	int h1 = *(__global const int*)(p1 + OFFSET_ALLELE_INDEX);
 	int h2 = *(__global const int*)(p2 + OFFSET_ALLELE_INDEX);
-	out_prob += h2 + (h1 * ((n_hla << 1) - h1 - 1) >> 1);
+	out_prob += (h2 + (h1 * ((n_hla << 1) - h1 - 1) >> 1)) * n_samp;
 	// HLA-allele-specific haplotypes
 #if FIXED_NUM_INT_HAMM==128
 	const uint4 H1 = *((__global const uint4 *)p1);
@@ -338,9 +338,8 @@ __kernel void build_calc_prob(
 			// account for mutation and error rate
 			numeric ff_d = ff * exp_log_min_rare_freq[d];
 			if (ff_d > 0)
-				atomic_fadd(out_prob, ff_d);
+				atomic_fadd(&out_prob[ii], ff_d);
 		}
-		out_prob += num_hla_geno;
 	}
 }
 "
@@ -369,22 +368,25 @@ __kernel void build_calc_oob(__global int *out_err_cnt,
 	__local numeric local_max[LOCAL_SIZE_D1];
 	__local int local_idx[LOCAL_SIZE_D1];
 
-	const int i = get_local_id(0);
-	const int i_samp = get_global_id(1);
-	prob += num_hla_geno * i_samp;
+	const uint i = get_local_id(0);
+	const uint i_samp = get_global_id(1);      // sample index
+	const uint n_samp = get_global_size(1);    // # of samples
+	const uint n_tot  = n_samp * num_hla_geno;
+	const uint n_step = n_samp * LOCAL_SIZE_D1;
 
 	numeric max_pb = 0;
-	int max_idx = -1;
-	for (int k=i; k < num_hla_geno; k+=LOCAL_SIZE_D1)
+	int max_idx = -1, i_idx = i;
+	for (uint k=i*n_samp + i_samp; k < n_tot; k+=n_step)
 	{
 		if (max_pb < prob[k])
-			{ max_pb = prob[k]; max_idx = k; }
+			{ max_pb = prob[k]; max_idx = i_idx; }
+		i_idx += LOCAL_SIZE_D1;
 	}
 	local_max[i] = max_pb;
 	local_idx[i] = max_idx;
 
 	// reduced, find max
-	for (int n=LOCAL_SIZE_D1>>1; n > 0; n >>= 1)
+	for (uint n=LOCAL_SIZE_D1>>1; n > 0; n >>= 1)
 	{
 		barrier(CLK_LOCAL_MEM_FENCE);
 		if (i < n)
@@ -432,17 +434,20 @@ __kernel void build_calc_ib(__global numeric *out_prob,
 {
 	__local numeric local_sum[LOCAL_SIZE_D1];
 
-	const int i = get_local_id(0);
-	const int i_samp = get_global_id(1);
-	prob += num_hla_geno * i_samp;
+	const uint i = get_local_id(0);
+	const uint i_samp = get_global_id(1);      // sample index
+	const uint n_samp = get_global_size(1);    // # of samples
+	const uint n_tot  = n_samp * num_hla_geno;
+	const uint n_step = n_samp * LOCAL_SIZE_D1;
+	prob += i_samp;
 
 	numeric sum = 0;
-	for (int k=i; k < num_hla_geno; k+=LOCAL_SIZE_D1)
+	for (uint k=i*n_samp; k < n_tot; k+=n_step)
 		sum += prob[k];
 	local_sum[i] = sum;
 
 	// reduced sum of local_sum
-	for (int n=LOCAL_SIZE_D1>>1; n > 0; n >>= 1)
+	for (uint n=LOCAL_SIZE_D1>>1; n > 0; n >>= 1)
 	{
 		barrier(CLK_LOCAL_MEM_FENCE);
 		if (i < n) local_sum[i] += local_sum[i + n];
@@ -463,7 +468,7 @@ __kernel void build_calc_ib(__global numeric *out_prob,
 			int h2 = *(__global int *)(p + OFFSET_GENO_HLA_A2);  // aux_hla_type.Allele2
 			int k = h2 + (h1 * ((n_hla << 1) - h1 - 1) >> 1);
 			// log likelihood
-			numeric pb = prob[k];
+			numeric pb = prob[k*n_samp];
 			if (pb > 0)
 			{
 				sum = b * log(pb / sum);
