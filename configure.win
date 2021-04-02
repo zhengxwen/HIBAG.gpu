@@ -4,14 +4,11 @@ if test -z "$OCL"; then
    echo ''
    echo 'ERROR: OCL not set!'
    echo ''
-   echo 'You will need a working OpenCL SDK with headers'
-   echo 'and libraries for both i386 and x64'
-   echo ''
+   echo 'You will need a working OpenCL SDK with headers and libraries for both i386 and x64.'
    echo 'Set OCL to the root of the SDK'
    echo ''
-   echo 'You can also set individial variables OCLINC,'
-   echo 'OCL32LIB and OCL64LIB. If they are not set,'
-   echo 'the default layout will be assumed.'
+   echo 'You can also set individial variables OCLINC, OCL32LIB and OCL64LIB.'
+   echo 'If they are not set, the default layout will be assumed.'
    echo ''
    exit 1
 fi
