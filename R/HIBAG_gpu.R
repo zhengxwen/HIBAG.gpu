@@ -235,7 +235,7 @@ hlaAttrBagging_gpu <- function(hla, snp, nclassifier=100L,
     {
 		if (verbose)
 			cat("Calculating matching proportion:\n")
-		pd <- hlaPredict_gpu(mod, snp, verbose=FALSE)
+		pd <- hlaPredict_gpu(mod, snp, match.type="Pos+Allele", verbose=FALSE)
 		mod$matching <- pd$value$matching
 		if (verbose)
 		{
@@ -600,7 +600,7 @@ hlaAttrBagging_MultiGPU <- function(gpus, hla, snp, auto.save="", nclassifier=10
 	# matching proportion
 	if (verbose)
 		cat("Calculating matching proportion:\n")
-	pd <- hlaPredict_gpu(mod, snp, verbose=FALSE)
+	pd <- hlaPredict_gpu(mod, snp, match.type="Pos+Allele", verbose=FALSE)
 	mod$matching <- pd$value$matching
 	mobj <- NULL
 	if (auto.save != "")
@@ -629,11 +629,14 @@ hlaAttrBagging_MultiGPU <- function(gpus, hla, snp, auto.save="", nclassifier=10
 #
 
 hlaPredict_gpu <- function(model, snp,
-    type=c("response", "dosage", "prob", "response+prob"), vote=c("prob", "majority"),
-    allele.check=TRUE, match.type=c("Position", "Pos+Allele", "RefSNP+Position", "RefSNP"),
+	type=c("response", "dosage", "prob", "response+prob"), vote=c("prob", "majority"),
+	allele.check=TRUE, match.type=c("Position", "Pos+Allele", "RefSNP+Position", "RefSNP"),
 	same.strand=FALSE, verbose=TRUE)
 {
 	stopifnot(inherits(model, "hlaAttrBagClass"))
+	type <- match.arg(type)
+	vote <- match.arg(vote)
+	match.type <- match.arg(match.type)
 
 	# GPU platform
 	on.exit({ HIBAG:::.hlaClearGPU() })
