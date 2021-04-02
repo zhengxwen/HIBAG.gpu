@@ -1,4 +1,12 @@
-# configure.win is from the OpenCL package
+# this file is created and revised, based on configure.win in the OpenCL package
+
+if test -z "$OCL"; then
+   if test -n "$CUDA_PATH"; then
+      echo ''
+      echo 'Find Nvidia CUDA toolkit: $CUDA_PATH, and set OCL=$CUDA_PATH'
+      OCL="$CUDA_PATH"
+   fi
+fi
 
 if test -z "$OCL"; then
    echo ''
