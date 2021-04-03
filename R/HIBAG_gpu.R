@@ -83,28 +83,30 @@
 #
 
 hlaAttrBagging_gpu <- function(hla, snp, nclassifier=100L,
-	mtry=c("sqrt", "all", "one"), prune=TRUE, na.rm=TRUE,
+	mtry=c("sqrt", "all", "one"), prune=TRUE, na.rm=TRUE, mono.rm=TRUE, maf=NaN,
 	verbose=TRUE, verbose.detail=FALSE)
 {
 	# check
 	stopifnot(inherits(hla, "hlaAlleleClass"))
 	stopifnot(inherits(snp, "hlaSNPGenoClass"))
-    stopifnot(is.numeric(nclassifier), length(nclassifier)==1L)
-    stopifnot(is.character(mtry) | is.numeric(mtry), length(mtry)>0L)
-    stopifnot(is.logical(prune), length(prune)==1L)
-    stopifnot(is.logical(na.rm), length(na.rm)==1L)
+	stopifnot(is.numeric(nclassifier), length(nclassifier)==1L)
+	stopifnot(is.character(mtry) | is.numeric(mtry), length(mtry)>0L)
+	stopifnot(is.logical(prune), length(prune)==1L)
+	stopifnot(is.logical(na.rm), length(na.rm)==1L)
+	stopifnot(is.logical(mono.rm), length(mono.rm)==1L)
+	stopifnot(is.numeric(maf), length(maf)==1L)
 	stopifnot(is.logical(verbose), length(verbose)==1L)
 	stopifnot(is.logical(verbose.detail), length(verbose.detail)==1L)
 	if (verbose.detail) verbose <- TRUE
 
-    if (is.na(nclassifier)) nclassifier <- 0L
-    with.in.call <- nclassifier==0L
-    with.matching <- (nclassifier > 0L)
-    if (!with.matching)
-    {
-        nclassifier <- -nclassifier
-        if (nclassifier == 0L) nclassifier <- 1L
-    }
+	if (is.na(nclassifier)) nclassifier <- 0L
+	with.in.call <- nclassifier==0L
+	with.matching <- (nclassifier > 0L)
+	if (!with.matching)
+	{
+		nclassifier <- -nclassifier
+		if (nclassifier == 0L) nclassifier <- 1L
+	}
 
 	# GPU platform
 	on.exit({ if (!with.in.call) .gpu_build_free_memory() })
@@ -143,22 +145,46 @@ hlaAttrBagging_gpu <- function(hla, snp, nclassifier=100L,
 	tmp.snp.position <- snp$snp.position
 	tmp.snp.allele <- snp$snp.allele
 
-	# remove mono-SNPs
-	snpsel <- rowMeans(snp.geno, na.rm=TRUE)
-	snpsel[!is.finite(snpsel)] <- 0
-	snpsel <- (0 < snpsel) & (snpsel < 2)
-	if (sum(!snpsel) > 0L)
+	# remove mono-SNPs and MAF
+	msg <- NULL
+	if (mono.rm || is.finite(maf))
 	{
-		snp.geno <- snp.geno[snpsel, ]
-		if (verbose)
+		msg <- paste0("    MAF threshold: ", maf, "\n")
+		mf <- rowMeans(snp.geno, na.rm=TRUE) * 0.5
+		mf <- pmin(mf, 1-mf)
+		mf[!is.finite(mf)] <- 0
+		snpsel <- rep(TRUE, length(mf))
+		if (mono.rm)
 		{
-			a <- sum(!snpsel)
+			n0 <- sum(snpsel)
+			snpsel <- snpsel & (mf > 0)
+			n1 <- sum(snpsel)
+			a <- n0 - n1
 			if (a > 0L)
-				cat(sprintf("Exclude %d monomorphic SNP%s\n", a, .plural(a)))
+			{
+				msg <- paste0(msg, "    excluding ", a, " monomorphic SNP",
+					.plural(a), "\n")
+			}
 		}
-		tmp.snp.id <- tmp.snp.id[snpsel]
-		tmp.snp.position <- tmp.snp.position[snpsel]
-		tmp.snp.allele <- tmp.snp.allele[snpsel]
+		if (is.finite(maf))
+		{
+			n0 <- sum(snpsel)
+			snpsel <- snpsel & (mf >= maf)
+			n1 <- sum(snpsel)
+			a <- n0 - n1
+			if (a > 0L)
+			{
+				msg <- paste0(msg, "    excluding ", a, " SNP", .plural(a),
+					" for MAF threshold\n")
+			}
+		}
+		if (!all(snpsel))
+		{
+			tmp.snp.id <- tmp.snp.id[snpsel]
+			tmp.snp.position <- tmp.snp.position[snpsel]
+			tmp.snp.allele <- tmp.snp.allele[snpsel]
+			snp.geno <- snp.geno[snpsel, , drop=FALSE]
+		}
 	}
 
 	if (length(samp.id) <= 0L)
@@ -190,12 +216,14 @@ hlaAttrBagging_gpu <- function(hla, snp, nclassifier=100L,
 	{
 		cat(sprintf("Build a HIBAG model with %d individual classifier%s:\n",
 			nclassifier, .plural(nclassifier)))
-		cat("# of SNPs randomly sampled as candidates for each selection: ",
-			mtry, "\n", sep="")
-		cat("# of SNPs: ", n.snp, ", # of samples: ", n.samp, "\n", sep="")
+        cat(msg)
+        cat("    # of SNPs randomly sampled as candidates for each selection: ",
+            mtry, "\n", sep="")
+        cat("    # of SNPs: ", n.snp, "\n", sep="")
+        cat("    # of samples: ", n.samp, "\n", sep="")
         s <- ifelse(!grepl("^KIR", hla$locus), "HLA", "KIR")
-        cat("# of unique ", s, " alleles: ", n.hla, "\n", sep="")
-		cat("using ", .packageEnv$train_prec,
+        cat("    # of unique ", s, " alleles: ", n.hla, "\n", sep="")
+		cat("Using ", .packageEnv$train_prec,
 			"-precision floating-point numbers in GPU computing\n", sep="")
 	}
 
@@ -309,7 +337,7 @@ recvOneResult <- function(cl)
 
 
 hlaAttrBagging_MultiGPU <- function(gpus, hla, snp, auto.save="", nclassifier=100L,
-	mtry=c("sqrt", "all", "one"), prune=TRUE, na.rm=TRUE,
+	mtry=c("sqrt", "all", "one"), prune=TRUE, na.rm=TRUE, mono.rm=TRUE, maf=NaN,
 	train_prec="auto", verbose=TRUE)
 {
 	# check
@@ -323,6 +351,8 @@ hlaAttrBagging_MultiGPU <- function(gpus, hla, snp, auto.save="", nclassifier=10
 	stopifnot(is.character(mtry) | is.numeric(mtry), length(mtry)>0L)
 	stopifnot(is.logical(prune), length(prune)==1L)
 	stopifnot(is.logical(na.rm), length(na.rm)==1L)
+	stopifnot(is.logical(mono.rm), length(mono.rm)==1L)
+	stopifnot(is.numeric(maf), length(maf)==1L)
 	stopifnot(is.logical(verbose), length(verbose)==1L)
 	stopifnot(is.character(train_prec),
 		length(train_prec)==1L || length(train_prec)==length(gpus))
@@ -385,22 +415,46 @@ hlaAttrBagging_MultiGPU <- function(gpus, hla, snp, auto.save="", nclassifier=10
 	tmp.snp.position <- snp$snp.position
 	tmp.snp.allele <- snp$snp.allele
 
-	# remove mono-SNPs
-	snpsel <- rowMeans(snp.geno, na.rm=TRUE)
-	snpsel[!is.finite(snpsel)] <- 0
-	snpsel <- (0 < snpsel) & (snpsel < 2)
-	if (sum(!snpsel) > 0L)
+	# remove mono-SNPs and MAF
+	msg <- NULL
+	if (mono.rm || is.finite(maf))
 	{
-		snp.geno <- snp.geno[snpsel, ]
-		if (verbose)
+		msg <- paste0("    MAF threshold: ", maf, "\n")
+		mf <- rowMeans(snp.geno, na.rm=TRUE) * 0.5
+		mf <- pmin(mf, 1-mf)
+		mf[!is.finite(mf)] <- 0
+		snpsel <- rep(TRUE, length(mf))
+		if (mono.rm)
 		{
-			a <- sum(!snpsel)
+			n0 <- sum(snpsel)
+			snpsel <- snpsel & (mf > 0)
+			n1 <- sum(snpsel)
+			a <- n0 - n1
 			if (a > 0L)
-				cat(sprintf("Exclude %d monomorphic SNP%s\n", a, .plural(a)))
+			{
+				msg <- paste0(msg, "    excluding ", a, " monomorphic SNP",
+					.plural(a), "\n")
+			}
 		}
-		tmp.snp.id <- tmp.snp.id[snpsel]
-		tmp.snp.position <- tmp.snp.position[snpsel]
-		tmp.snp.allele <- tmp.snp.allele[snpsel]
+		if (is.finite(maf))
+		{
+			n0 <- sum(snpsel)
+			snpsel <- snpsel & (mf >= maf)
+			n1 <- sum(snpsel)
+			a <- n0 - n1
+			if (a > 0L)
+			{
+				msg <- paste0(msg, "    excluding ", a, " SNP", .plural(a),
+					" for MAF threshold\n")
+			}
+		}
+		if (!all(snpsel))
+		{
+			tmp.snp.id <- tmp.snp.id[snpsel]
+			tmp.snp.position <- tmp.snp.position[snpsel]
+			tmp.snp.allele <- tmp.snp.allele[snpsel]
+			snp.geno <- snp.geno[snpsel, , drop=FALSE]
+		}
 	}
 
 	if (length(samp.id) <= 0L)
@@ -420,6 +474,7 @@ hlaAttrBagging_MultiGPU <- function(gpus, hla, snp, auto.save="", nclassifier=10
 	mtry <- .set_mtry(mtry, n.snp)
 	if (verbose)
 	{
+		cat(msg)
 		cat("    # of SNPs randomly sampled as candidates for each selection: ",
 			mtry, "\n", sep="")
 		cat("    # of SNPs: ", n.snp, "\n", sep="")

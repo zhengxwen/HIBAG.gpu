@@ -9,10 +9,10 @@
 }
 \usage{
 hlaAttrBagging_gpu(hla, snp, nclassifier=100L, mtry=c("sqrt", "all", "one"),
-	prune=TRUE, na.rm=TRUE, verbose=TRUE, verbose.detail=FALSE)
+	prune=TRUE, na.rm=TRUE, mono.rm=TRUE, maf=NaN, verbose=TRUE, verbose.detail=FALSE)
 hlaAttrBagging_MultiGPU(gpus, hla, snp, auto.save="", nclassifier=100L,
-	mtry=c("sqrt", "all", "one"), prune=TRUE, na.rm=TRUE, train_prec="auto",
-	verbose=TRUE)
+	mtry=c("sqrt", "all", "one"), prune=TRUE, na.rm=TRUE, mono.rm=TRUE, maf=NaN,
+	train_prec="auto", verbose=TRUE)
 }
 \arguments{
 	\item{hla}{the training HLA types, an object of
@@ -25,6 +25,8 @@ hlaAttrBagging_MultiGPU(gpus, hla, snp, auto.save="", nclassifier=100L,
 	\item{prune}{if TRUE, to perform a parsimonious forward variable selection,
 		otherwise, exhaustive forward variable selection. See details}
 	\item{na.rm}{if TRUE, remove the samples with missing HLA types}
+    \item{mono.rm}{if TRUE, remove monomorphic SNPs}
+    \item{maf}{MAF threshold for SNP filter, excluding any SNP with MAF < \code{maf}}
 	\item{gpus}{a vector of GPU device IDs, \code{gpus} may have duplicated IDs
 		to maximize the GPU load}
 	\item{auto.save}{specify a autosaved file name for an R object
