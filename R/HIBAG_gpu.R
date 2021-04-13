@@ -684,8 +684,9 @@ hlaAttrBagging_MultiGPU <- function(gpus, hla, snp, auto.save="", nclassifier=10
 #
 
 hlaPredict_gpu <- function(model, snp,
-	type=c("response", "dosage", "prob", "response+prob"), vote=c("prob", "majority"),
-	allele.check=TRUE, match.type=c("Position", "Pos+Allele", "RefSNP+Position", "RefSNP"),
+	type=c("response+dosage", "response", "prob", "response+prob"),
+	vote=c("prob", "majority"), allele.check=TRUE,
+	match.type=c("Position", "Pos+Allele", "RefSNP+Position", "RefSNP"),
 	same.strand=FALSE, verbose=TRUE)
 {
 	stopifnot(inherits(model, "hlaAttrBagClass"))

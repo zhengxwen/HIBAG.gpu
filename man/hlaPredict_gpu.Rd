@@ -7,7 +7,7 @@
     To predict HLA type based on a HIBAG model with a GPU device.
 }
 \usage{
-hlaPredict_gpu(model, snp, type=c("response", "dosage", "prob", "response+prob"),
+hlaPredict_gpu(model, snp, type=c("response+dosage", "response", "prob", "response+prob"),
 	vote=c("prob", "majority"), allele.check=TRUE,
 	match.type=c("Position", "Pos+Allele", "RefSNP+Position", "RefSNP"),
 	same.strand=FALSE, verbose=TRUE)
@@ -15,9 +15,10 @@ hlaPredict_gpu(model, snp, type=c("response", "dosage", "prob", "response+prob")
 \arguments{
 	\item{model}{a model of \code{\link{hlaAttrBagClass}}}
 	\item{snp}{a genotypic object of \code{\link{hlaSNPGenoClass}}}
-	\item{type}{"response": return the best-guess type plus its posterior
-		probability; "prob": return all posterior probabilities;
-		"response+prob": return the best-guess and all posterior probabilities}
+    \item{type}{"response+dosage": return the best-guess types and dosages for each
+        allele (by default); "response": return the best-guess types with its posterior
+        probability; "prob": return all posterior probabilities;
+        "response+prob": return the best-guess and all posterior probabilities}
 	\item{vote}{\code{"prob"} (default behavior) -- make a prediction based on
 		the averaged posterior probabilities from all individual classifiers;
 		\code{"majority"} -- majority voting from all individual
