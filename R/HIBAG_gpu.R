@@ -687,7 +687,7 @@ hlaPredict_gpu <- function(model, snp,
 	type=c("response+dosage", "response", "prob", "response+prob"),
 	vote=c("prob", "majority"), allele.check=TRUE,
 	match.type=c("Position", "Pos+Allele", "RefSNP+Position", "RefSNP"),
-	same.strand=FALSE, verbose=TRUE)
+	same.strand=FALSE, verbose=TRUE, verbose.match=TRUE)
 {
 	stopifnot(inherits(model, "hlaAttrBagClass"))
 	type <- match.arg(type)
@@ -709,7 +709,8 @@ hlaPredict_gpu <- function(model, snp,
 
 	# run
 	hlaPredict(model, snp, cl=cl, type=type, vote=vote, allele.check=allele.check,
-		match.type=match.type, same.strand=same.strand, verbose=verbose)
+		match.type=match.type, same.strand=same.strand, verbose=verbose,
+		verbose.match=verbose.match)
 }
 
 

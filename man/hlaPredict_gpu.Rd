@@ -10,7 +10,7 @@
 hlaPredict_gpu(model, snp, type=c("response+dosage", "response", "prob", "response+prob"),
 	vote=c("prob", "majority"), allele.check=TRUE,
 	match.type=c("Position", "Pos+Allele", "RefSNP+Position", "RefSNP"),
-	same.strand=FALSE, verbose=TRUE)
+	same.strand=FALSE, verbose=TRUE, verbose.match=TRUE)
 }
 \arguments{
 	\item{model}{a model of \code{\link{hlaAttrBagClass}}}
@@ -32,6 +32,8 @@ hlaPredict_gpu(model, snp, type=c("response+dosage", "response", "prob", "respon
 		(e.g., forward strand); otherwise, \code{FALSE} not assuming whether
 		on the same strand or not}
 	\item{verbose}{if TRUE, show information}
+    \item{verbose.match}{if TRUE, show missing SNP proportions for different
+        \code{match.type}}
 }
 \value{
 	Return a \code{\link{hlaAlleleClass}} object with posterior probabilities
