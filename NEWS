@@ -1,10 +1,17 @@
-CHANGES IN VERSION 0.9.2
+CHANGES IN VERSION 0.99.0 (2021 Oct)
 -------------------------
 
-    o add KIR information
+    o remove the dependency of the OpenCL R package
+
+    o reimplement the HIBAG GPU algorithm for speed-up
+
+    o new implementation using half and mixed precisions
+
+    o a new function `hlaAttrBagging_MultiGPU()` to leverage multiple GPU
+      devices
 
 
-CHANGES IN VERSION 0.9.1
+CHANGES IN VERSION 0.9.1 (2018 Feb)
 -------------------------
 
     o optimize the GPU kernel by avoiding unnecessary single-precision calculations

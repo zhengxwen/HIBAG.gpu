@@ -10,7 +10,7 @@ R package – a GPU-based extension for the [HIBAG](https://github.com/zhengxwen
 
 * OpenCL C library and header files ([https://www.khronos.org](https://www.khronos.org))
 
-* [HIBAG](https://github.com/zhengxwen/HIBAG) R package (≥ v1.26.1)
+* [HIBAG](https://github.com/zhengxwen/HIBAG) R package (≥ v1.28.0)
 
 
 ## News
