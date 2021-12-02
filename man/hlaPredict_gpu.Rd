@@ -15,10 +15,10 @@ hlaPredict_gpu(model, snp, type=c("response+dosage", "response", "prob", "respon
 \arguments{
 	\item{model}{a model of \code{\link{hlaAttrBagClass}}}
 	\item{snp}{a genotypic object of \code{\link{hlaSNPGenoClass}}}
-    \item{type}{"response+dosage": return the best-guess types and dosages for each
-        allele (by default); "response": return the best-guess types with its posterior
-        probability; "prob": return all posterior probabilities;
-        "response+prob": return the best-guess and all posterior probabilities}
+	\item{type}{"response+dosage": return the best-guess types and dosages for
+		each allele (by default); "response": return the best-guess types with
+		its posterior probability; "prob": return all posterior probabilities;
+		"response+prob": return the best-guess and all posterior probabilities}
 	\item{vote}{\code{"prob"} (default behavior) -- make a prediction based on
 		the averaged posterior probabilities from all individual classifiers;
 		\code{"majority"} -- majority voting from all individual
@@ -32,8 +32,8 @@ hlaPredict_gpu(model, snp, type=c("response+dosage", "response", "prob", "respon
 		(e.g., forward strand); otherwise, \code{FALSE} not assuming whether
 		on the same strand or not}
 	\item{verbose}{if TRUE, show information}
-    \item{verbose.match}{if TRUE, show missing SNP proportions for different
-        \code{match.type}}
+	\item{verbose.match}{if TRUE, show missing SNP proportions for different
+		\code{match.type}}
 }
 \value{
 	Return a \code{\link{hlaAlleleClass}} object with posterior probabilities
