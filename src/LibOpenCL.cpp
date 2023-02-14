@@ -1,7 +1,7 @@
 // ===============================================================
 //
 // HIBAG.gpu R package (GPU-based implementation for the HIBAG package)
-// Copyright (C) 2021    Xiuwen Zheng (zhengx@u.washington.edu)
+// Copyright (C) 2021-2023    Xiuwen Zheng (zhengx@u.washington.edu)
 // All rights reserved.
 //
 // This program is free software: you can redistribute it and/or modify
@@ -113,7 +113,8 @@ static const char *kl_nm_pred_calc_addprob = "pred_calc_addprob";
 const char *long_to_str(long long sz)
 {
 	static char numbuf[64];
-	char buf[64]; sprintf(buf, "%lld", sz);
+	char buf[64];
+	snprintf(buf, sizeof(buf), "%lld", sz);
 	char *p = numbuf + sizeof(numbuf) - 1; *p = 0;
 	size_t m = 0;
 	for (size_t n=strlen(buf); n > 0; n--)
@@ -216,9 +217,9 @@ static const char *gpu_err_msg(int err, const char *txt, const char *var=NULL)
 	const char *info = gpu_error_info(err);
 	if (var)
 	{
-		sprintf(buf, "%s '%s' (error: %d, %s).", txt, var, err, info);
+		snprintf(buf, sizeof(buf), "%s '%s' (error: %d, %s).", txt, var, err, info);
 	} else {
-		sprintf(buf, "%s (error: %d, %s).", txt, err, info);
+		snprintf(buf, sizeof(buf), "%s (error: %d, %s).", txt, err, info);
 	}
 	return buf;
 }

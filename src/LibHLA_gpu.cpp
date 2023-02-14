@@ -1,7 +1,7 @@
 // ===============================================================
 //
 // HIBAG.gpu R package (GPU-based implementation for the HIBAG package)
-// Copyright (C) 2017-2021    Xiuwen Zheng (zhengx@u.washington.edu)
+// Copyright (C) 2017-2023    Xiuwen Zheng (zhengx@u.washington.edu)
 // All rights reserved.
 //
 // This program is free software: you can redistribute it and/or modify
@@ -114,7 +114,7 @@ namespace HLA_LIB
 	static const char *err_text(const char *txt, int err)
 	{
 		static char buf[1024];
-		sprintf(buf, "%s (error: %d, %s).", txt, err, gpu_error_info(err));
+		snprintf(buf, sizeof(buf), "%s (error: %d, %s).", txt, err, gpu_error_info(err));
 		return buf;
 	}
 
@@ -137,7 +137,7 @@ namespace HLA_LIB
 			{
 				static char buffer[256];
 				if (fn == NULL) fn = "";
-				sprintf(buffer,
+				snprintf(buffer, sizeof(buffer),
 					"Unable to map '%s' to host memory [%lld bytes] (error: %d, %s)",
 					fn, (long long)(size*sizeof(TYPE)), err, gpu_error_info(err));
 				throw buffer;
@@ -963,7 +963,7 @@ SEXP multigpu_train(SEXP node, SEXP idx)
 		int i = Rf_asInteger(idx);
 		char buffer[1024];
 		struct tm *p = localtime(&now);
-		sprintf(buffer,
+		snprintf(buffer, sizeof(buffer),
 			"[%d] %04d-%02d-%02d %02d:%02d:%02d, worker %d, # of SNPs: %g, # of haplo: %g, oob acc: %0.1f%%\n",
 			i, p->tm_year+1900, p->tm_mon+1, p->tm_mday, p->tm_hour, p->tm_min, p->tm_sec,
 			i_node, s[0], s[1], s[2]*100);
