@@ -15,6 +15,10 @@ R package – a GPU-based extension for the [HIBAG](https://github.com/zhengxwen
 
 ## News
 
+**Changes in v0.99.1 (Y2023):**
+
+* the R global option variable 'HIBAG_GPU_INIT_TRAIN_PREC' can be set before loading the HIBAG.gpu package, see [NEWS](./NEWS)
+
 **Changes in v0.99.0 (Y2021):**
 
 * new implementation using half and mixed precisions
