@@ -1,3 +1,13 @@
+CHANGES IN VERSION 0.99.1 (2023 Nov)
+-------------------------
+
+    o the R global option variable 'HIBAG_GPU_INIT_TRAIN_PREC' can be set
+      before loading the HIBAG.gpu package via e.g.,
+      `options(HIBAG_GPU_INIT_TRAIN_PREC="half")`. It should be NULL (unset),
+      'auto', 'half', 'mixed', 'single' or 'double'. It can be used without
+      calling `hlaGPU_Init(,train_prec="")` to reset the training precision.
+
+
 CHANGES IN VERSION 0.99.0 (2021 Oct)
 -------------------------
 

@@ -1014,6 +1014,26 @@ hlaGPU_Init <- function(device=NA_integer_,
 		paste0(s[1L], ", ", s[2L])
 	}, "")
 
+	# initial training precision
+	init_prec <- getOption("HIBAG_GPU_INIT_TRAIN_PREC", "auto")
+	if (!is.character(init_prec) || length(init_prec)!=1L)
+	{
+		warning("'HIBAG_GPU_INIT_TRAIN_PREC' should be NULL or a string.",
+			call.=FALSE, immediate.=TRUE)
+		init_prec <- "auto"
+		showmsg("Using HIBAG_GPU_INIT_TRAIN_PREC=", init_prec, " instead")
+	}
+	if (!(init_prec %in% c("auto", "half", "mixed", "single", "double")))
+	{
+		init_prec <- "auto"
+		warning("'HIBAG_GPU_INIT_TRAIN_PREC' should be NULL, 'auto', 'half', ",
+			"'mixed', 'single' or 'double'.", call.=FALSE, immediate.=TRUE)
+		showmsg("Using HIBAG_GPU_INIT_TRAIN_PREC=", init_prec, " instead")
+	} else {
+		if (init_prec != "auto")
+			showmsg("Using HIBAG_GPU_INIT_TRAIN_PREC=", init_prec)
+	}
+
 	# find NVIDIA, AMD and Intel Graphics cards
 	i1 <- grep("NVIDIA", info, ignore.case=TRUE)
 	i2 <- grep("AMD", info, ignore.case=TRUE)
@@ -1032,7 +1052,7 @@ hlaGPU_Init <- function(device=NA_integer_,
 				stop("Need the OpenCL extension cl_khr_global_int32_base_atomics.")
 			# initialize
 			.packageEnv$gpu_init_dev_idx <- i
-			.gpu_init(i, "auto", "auto", showmsg)
+			.gpu_init(i, init_prec, "auto", showmsg)
 			TRUE
 		}, error=function(cond) {
 			showmsg(cond)
