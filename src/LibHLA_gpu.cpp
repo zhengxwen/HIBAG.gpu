@@ -303,17 +303,17 @@ SEXP ocl_build_init(SEXP R_nHLA, SEXP R_nSample, SEXP R_verbose)
 		}
 	}
 
-	// determine max # of haplo
+	// determine max # of haplo (using maximum)
 	if (n_samp <= 250)
-		build_haplo_nmax = n_samp * 10;
+		build_haplo_nmax = n_samp * 20;
 	else if (n_samp <= 1000L)
-		build_haplo_nmax = n_samp * 5;
+		build_haplo_nmax = n_samp * 10;
 	else if (n_samp <= 5000)
-		build_haplo_nmax = n_samp * 3;
+		build_haplo_nmax = n_samp * 6;
 	else if (n_samp <= 10000)
-		build_haplo_nmax = (int)(n_samp * 1.5);
+		build_haplo_nmax = n_samp * 3;
 	else
-		build_haplo_nmax = n_samp;
+		build_haplo_nmax = n_samp * 2;
 	GPU_CREATE_MEM_V(mem_haplo_list, CL_MEM_READ_WRITE,
 		sizeof(THaplotype)*build_haplo_nmax, NULL);
 
@@ -540,7 +540,11 @@ static UINT32 *build_haplomatch(const THaplotype haplo[], const size_t nHaplo[],
 	out_n_buf = nbuf;
 	const size_t sz = sizeof(UINT32)*nbuf;
 	if (sz > msize_prob_buffer_total)
+	{
+		Rprintf("Required memory (%d) > allocated (%d). It is suggested to run the CPU version.\n",
+			(int)sz, (int)msize_prob_buffer_total);
 		throw "Insuffient GPU buffer in build_haplomatch().";
+	}
 	if (sz > 0)
 	{
 		buf = (UINT32*)malloc(sz);
