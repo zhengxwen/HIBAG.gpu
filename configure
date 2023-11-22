@@ -1,0 +1,63 @@
+#
+# configure file for the HIBAG.gpu package
+#
+
+if test -z "$OCL"; then
+	if test -n "$CUDA_HOME"; then
+		echo ''
+		echo 'Find Nvidia CUDA toolkit: $CUDA_HOME, and set OCL=$CUDA_HOME'
+		OCL="$CUDA_HOME"
+	fi
+fi
+
+if test -z "$OCL"; then
+	if uname|grep -i darwin >/dev/null; then
+		OCL='<macOS OpenCL>'
+	fi
+fi
+
+if test -z "$OCL"; then
+	echo ''
+	echo 'ERROR: OCL not set!'
+	echo ''
+	echo 'You will need a working OpenCL SDK with headers and libraries.'
+	echo 'Set OCL to the root of the SDK'
+	echo ''
+	echo 'You can also set individial variables OCLINC and OCLLIB.'
+	echo 'If they are not set, the default layout will be assumed.'
+	echo ''
+	exit 1
+fi
+
+echo ''
+echo "=== configurig OpenCL =="
+echo "OCL=$OCL"
+
+if test -z "$OCLLIB"; then
+	if uname|grep -i darwin >/dev/null; then
+		OCLLIB="-framework OpenCL"
+	else
+		OCLLIB="-lOpenCL"
+	fi
+	echo OCLLIB not set, using $OCLLIB
+fi
+
+if test -z "$OCLINC"; then
+	if uname|grep -i darwin >/dev/null; then
+		OCLINC=
+	else
+		OCLINC="-I$OCL/include"
+	fi
+	echo OCLINC not set, using $OCLINC
+fi
+
+echo ''
+echo OCL=$OCL
+echo PKG_CPPFLAGS=$OCLINC
+echo PKG_LIBS=$OCLLIB
+echo ''
+
+echo 'PKG_CFLAGS=$(C_VISIBILITY)' > src/Makevars
+echo "PKG_CPPFLAGS=$OCLINC" >> src/Makevars
+echo "PKG_LIBS=$OCLLIB" >> src/Makevars
+

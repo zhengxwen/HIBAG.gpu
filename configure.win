@@ -1,24 +1,26 @@
-# this file is created and revised, based on configure.win in the OpenCL package
+#
+# configure.win file for the HIBAG.gpu package
+#
 
 if test -z "$OCL"; then
-   if test -n "$CUDA_PATH"; then
-      echo ''
-      echo 'Find Nvidia CUDA toolkit: $CUDA_PATH, and set OCL=$CUDA_PATH'
-      OCL="$CUDA_PATH"
-   fi
+	if test -n "$CUDA_PATH"; then
+		echo ''
+		echo 'Find Nvidia CUDA toolkit: $CUDA_PATH, and set OCL=$CUDA_PATH'
+		OCL="$CUDA_PATH"
+	fi
 fi
 
 if test -z "$OCL"; then
-   echo ''
-   echo 'ERROR: OCL not set!'
-   echo ''
-   echo 'You will need a working OpenCL SDK with headers and libraries for both i386 and x64.'
-   echo 'Set OCL to the root of the SDK'
-   echo ''
-   echo 'You can also set individial variables OCLINC, OCL32LIB and OCL64LIB.'
-   echo 'If they are not set, the default layout will be assumed.'
-   echo ''
-   exit 1
+	echo ''
+	echo 'ERROR: OCL not set!'
+	echo ''
+	echo 'You will need a working OpenCL SDK with headers and libraries for both i386 and x64.'
+	echo 'Set OCL to the root of the SDK'
+	echo ''
+	echo 'You can also set individial variables OCLINC, OCL32LIB and OCL64LIB.'
+	echo 'If they are not set, the default layout will be assumed.'
+	echo ''
+	exit 1
 fi
 
 echo ''
@@ -28,26 +30,26 @@ echo " OCL=$OCL"
 echo ''
 
 if test -z "$OCL64LIB"; then
-   OCL64LIB="$OCL/lib/x64/OpenCL.lib"
-   echo OCL64LIB not set, assuming $OCL64LIB
+	OCL64LIB="$OCL/lib/x64/OpenCL.lib"
+	echo OCL64LIB not set, assuming $OCL64LIB
 fi
 if test -z "$OCL32LIB"; then
-   OCL32LIB="$OCL/lib/x86/OpenCL.lib"
-   echo OCL32LIB not set, assuming $OCL32LIB
+	OCL32LIB="$OCL/lib/x86/OpenCL.lib"
+	echo OCL32LIB not set, assuming $OCL32LIB
 fi
 if test -z "$OCLINC"; then
-   OCLINC="-I$OCL/include"
-   echo OCLINC not set, assuming $OCLINC
+	OCLINC="-I$OCL/include"
+	echo OCLINC not set, assuming $OCLINC
 fi
 
 echo ''
 
 if test "$R_ARCH" = i386; then
-   echo ' --- Compiling 32-bit ---'
-   OCLLIB="$OCL32LIB"
+	echo ' --- Compiling 32-bit ---'
+	OCLLIB="$OCL32LIB"
 else
-   echo ' --- Compiling 64-bit ---'
-   OCLLIB="$OCL64LIB"
+	echo ' --- Compiling 64-bit ---'
+	OCLLIB="$OCL64LIB"
 fi
 
 echo OCL=$OCL
