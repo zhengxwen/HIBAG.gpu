@@ -8,6 +8,8 @@ if test -z "$OCL"; then
 		echo 'Find Nvidia CUDA toolkit: $CUDA_HOME, and set OCL=$CUDA_HOME'
 		OCL="$CUDA_HOME"
 	fi
+else
+	echo "Environment variable 'OCL' is set, using $OCL"
 fi
 
 if test -z "$OCL"; then
@@ -39,7 +41,7 @@ if test -z "$OCLLIB"; then
 	else
 		OCLLIB="-lOpenCL"
 	fi
-	echo OCLLIB not set, using $OCLLIB
+	echo "Environment variable 'OCLLIB' not set, using $OCLLIB"
 fi
 
 if test -z "$OCLINC"; then
@@ -48,7 +50,7 @@ if test -z "$OCLINC"; then
 	else
 		OCLINC="-I$OCL/include"
 	fi
-	echo OCLINC not set, using $OCLINC
+	echo "Environment variable 'OCLINC' not set, using $OCLINC"
 fi
 
 echo ''
