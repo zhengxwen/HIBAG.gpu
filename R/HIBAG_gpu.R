@@ -5,7 +5,7 @@
 #	HIBAG.gpu -- GPU-based implementation for the HIBAG package
 #
 # HIBAG R package, HLA Genotype Imputation with Attribute Bagging
-# Copyright (C) 2017-2021    Xiuwen Zheng (zhengx@u.washington.edu)
+# Copyright (C) 2017-2023    Xiuwen Zheng (zhengx@u.washington.edu)
 # All rights reserved.
 #
 # This program is free software: you can redistribute it and/or modify
@@ -1041,6 +1041,17 @@ hlaGPU_Init <- function(device=NA_integer_,
 	ii <- c(i1, i2, i3)
 	if (length(ii) <= 0L) ii <- 1L
 	ii <- c(ii, setdiff(seq_along(info), ii))
+
+	# if define HIBAG_GPU_INIT_DEV_INDEX
+	i_dev <- as.integer(getOption("HIBAG_GPU_INIT_DEV_INDEX", NA_integer_))
+	if (i_dev %in% ii)
+	{
+		ii <- c(i_dev, setdiff(ii, i_dev))
+		showmsg("Using HIBAG_GPU_INIT_DEV_INDEX=", i_dev)
+	} else if (!is.na(i_dev))
+	{
+		showmsg("Invalid HIBAG_GPU_INIT_DEV_INDEX=", i_dev)
+	}
 
 	# build OpenCL kernels
 	for (i in ii)
