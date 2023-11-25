@@ -2,64 +2,64 @@
 # configure file for the HIBAG.gpu package
 #
 
-if test -z "$OCL"; then
+if test -z "$OCL_HOME"; then
 	if test -n "$CUDA_HOME"; then
 		echo ''
-		echo 'Find Nvidia CUDA toolkit: $CUDA_HOME, and set OCL=$CUDA_HOME'
-		OCL="$CUDA_HOME"
+		echo 'Find Nvidia CUDA toolkit: $CUDA_HOME, and set OCL_HOME=$CUDA_HOME'
+		OCL_HOME="$CUDA_HOME"
 	fi
 else
-	echo "Environment variable 'OCL' is set, using $OCL"
+	echo "Environment variable 'OCL_HOME' is set, using $OCL_HOME"
 fi
 
-if test -z "$OCL"; then
+if test -z "$OCL_HOME"; then
 	if uname|grep -i darwin >/dev/null; then
-		OCL='<macOS OpenCL>'
+		OCL_HOME='<macOS OpenCL>'
 	fi
 fi
 
-if test -z "$OCL"; then
+if test -z "$OCL_HOME"; then
 	echo ''
-	echo 'ERROR: OCL not set!'
+	echo 'ERROR: OCL_HOME not set!'
 	echo ''
 	echo 'You will need a working OpenCL SDK with headers and libraries.'
-	echo 'Set OCL to the root of the SDK'
+	echo 'Set OCL_HOME to the root of the SDK'
 	echo ''
-	echo 'You can also set individial variables OCLINC and OCLLIB.'
+	echo 'You can also set individial variables OCL_INC and OCL_LIB.'
 	echo 'If they are not set, the default layout will be assumed.'
 	echo ''
 	exit 1
 fi
 
 echo ''
-echo "=== configurig OpenCL =="
-echo "OCL=$OCL"
+echo "=== configurig OpenCL ==="
+echo "OCL_HOME=$OCL_HOME"
 
-if test -z "$OCLLIB"; then
+if test -z "$OCL_LIB"; then
 	if uname|grep -i darwin >/dev/null; then
-		OCLLIB="-framework OpenCL"
+		OCL_LIB="-framework OpenCL"
 	else
-		OCLLIB="-lOpenCL"
+		OCL_LIB="-lOpenCL"
 	fi
-	echo "Environment variable 'OCLLIB' not set, using $OCLLIB"
+	echo "Environment variable 'OCL_LIB' not set, using $OCL_LIB"
 fi
 
-if test -z "$OCLINC"; then
+if test -z "$OCL_INC"; then
 	if uname|grep -i darwin >/dev/null; then
-		OCLINC=
+		OCL_INC=
 	else
-		OCLINC="-I$OCL/include"
+		OCL_INC="-I$OCL_HOME/include"
 	fi
-	echo "Environment variable 'OCLINC' not set, using $OCLINC"
+	echo "Environment variable 'OCL_INC' not set, using $OCL_INC"
 fi
 
 echo ''
-echo OCL=$OCL
-echo PKG_CPPFLAGS=$OCLINC
-echo PKG_LIBS=$OCLLIB
+echo OCL_HOME=$OCL_HOME
+echo PKG_CPPFLAGS=$OCL_INC
+echo PKG_LIBS=$OCL_LIB
 echo ''
 
 echo 'PKG_CFLAGS=$(C_VISIBILITY)' > src/Makevars
-echo "PKG_CPPFLAGS=$OCLINC" >> src/Makevars
-echo "PKG_LIBS=$OCLLIB" >> src/Makevars
+echo "PKG_CPPFLAGS=$OCL_INC" >> src/Makevars
+echo "PKG_LIBS=$OCL_LIB" >> src/Makevars
 

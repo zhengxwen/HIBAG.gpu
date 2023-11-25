@@ -2,64 +2,64 @@
 # configure.win file for the HIBAG.gpu package
 #
 
-if test -z "$OCL"; then
+if test -z "$OCL_HOME"; then
 	if test -n "$CUDA_PATH"; then
 		echo ''
-		echo 'Find Nvidia CUDA toolkit: $CUDA_PATH, and set OCL=$CUDA_PATH'
-		OCL="$CUDA_PATH"
+		echo 'Find Nvidia CUDA toolkit: $CUDA_PATH, and set OCL_HOME=$CUDA_PATH'
+		OCL_HOME="$CUDA_PATH"
 	fi
 fi
 
-if test -z "$OCL"; then
+if test -z "$OCL_HOME"; then
 	echo ''
-	echo 'ERROR: OCL not set!'
+	echo 'ERROR: OCL_HOME not set!'
 	echo ''
 	echo 'You will need a working OpenCL SDK with headers and libraries for both i386 and x64.'
-	echo 'Set OCL to the root of the SDK'
+	echo 'Set OCL_HOME to the root of the SDK'
 	echo ''
-	echo 'You can also set individial variables OCLINC, OCL32LIB and OCL64LIB.'
+	echo 'You can also set individial variables OCL_INC, OCL_LIB32 and OCL_LIB64.'
 	echo 'If they are not set, the default layout will be assumed.'
 	echo ''
 	exit 1
 fi
 
 echo ''
-echo " === configurig OpenCL for $R_ARCH =="
+echo "=== configurig OpenCL for $R_ARCH ==="
 echo ''
-echo " OCL=$OCL"
+echo "OCL_HOME=$OCL_HOME"
 echo ''
 
-if test -z "$OCL64LIB"; then
-	OCL64LIB="$OCL/lib/x64/OpenCL.lib"
-	echo OCL64LIB not set, assuming $OCL64LIB
+if test -z "$OCL_LIB64"; then
+	OCL_LIB64="$OCL_HOME/lib/x64/OpenCL.lib"
+	echo OCL_LIB64 not set, assuming $OCL_LIB64
 fi
-if test -z "$OCL32LIB"; then
-	OCL32LIB="$OCL/lib/x86/OpenCL.lib"
-	echo OCL32LIB not set, assuming $OCL32LIB
+if test -z "$OCL_LIB32"; then
+	OCL_LIB32="$OCL_HOME/lib/x86/OpenCL.lib"
+	echo OCL_LIB32 not set, assuming $OCL_LIB32
 fi
-if test -z "$OCLINC"; then
-	OCLINC="-I$OCL/include"
-	echo OCLINC not set, assuming $OCLINC
+if test -z "$OCL_INC"; then
+	OCL_INC="-I$OCL_HOME/include"
+	echo OCL_INC not set, assuming $OCL_INC
 fi
 
 echo ''
 
 if test "$R_ARCH" = i386; then
 	echo ' --- Compiling 32-bit ---'
-	OCLLIB="$OCL32LIB"
+	OCL_LIB="$OCL_LIB32"
 else
 	echo ' --- Compiling 64-bit ---'
-	OCLLIB="$OCL64LIB"
+	OCL_LIB="$OCL_LIB64"
 fi
 
-echo OCL=$OCL
-echo PKG_CPPFLAGS=$OCLINC
-echo PKG_LIBS=$OCLLIB
+echo OCL_HOME=$OCL_HOME
+echo PKG_CPPFLAGS=$OCL_INC
+echo PKG_LIBS=$OCL_LIB
 
 echo ''
 echo "NOTE: make sure the run-time DLLs are on PATH!"
 echo ''
 
-echo "PKG_CPPFLAGS='$OCLINC'" > src/Makevars.win
-echo "PKG_LIBS='$OCLLIB'" >> src/Makevars.win
+echo "PKG_CPPFLAGS='$OCL_INC'" > src/Makevars.win
+echo "PKG_LIBS='$OCL_LIB'" >> src/Makevars.win
 
