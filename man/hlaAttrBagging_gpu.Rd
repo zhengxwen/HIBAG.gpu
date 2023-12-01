@@ -9,10 +9,11 @@
 }
 \usage{
 hlaAttrBagging_gpu(hla, snp, nclassifier=100L, mtry=c("sqrt", "all", "one"),
-	prune=TRUE, na.rm=TRUE, mono.rm=TRUE, maf=NaN, verbose=TRUE, verbose.detail=FALSE)
+	prune=TRUE, na.rm=TRUE, mono.rm=TRUE, maf=NaN, verbose=TRUE,
+	verbose.detail=FALSE, use_gpu_predict=TRUE)
 hlaAttrBagging_MultiGPU(gpus, hla, snp, auto.save="", nclassifier=100L,
-	mtry=c("sqrt", "all", "one"), prune=TRUE, na.rm=TRUE, mono.rm=TRUE, maf=NaN,
-	train_prec="auto", verbose=TRUE)
+	mtry=c("sqrt", "all", "one"), prune=TRUE, na.rm=TRUE, mono.rm=TRUE,
+	maf=NaN, train_prec="auto", use_gpu_predict=TRUE, verbose=TRUE)
 }
 \arguments{
 	\item{hla}{the training HLA types, an object of
@@ -36,6 +37,8 @@ hlaAttrBagging_MultiGPU(gpus, hla, snp, auto.save="", nclassifier=100L,
 		for the training precision, see \code{hlaGPU_Init}}
 	\item{verbose}{if TRUE, show information}
 	\item{verbose.detail}{if TRUE, show more information}
+	\item{use_gpu_predict}{if TRUE, use \code{hlaPredict_gpu()} to calculate
+	    the matching proportions via GPU, otherwise use \code{hlaPredict()}}
 }
 \details{
 	\code{mtry} (the number of variables randomly sampled as candidates

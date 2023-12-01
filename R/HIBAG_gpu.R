@@ -84,7 +84,7 @@
 
 hlaAttrBagging_gpu <- function(hla, snp, nclassifier=100L,
 	mtry=c("sqrt", "all", "one"), prune=TRUE, na.rm=TRUE, mono.rm=TRUE, maf=NaN,
-	verbose=TRUE, verbose.detail=FALSE)
+	verbose=TRUE, verbose.detail=FALSE, use_gpu_predict=TRUE)
 {
 	# check
 	stopifnot(inherits(hla, "hlaAlleleClass"))
@@ -97,6 +97,7 @@ hlaAttrBagging_gpu <- function(hla, snp, nclassifier=100L,
 	stopifnot(is.numeric(maf), length(maf)==1L)
 	stopifnot(is.logical(verbose), length(verbose)==1L)
 	stopifnot(is.logical(verbose.detail), length(verbose.detail)==1L)
+	stopifnot(is.logical(use_gpu_predict))
 	if (verbose.detail) verbose <- TRUE
 
 	if (is.na(nclassifier)) nclassifier <- 0L
@@ -263,7 +264,12 @@ hlaAttrBagging_gpu <- function(hla, snp, nclassifier=100L,
     {
 		if (verbose)
 			cat("Calculating matching proportion:\n")
-		pd <- hlaPredict_gpu(mod, snp, match.type="Pos+Allele", verbose=FALSE)
+		if (isTRUE(use_gpu_predict))
+		{
+			pd <- hlaPredict_gpu(mod, snp, match.type="Pos+Allele", verbose=FALSE)
+		} else {
+			pd <- hlaPredict(mod, snp, match.type="Pos+Allele", verbose=FALSE)
+		}
 		mod$matching <- pd$value$matching
 		if (verbose)
 		{
@@ -338,7 +344,7 @@ recvOneResult <- function(cl)
 
 hlaAttrBagging_MultiGPU <- function(gpus, hla, snp, auto.save="", nclassifier=100L,
 	mtry=c("sqrt", "all", "one"), prune=TRUE, na.rm=TRUE, mono.rm=TRUE, maf=NaN,
-	train_prec="auto", verbose=TRUE)
+	train_prec="auto", use_gpu_predict=TRUE, verbose=TRUE)
 {
 	# check
 	stopifnot(is.numeric(gpus), all(!is.na(gpus)), length(gpus)>0L)
@@ -356,6 +362,7 @@ hlaAttrBagging_MultiGPU <- function(gpus, hla, snp, auto.save="", nclassifier=10
 	stopifnot(is.logical(verbose), length(verbose)==1L)
 	stopifnot(is.character(train_prec),
 		length(train_prec)==1L || length(train_prec)==length(gpus))
+	stopifnot(is.logical(use_gpu_predict))
 
 	# GPU platform
 	for (i in gpus)
@@ -655,7 +662,14 @@ hlaAttrBagging_MultiGPU <- function(gpus, hla, snp, auto.save="", nclassifier=10
 	# matching proportion
 	if (verbose)
 		cat("Calculating matching proportion:\n")
-	pd <- hlaPredict_gpu(mod, snp, match.type="Pos+Allele", verbose=FALSE)
+	if (isTRUE(use_gpu_predict))
+	{
+		pd <- hlaPredict_gpu(mod, snp, match.type="Pos+Allele", verbose=FALSE)
+	} else {
+		# multi-threading
+		pd <- hlaPredict(mod, snp, cl=length(gpus), match.type="Pos+Allele",
+			verbose=FALSE)
+	}
 	mod$matching <- pd$value$matching
 	mobj <- NULL
 	if (auto.save != "")
