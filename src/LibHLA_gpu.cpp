@@ -320,9 +320,8 @@ SEXP ocl_build_init(SEXP R_nHLA, SEXP R_nSample, SEXP R_verbose)
 	// max. # of samples
 	msize_prob_buffer_each = sz_hla * float_size;
 	mem_sample_nmax = n_samp;
-	GPU_CREATE_MEM_V(mem_prob_buffer, CL_MEM_READ_WRITE,
-		msize_prob_buffer_each*mem_sample_nmax, NULL);
 	msize_prob_buffer_total = msize_prob_buffer_each * mem_sample_nmax;
+	GPU_CREATE_MEM_V(mem_prob_buffer, CL_MEM_READ_WRITE, msize_prob_buffer_total, NULL);
 
 	const cl_uint nmax_buf = msize_prob_buffer_total / sizeof(cl_uint);
 	const cl_uint nmax_match_buf = nmax_buf - 2;
@@ -476,7 +475,6 @@ static void build_set_bootstrap(const int oob_cnt[])
 	}
 }
 
-
 static UINT32 *build_haplomatch(const THaplotype haplo[], const size_t nHaplo[],
 	int n_snp, const TGenotype geno[], size_t &out_n_buf)
 {
@@ -541,7 +539,7 @@ static UINT32 *build_haplomatch(const THaplotype haplo[], const size_t nHaplo[],
 	const size_t sz = sizeof(UINT32)*nbuf;
 	if (sz > msize_prob_buffer_total)
 	{
-		Rprintf("Required memory (%d) > allocated (%d). It is suggested to run the CPU version.\n",
+		Rprintf("Required memory (%dB) > allocated (%dB). It is suggested to run the CPU version.\n",
 			(int)sz, (int)msize_prob_buffer_total);
 		throw "Insuffient GPU buffer in build_haplomatch().";
 	}
