@@ -475,6 +475,32 @@ static void build_set_bootstrap(const int oob_cnt[])
 	}
 }
 
+inline static void build_resize_prob_buffer(size_t new_size)
+{
+	if (msize_prob_buffer_total >= new_size) return;
+	// clear the old buffer
+	GPU_FREE_MEM(mem_prob_buffer);
+	mem_prob_buffer = NULL;
+	// new buffer
+	msize_prob_buffer_total = new_size;
+	GPU_CREATE_MEM_V(mem_prob_buffer, CL_MEM_READ_WRITE, msize_prob_buffer_total, NULL);
+	// set arguments
+	GPU_SETARG(gpu_kl_build_haplo_match1, 1, mem_prob_buffer);
+	GPU_SETARG(gpu_kl_build_haplo_match2, 1, mem_prob_buffer);
+	GPU_SETARG(gpu_kl_build_calc_prob_int1, 0, mem_prob_buffer);
+	GPU_SETARG(gpu_kl_build_calc_prob_int2, 0, mem_prob_buffer);
+	GPU_SETARG(gpu_kl_build_calc_prob_int3, 0, mem_prob_buffer);
+	GPU_SETARG(gpu_kl_build_calc_prob_int4, 0, mem_prob_buffer);
+	GPU_SETARG(gpu_kl_build_calc_oob, 3, mem_prob_buffer);
+	GPU_SETARG(gpu_kl_build_calc_ib, 5, mem_prob_buffer);
+	GPU_SETARG(gpu_kl_clear_mem, 1, mem_prob_buffer);
+	// set argument
+	const cl_uint nmax_buf = msize_prob_buffer_total / sizeof(cl_uint);
+	const cl_uint nmax_match_buf = nmax_buf - 2;
+	GPU_SETARG(gpu_kl_build_haplo_match1, 3, nmax_match_buf);
+	GPU_SETARG(gpu_kl_build_haplo_match2, 3, nmax_match_buf);
+}
+
 static UINT32 *build_haplomatch(const THaplotype haplo[], const size_t nHaplo[],
 	int n_snp, const TGenotype geno[], size_t &out_n_buf)
 {
@@ -539,9 +565,14 @@ static UINT32 *build_haplomatch(const THaplotype haplo[], const size_t nHaplo[],
 	const size_t sz = sizeof(UINT32)*nbuf;
 	if (sz > msize_prob_buffer_total)
 	{
-		Rprintf("Required memory (%dB) > allocated (%dB). It is suggested to run the CPU version.\n",
+		size_t new_size =
+			(sz / msize_prob_buffer_total) * msize_prob_buffer_total +
+			(sz % msize_prob_buffer_total ? msize_prob_buffer_total : 0);
+		Rprintf("Required memory (%dB) > allocated (%dB), and resize the buffer\n",
 			(int)sz, (int)msize_prob_buffer_total);
-		throw "Insuffient GPU buffer in build_haplomatch().";
+		build_resize_prob_buffer(new_size);
+		// to use the new buffer
+		return build_haplomatch(haplo, nHaplo, n_snp, geno, out_n_buf);
 	}
 	if (sz > 0)
 	{
