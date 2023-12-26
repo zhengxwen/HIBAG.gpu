@@ -734,6 +734,10 @@ SEXP ocl_release_dev()
 	};
 	kernel_release(kl_num, kl_lst);
 
+	// release memory buffer
+	GPU_FREE_MEM(mem_rare_freq_f32);  mem_rare_freq_f32 = NULL;
+	GPU_FREE_MEM(mem_rare_freq_f64);  mem_rare_freq_f64 = NULL;
+
 	// release command queue
 	if (gpu_command_queue)
 	{
