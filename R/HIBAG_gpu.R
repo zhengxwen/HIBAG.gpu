@@ -490,12 +490,12 @@ hlaAttrBagging_MultiGPU <- function(gpus, hla, snp, auto.save="", nclassifier=10
 		cat("    # of unique ", s, " alleles: ", n.hla, "\n", sep="")
 	}
 
-
+	reset_dev <- FALSE
 	# initialize GPUs
 	if (length(gpus) == 1L)
 	{
 		cl <- NULL
-		hlaGPU_Init(gpus[1L], train_prec=train_prec, .packageEnv$predict_prec,
+		hlaGPU_Init(gpus, train_prec=train_prec, .packageEnv$predict_prec,
 			verbose=verbose)
 
 		# create an attribute bagging object (return an integer)
@@ -514,6 +514,13 @@ hlaAttrBagging_MultiGPU <- function(gpus, hla, snp, auto.save="", nclassifier=10
 		})
 
 	} else {
+		# release the current GPU dev if it will be used in the child process
+		if (.packageEnv$gpu_dev_idx %in% gpus)
+		{
+			.Call(ocl_release_dev)
+			reset_dev <- TRUE
+		}
+		# start a cluster
 		cl <- makeCluster(length(gpus), outfile="", useXDR=FALSE)
 		on.exit(stopCluster(cl))
 		# GPU
@@ -636,8 +643,10 @@ hlaAttrBagging_MultiGPU <- function(gpus, hla, snp, auto.save="", nclassifier=10
 		vs <- clusterApply(cl, seq_along(gpus), function(i)
 			{
 				.gpu_build_free_memory()
-				with(.packageEnv, .Call("HIBAG_GetClassifierList",
-					M_ABmodel, M_hla.allele, PACKAGE="HIBAG"))
+				.Call(ocl_release_dev)
+				with(.packageEnv,
+					.Call("HIBAG_GetClassifierList", M_ABmodel, M_hla.allele,
+					PACKAGE="HIBAG"))
 			})
 		for (v in vs) clr <- append(clr, v)
 		# the next random seed
@@ -662,6 +671,14 @@ hlaAttrBagging_MultiGPU <- function(gpus, hla, snp, auto.save="", nclassifier=10
 	# matching proportion
 	if (verbose)
 		cat("Calculating matching proportion:\n")
+	if (reset_dev)
+	{
+		with(.packageEnv, .gpu_init(
+			gpu_dev_idx, train_prec, predict_prec,
+			function(s) { NULL }  # not show anything
+			)
+		)
+	}
 	if (isTRUE(use_gpu_predict))
 	{
 		pd <- hlaPredict_gpu(mod, snp, match.type="Pos+Allele", verbose=FALSE)

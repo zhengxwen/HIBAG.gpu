@@ -7,6 +7,8 @@ CHANGES IN VERSION 0.99.1 (2023 Nov)
       'auto', 'half', 'mixed', 'single' or 'double'. It can be used without
       calling `hlaGPU_Init(,train_prec="")` to reset the training precision.
 
+    o fix the GPU memory leaks
+
 
 CHANGES IN VERSION 0.99.0 (2021 Oct)
 -------------------------
