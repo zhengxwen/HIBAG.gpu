@@ -630,6 +630,14 @@ extern SEXP ocl_get_dev_param()
 }
 
 
+static void pfn_notify(const char *errinfo, const void *private_info,
+	size_t cb, void *user_data)
+{
+	std::string *s = (std::string*)user_data;
+	if (!s->empty()) s->append("\n");
+	s->append(errinfo);
+}
+
 /// select an OpenCL device
 SEXP ocl_select_dev(SEXP dev_idx)
 {
@@ -664,9 +672,13 @@ SEXP ocl_select_dev(SEXP dev_idx)
 
 	// create context
 	cl_int err;
-	cl_context ctx = clCreateContext(NULL, 1, &dev, NULL, NULL, &err);
-    if (!ctx || err!=CL_SUCCESS)
-		Rf_error(gpu_err_msg(err, err_info, fc_create_ctx));
+	std::string err_s;
+	cl_context ctx = clCreateContext(NULL, 1, &dev, &pfn_notify, &err_s, &err);
+	if (!ctx || err!=CL_SUCCESS)
+	{
+		if (err_s.empty()) err_s = err_info;
+		Rf_error(gpu_err_msg(err, err_s.c_str(), fc_create_ctx));
+	}
 	gpu_context = ctx;
 
 	// create queue
