@@ -36,31 +36,23 @@ R package – a GPU-based extension for the [HIBAG](https://github.com/zhengxwen
 
 ### 1) Speedup factors using small training sets (~1,000 samples)
 
-| CPU / GPU              | Precision | Factor |
-|:-----------------------|:----------|-------:|
-| CPU (AVX2, 1 thread)   | double    | 1      |
-| CPU (AVX2, 20 threads) | double    | 14.7   |
-| 1x NVIDIA Tesla T4     | half      | 71.8   |
-| 1x NVIDIA Tesla V100   | half      | 74.7   |
-| 1x NVIDIA Tesla T4     | mixed     | 61.2   |
-| 1x NVIDIA Tesla V100   | mixed     | 68.3   |
-| 1x NVIDIA Tesla T4     | single    | 52.4   |
-| 1x NVIDIA Tesla V100   | single    | 61.3   |
-| 1x NVIDIA Tesla V100   | double    | 22.7   |
+| CPU / GPU              | Precision: half | mixed  | single | double |
+|:-----------------------|----------------:|-------:|-------:|-------:|
+| CPU (AVX2, 1 thread)   | ---             | ---    | ---    | 1      |
+| CPU (AVX2, 20 threads) | ---             | ---    | ---    | 14.7   |
+| 1x NVIDIA GTX 1080Ti   | 48.2            | 40.5   | 36.5   | ---    |
+| 1x NVIDIA Tesla T4     | 72.9            | 64.5   | 57.1   | ---    |
+| 1x NVIDIA Tesla V100   | 82.7            | 73.5   | 66.9   | 20.7   |
 
 ### 2) Speedup factors using medium training sets (~5,000 samples)
 
-| CPU / GPU              | Precision | Factor |
-|:-----------------------|:----------|-------:|
-| CPU (AVX2, 1 thread)   | double    | 1      |
-| CPU (AVX2, 20 threads) | double    | 17.5   |
-| 1x NVIDIA Tesla T4     | half      | 101.6  |
-| 1x NVIDIA Tesla V100   | half      | 125.2  |
-| 1x NVIDIA Tesla T4     | mixed     | 72.0   |
-| 1x NVIDIA Tesla V100   | mixed     | 98.9   |
-| 1x NVIDIA Tesla T4     | single    | 60.8   |
-| 1x NVIDIA Tesla V100   | single    | 92.4   |
-| 1x NVIDIA Tesla V100   | double    | 18.4   |
+| CPU / GPU              | Precision: half | mixed  | single | double |
+|:-----------------------|----------------:|-------:|-------:|-------:|
+| CPU (AVX2, 1 thread)   | ---             | ---    | ---    | 1      |
+| CPU (AVX2, 20 threads) | ---             | ---    | ---    | 17.5   |
+| 1x NVIDIA GTX 1080Ti   | 88.7            | 65.8   | 58.1   | ---    |
+| 1x NVIDIA Tesla T4     | 108.1           | 76.3   | 63.8   | ---    |
+| 1x NVIDIA Tesla V100   | 135.7           | 107.5  | 99.0   | 25.3   |
 
 
 *† ‘mixed’ is a mixed precision between half and single*
