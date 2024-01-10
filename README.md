@@ -43,6 +43,8 @@ R package – a GPU-based extension for the [HIBAG](https://github.com/zhengxwen
 | 1x NVIDIA GTX 1080Ti   | 48.2            | 40.5   | 36.5   | ---    |
 | 1x NVIDIA Tesla T4     | 72.9            | 64.5   | 57.1   | ---    |
 | 1x NVIDIA Tesla V100   | 82.7            | 73.5   | 66.9   | 20.7   |
+| 1x NVIDIA Tesla A100   | 133.5           | 114.4  | 102.1  | 23.0   |
+| Apple M1 Max (32-core GPU) | 91.5        | 64.6   | 57.3   |        |
 
 ### 2) Speedup factors using medium training sets (~5,000 samples)
 
@@ -53,11 +55,12 @@ R package – a GPU-based extension for the [HIBAG](https://github.com/zhengxwen
 | 1x NVIDIA GTX 1080Ti   | 88.7            | 65.8   | 58.1   | ---    |
 | 1x NVIDIA Tesla T4     | 108.1           | 76.3   | 63.8   | ---    |
 | 1x NVIDIA Tesla V100   | 135.7           | 107.5  | 99.0   | 25.3   |
-
+| 1x NVIDIA Tesla A100   | 149.0           | 114.6  | 107.8  |        |
+| Apple M1 Max (32-core GPU) | 138.8       | 93.8   | 78.5   |        |
 
 *† ‘mixed’ is a mixed precision between half and single*
 
-*† models built on HLA-A, -B, -C, -DRB1 using HIBAG v1.26.1 and HIBAG.gpu v0.99.0, and the average is reported*
+*† models built on HLA-A, -B, -C, -DRB1 using HIBAG v1.26.1 and HIBAG.gpu v0.99.0, and the averages are reported*
 
 *† CPU (AVX2, 1/20 threads), optimization with Intel AVX2 instruction, using Intel(R) Xeon(R) Gold 6248 2.50GHz, 20 cores (Cascade Lake)*
 
