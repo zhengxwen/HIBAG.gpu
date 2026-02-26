@@ -1,7 +1,7 @@
 // ===============================================================
 //
 // HIBAG.gpu R package (GPU-based implementation for the HIBAG package)
-// Copyright (C) 2021    Xiuwen Zheng (zhengx@u.washington.edu)
+// Copyright (C) 2021-2026    Xiuwen Zheng (zhengx@u.washington.edu)
 // All rights reserved.
 //
 // This program is free software: you can redistribute it and/or modify

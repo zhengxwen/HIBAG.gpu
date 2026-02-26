@@ -1,7 +1,7 @@
 // ===============================================================
 //
 // HIBAG.gpu R package (GPU-based implementation for the HIBAG package)
-// Copyright (C) 2021-2023    Xiuwen Zheng (zhengx@u.washington.edu)
+// Copyright (C) 2021-2026    Xiuwen Zheng (zhengx@u.washington.edu)
 // All rights reserved.
 //
 // This program is free software: you can redistribute it and/or modify
@@ -459,12 +459,12 @@ static std::string get_dev_info_str(cl_device_id dev, cl_device_info p)
 	size_t ret_n = 0;
 	cl_int err = clGetDeviceInfo(dev, p, 0, NULL, &ret_n);
 	if (err != CL_SUCCESS)
-		Rf_error(gpu_err_msg(err, err_info, fc_get_device_info));
+		Rf_error("%s", gpu_err_msg(err, err_info, fc_get_device_info));
 
 	std::string s(ret_n, 0);
 	err = clGetDeviceInfo(dev, p, s.size(), &s[0], NULL);
 	if (err != CL_SUCCESS)
-		Rf_error(gpu_err_msg(err, err_info, fc_get_device_info));
+		Rf_error("%s", gpu_err_msg(err, err_info, fc_get_device_info));
 	return s;
 }
 
@@ -491,14 +491,14 @@ SEXP ocl_init_dev_list()
 	cl_uint num_platforms = 0;
 	cl_int err = clGetPlatformIDs(0, NULL, &num_platforms);
 	if (err != CL_SUCCESS)
-		Rf_error(gpu_err_msg(err, err_info, fc_get_platform));
+		Rf_error("%s", gpu_err_msg(err, err_info, fc_get_platform));
 	cl_platform_id *platforms =
 		(cl_platform_id*)malloc(num_platforms*sizeof(cl_platform_id));
 	err = clGetPlatformIDs(num_platforms, platforms, NULL);
 	if (err != CL_SUCCESS)
 	{
 		free(platforms);
-		Rf_error(gpu_err_msg(err, err_info, fc_get_platform));
+		Rf_error("%s", gpu_err_msg(err, err_info, fc_get_platform));
 	}
 
 	// get a list of devices for each platform
@@ -511,7 +511,7 @@ SEXP ocl_init_dev_list()
 		if (err!=CL_SUCCESS && err!=CL_DEVICE_NOT_FOUND)
 		{
 			free(platforms);
-			Rf_error(gpu_err_msg(err, err_info, fc_get_device));
+			Rf_error("%s", gpu_err_msg(err, err_info, fc_get_device));
 		}
 		if (num_dev > 0)
 		{
@@ -521,7 +521,7 @@ SEXP ocl_init_dev_list()
 			{
 				free(dev);
 				free(platforms);
-				error(gpu_err_msg(err, err_info, fc_get_device));
+				Rf_error("%s", gpu_err_msg(err, err_info, fc_get_device));
 			}
 			for (cl_uint j=0; j < num_dev; j++)
 				gpu_dev_list.push_back(dev[j]);
@@ -677,7 +677,7 @@ SEXP ocl_select_dev(SEXP dev_idx)
 	if (!ctx || err!=CL_SUCCESS)
 	{
 		if (err_s.empty()) err_s = err_info;
-		Rf_error(gpu_err_msg(err, err_s.c_str(), fc_create_ctx));
+		Rf_error("%s", gpu_err_msg(err, err_s.c_str(), fc_create_ctx));
 	}
 	gpu_context = ctx;
 
@@ -687,7 +687,7 @@ SEXP ocl_select_dev(SEXP dev_idx)
 	if (!queue && err==CL_INVALID_VALUE)
 		queue = clCreateCommandQueue(ctx, dev, 0, &err); // not support out-of-order flag
 	if (!queue || err!=CL_SUCCESS)
-		Rf_error(gpu_err_msg(err, err_info, fc_create_queue));
+		Rf_error("%s", gpu_err_msg(err, err_info, fc_create_queue));
 	gpu_command_queue = queue;
 
 	// initialize mem_rare_freq_f32 and mem_rare_freq_f64
