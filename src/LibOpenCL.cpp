@@ -26,7 +26,7 @@
 #include <vector>
 #include <string>
 
-#define USE_RINTERNALS 1
+// #define USE_RINTERNALS 1
 #include <Rinternals.h>
 #include <R_ext/Rdynload.h>
 

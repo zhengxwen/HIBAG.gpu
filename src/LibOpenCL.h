@@ -29,6 +29,9 @@
 #endif
 
 #include <Rdefines.h>
+#ifdef length
+#   undef length
+#endif
 
 
 #ifdef __cplusplus
