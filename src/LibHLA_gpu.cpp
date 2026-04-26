@@ -46,7 +46,6 @@
 #include <vector>
 #include <time.h>
 
-#define USE_RINTERNALS 1
 #include <Rinternals.h>
 #include <Rdefines.h>
 
@@ -568,8 +567,8 @@ static UINT32 *build_haplomatch(const THaplotype haplo[], const size_t nHaplo[],
 		size_t new_size =
 			(sz / msize_prob_buffer_total) * msize_prob_buffer_total +
 			(sz % msize_prob_buffer_total ? msize_prob_buffer_total : 0);
-		Rprintf("Required memory (%dB) > allocated (%dB), and resize the buffer\n",
-			(int)sz, (int)msize_prob_buffer_total);
+		Rprintf("Required memory (%lluB) > allocated (%lluB), and resize the buffer\n",
+			(unsigned long long)sz, (unsigned long long)msize_prob_buffer_total);
 		build_resize_prob_buffer(new_size);
 		// to use the new buffer
 		return build_haplomatch(haplo, nHaplo, n_snp, geno, out_n_buf);
