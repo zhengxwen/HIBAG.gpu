@@ -28,7 +28,7 @@ hlaGPU_Init(device=NA_integer_,
 \details{
 	By default (\code{train_prec="auto"}), the model training uses a mixed
 precision between half and float, and the prediction uses 64-bit floating-point
-numbers in GPU computing if avaliable.
+numbers in GPU computing if available.
 }
 \author{Xiuwen Zheng}
 \seealso{
@@ -37,7 +37,7 @@ numbers in GPU computing if avaliable.
 
 \examples{
 \dontrun{
-library(OpenCL)
+library(HIBAG.gpu)
 
 # use the second GPU device
 hlaGPU_Init(2)

@@ -48,7 +48,8 @@ and \code{rownames} is an unordered pair of HLA alleles.
 	If more than 50\% of SNP predictors are missing, a warning will be given.
 
 	When \code{match.type="RefSNP+Position"}, the matching of SNPs requires
-both RefSNP IDs and positions. A lower missing fraction maybe gained by
+both RefSNP IDs and positions. By default (\code{match.type="Position"}),
+only positions are used. A lower missing fraction may be gained by
 matching RefSNP IDs or positions only. Call
 	\code{predict(..., match.type="RefSNP")} or
 	\code{predict(..., match.type="Position")} for this purpose.
