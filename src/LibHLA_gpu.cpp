@@ -1045,7 +1045,7 @@ SEXP gpu_init_proc(SEXP env)
 	}
 	if (offsetof(THaplotype, aux.a2.HLA_allele) != 28)
 	{
-		Rf_error("offsetof(THaplotype, aux.a2.Freq_f32) should be 24, but receive %d.",
+		Rf_error("offsetof(THaplotype, aux.a2.HLA_allele) should be 28, but receive %d.",
 			(int)offsetof(THaplotype, aux.a2.HLA_allele));
 	}
 

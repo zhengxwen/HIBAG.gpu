@@ -190,7 +190,7 @@ hlaAttrBagging_gpu <- function(hla, snp, nclassifier=100L,
 
 	if (length(samp.id) <= 0L)
 		stop("There is no common sample between 'hla' and 'snp'.")
-	if (length(dim(snp.geno)[1L]) <= 0L)
+	if (dim(snp.geno)[1L] <= 0L)
 		stop("There is no valid SNP markers.")
 
 
@@ -466,7 +466,7 @@ hlaAttrBagging_MultiGPU <- function(gpus, hla, snp, auto.save="", nclassifier=10
 
 	if (length(samp.id) <= 0L)
 		stop("There is no common sample between 'hla' and 'snp'.")
-	if (length(dim(snp.geno)[1L]) <= 0L)
+	if (dim(snp.geno)[1L] <= 0L)
 		stop("There is no valid SNP markers.")
 
 	# initialize ...
