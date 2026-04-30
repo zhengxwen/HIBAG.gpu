@@ -1,3 +1,4 @@
+#!/bin/sh
 #
 # configure.win file for the HIBAG.gpu package
 #
@@ -24,7 +25,7 @@ if test -z "$OCL_HOME"; then
 fi
 
 echo ''
-echo "=== configurig OpenCL for $R_ARCH ==="
+echo "=== configuring OpenCL for $R_ARCH ==="
 echo ''
 echo "OCL_HOME=$OCL_HOME"
 echo ''

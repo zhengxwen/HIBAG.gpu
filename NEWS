@@ -1,3 +1,15 @@
+CHANGES IN VERSION 0.99.2 (2026 Apr)
+-------------------------
+
+    o register native routines via R_registerRoutines() and disable dynamic
+      symbol lookup with R_useDynamicSymbols() according to the recent
+      versions of R
+
+    o add cleanup and cleanup.win scripts to remove generated Makevars files
+
+    o fix typos in configure scripts
+
+
 CHANGES IN VERSION 0.99.1 (2023 Nov)
 -------------------------
 

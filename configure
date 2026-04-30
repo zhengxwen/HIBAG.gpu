@@ -1,3 +1,4 @@
+#!/bin/sh
 #
 # configure file for the HIBAG.gpu package
 #
@@ -32,7 +33,7 @@ if test -z "$OCL_HOME"; then
 fi
 
 echo ''
-echo "=== configurig OpenCL ==="
+echo "=== configuring OpenCL ==="
 echo "OCL_HOME=$OCL_HOME"
 
 if test -z "$OCL_LIB"; then

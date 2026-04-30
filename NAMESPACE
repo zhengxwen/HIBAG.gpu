@@ -9,9 +9,6 @@ useDynLib(HIBAG.gpu,
 
 # Export function names
 exportPattern("^hla")
-export(.onAttach)
-export(.onLoad)
-export(.onUnload)
 
 # Imports
 import(methods)

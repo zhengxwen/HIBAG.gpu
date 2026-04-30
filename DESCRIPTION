@@ -1,8 +1,8 @@
 Package: HIBAG.gpu
 Type: Package
 Title: GPU-based implementation for the HIBAG package
-Version: 0.99.1
-Date: 2023-12-26
+Version: 0.99.2
+Date: 2026-04-30
 Depends: R (>= 3.2.0), HIBAG (>= 1.28.0)
 Imports: methods, parallel
 LinkingTo: HIBAG
@@ -19,6 +19,7 @@ Description: It is a GPU-based implementation for the HIBAG algorithm, which
 License: GPL-3 | file LICENSE
 Collate: OpenCL_code.R HIBAG_gpu.R
 SystemRequirements: GNU make; OpenCL library
+NeedsCompilation: yes
 ByteCompile: TRUE
 URL: http://github.com/zhengxwen/HIBAG.gpu, http://github.com/zhengxwen/HIBAG,
     https://hibag.s3.amazonaws.com/index.html
